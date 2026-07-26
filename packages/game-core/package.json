@@ -1,0 +1,17 @@
+{
+  "name": "@village-survivor/game-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@village-survivor/content": "workspace:*",
+    "@village-survivor/protocol": "workspace:*"
+  }
+}

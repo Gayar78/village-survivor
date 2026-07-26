@@ -1,0 +1,36 @@
+{
+  "name": "village-survivor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=22 <27",
+    "pnpm": ">=11.9 <12"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @village-survivor/client dev",
+    "build": "pnpm -r --sort run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:smoke": "playwright test --config playwright.smoke.config.ts",
+    "benchmark": "vitest run packages/game-core/test/performance.test.ts --reporter=verbose",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --sort run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.7.0",
+    "prettier": "3.9.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.64.0",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
+  }
+}

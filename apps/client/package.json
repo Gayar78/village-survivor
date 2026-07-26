@@ -1,0 +1,22 @@
+{
+  "name": "@village-survivor/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@village-survivor/content": "workspace:*",
+    "@village-survivor/game-core": "workspace:*",
+    "@village-survivor/protocol": "workspace:*",
+    "phaser": "4.2.1"
+  },
+  "devDependencies": {
+    "vite": "8.1.5"
+  }
+}
