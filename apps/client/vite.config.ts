@@ -25,6 +25,8 @@ export default defineConfig({
         main: 'index.html',
         // Page de diagnostic isolée du rendu Phaser (voir src/phasertest.ts).
         phasertest: 'phasertest.html',
+        // Page de diagnostic : vraie scène de jeu isolée (voir src/gametest.ts).
+        gametest: 'gametest.html',
       },
     },
   },
