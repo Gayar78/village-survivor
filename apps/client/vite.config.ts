@@ -14,5 +14,10 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
+    // Phaser 4 ne se rend pas correctement quand le bundle de production est
+    // minifié par le moteur de Vite 8 (rolldown/oxc) : la simulation tourne mais
+    // le canvas reste vide. On désactive la minification pour un rendu fiable
+    // (bundle plus volumineux, sans incidence sur le gameplay).
+    minify: false,
   },
 });
