@@ -94,14 +94,21 @@ class SupabaseAuthService implements AuthService {
   }
 
   async signInWithGoogle(): Promise<void> {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      // Retour vers l'origine courante (localhost en dev, domaine Vercel en ligne).
+      options: { redirectTo: window.location.origin },
+    });
     if (error) {
       throw toError('Échec de la connexion avec Google', error);
     }
   }
 
   async signInWithGitHub(): Promise<void> {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'github' });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: { redirectTo: window.location.origin },
+    });
     if (error) {
       throw toError('Échec de la connexion avec GitHub', error);
     }
