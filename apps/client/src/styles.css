@@ -19,10 +19,20 @@
 
 html,
 body,
-#app,
-#game {
+#app {
   width: 100%;
   height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Le canvas de jeu doit toujours remplir toute la fenêtre. On l'ancre en
+ * `fixed; inset: 0` plutôt que de dépendre d'une chaîne `height: 100%` des
+ * ancêtres, qui ne se recalculait pas correctement (le jeu restait cantonné à
+ * une bande, laissant apparaître le fond de page tout autour). */
+#game {
+  position: fixed;
+  inset: 0;
   margin: 0;
   overflow: hidden;
 }
