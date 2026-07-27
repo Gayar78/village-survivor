@@ -47,12 +47,35 @@ export class FriendsPanel {
   private requests: IncomingFriendRequest[] = [];
   private error: string | null = null;
   private busy = false;
+  private pollHandle: number | null = null;
 
   public constructor(element: HTMLElement, deps: FriendsPanelDeps) {
     this.element = element;
     this.deps = deps;
     this.element.classList.add('friends-panel');
     this.toasts = new Toasts(FriendsPanel.ensureToastRoot());
+    this.startPolling();
+  }
+
+  /**
+   * Les demandes d'ami n'arrivent pas en temps réel : on réinterroge la base
+   * périodiquement pour qu'une demande reçue apparaisse sans recharger la page.
+   */
+  private startPolling(): void {
+    if (this.pollHandle !== null) {
+      return;
+    }
+    this.pollHandle = window.setInterval(() => {
+      void this.refresh();
+    }, 12000);
+  }
+
+  /** Arrête le rafraîchissement périodique. */
+  public stop(): void {
+    if (this.pollHandle !== null) {
+      window.clearInterval(this.pollHandle);
+      this.pollHandle = null;
+    }
   }
 
   /** Recharge amis + demandes, puis rend l'ensemble du panneau. */

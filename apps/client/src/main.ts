@@ -245,10 +245,18 @@ if (!isSupabaseConfigured) {
     .getSession()
     .then((current) => {
       accountSession = current;
-      if (current !== null) {
-        void routeAfterSession();
-      } else {
+      if (current === null) {
         authScreen.show();
+        return;
+      }
+      // Sur un lancement de partie (autostart), on est déjà authentifié cette
+      // session : on démarre directement le jeu sans re-vérifier la 2FA. Cette
+      // vérification réseau, si elle traîne ou bloque, laisserait l'écran d'auth
+      // (fond vert) affiché par-dessus le jeu qui vient de démarrer.
+      if (shouldAutostart) {
+        void revealAfterAuth();
+      } else {
+        void routeAfterSession();
       }
     })
     .catch(() => {
