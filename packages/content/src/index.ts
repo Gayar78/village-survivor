@@ -15,7 +15,6 @@ const ringSchema = z
     path: ['minimumRadius'],
   });
 
-
 const resourceDefinitionSchema = z
   .object({
     /** Durée du canal de récolte d'une unité. */

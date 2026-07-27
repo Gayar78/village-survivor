@@ -145,7 +145,9 @@ export class ProfileScreen {
 
   private attachListeners(): void {
     this.element.querySelector('#profile-close')?.addEventListener('click', () => this.onClose());
-    this.element.querySelector('#profile-signout')?.addEventListener('click', () => this.handleSignOut());
+    this.element
+      .querySelector('#profile-signout')
+      ?.addEventListener('click', () => this.handleSignOut());
   }
 
   private handleSignOut(): void {

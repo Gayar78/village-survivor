@@ -71,6 +71,8 @@ export class EscapeMenu {
     this.element
       .querySelector('#escape-restart')
       ?.addEventListener('click', () => this.handlers.onRestart());
-    this.element.querySelector('#escape-quit')?.addEventListener('click', () => this.handlers.onQuit());
+    this.element
+      .querySelector('#escape-quit')
+      ?.addEventListener('click', () => this.handlers.onQuit());
   }
 }

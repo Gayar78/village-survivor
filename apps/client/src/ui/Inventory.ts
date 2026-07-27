@@ -70,7 +70,9 @@ export class Inventory {
         <div class="inv-grid" data-testid="player-inventory-grid"></div>
       </div>
     `;
-    const gridContainer = this.element.querySelector<HTMLElement>('[data-testid="player-inventory-grid"]');
+    const gridContainer = this.element.querySelector<HTMLElement>(
+      '[data-testid="player-inventory-grid"]',
+    );
     if (gridContainer !== null) {
       this.grid.renderInto(gridContainer, inventory);
     }

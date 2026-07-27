@@ -237,8 +237,12 @@ export class AuthScreen {
   }
 
   private attachListeners(): void {
-    this.element.querySelector('#auth-google')?.addEventListener('click', () => this.handleOAuth('google'));
-    this.element.querySelector('#auth-github')?.addEventListener('click', () => this.handleOAuth('github'));
+    this.element
+      .querySelector('#auth-google')
+      ?.addEventListener('click', () => this.handleOAuth('google'));
+    this.element
+      .querySelector('#auth-github')
+      ?.addEventListener('click', () => this.handleOAuth('github'));
     this.element
       .querySelector('#auth-switch-signup')
       ?.addEventListener('click', () => this.setMode('signup'));

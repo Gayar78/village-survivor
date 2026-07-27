@@ -762,7 +762,9 @@ export class GameScene extends Phaser.Scene {
     const insideVillage =
       Math.hypot(player.x - state.village.position.x, player.y - state.village.position.y) <=
       state.village.areaRadius;
-    const hasCarriedGoods = state.player.inventory.some((slot) => slot !== undefined && slot.quantity > 0);
+    const hasCarriedGoods = state.player.inventory.some(
+      (slot) => slot !== undefined && slot.quantity > 0,
+    );
     if (hasCarriedGoods && insideVillage) {
       return {
         x: state.village.position.x,
@@ -773,15 +775,13 @@ export class GameScene extends Phaser.Scene {
     }
     const defense = state.defenses.find(
       (item) =>
-        item.built &&
-        Math.hypot(item.position.x - player.x, item.position.y - player.y) <= range,
+        item.built && Math.hypot(item.position.x - player.x, item.position.y - player.y) <= range,
     );
     if (defense !== undefined) {
       return { x: defense.position.x, y: defense.position.y, radius: 27, color: COLORS.defense };
     }
     if (
-      Math.hypot(player.x - state.village.position.x, player.y - state.village.position.y) <=
-      range
+      Math.hypot(player.x - state.village.position.x, player.y - state.village.position.y) <= range
     ) {
       return {
         x: state.village.position.x,

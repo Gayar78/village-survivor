@@ -1667,7 +1667,6 @@ kbd {
   }
 }
 
-
 /* --- Bouton « Mon profil » de l'écran-titre (chantier comptes) --- */
 .menu-actions {
   display: flex;
@@ -1685,7 +1684,9 @@ kbd {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .menu-profile:hover {
@@ -1710,7 +1711,9 @@ kbd {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .menu-account-toggle:hover {

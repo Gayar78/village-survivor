@@ -243,9 +243,9 @@ describe('GameSimulation', () => {
     // Un tick d'amorçage puis harvestDurationMs / tickMs ticks de charge.
     expect(ticks).toBe(wood.harvestDurationMs / defaultContent.simulation.tickMs + 1);
     expect(bagCount(simulation, 'wood')).toBe(1);
-    expect(simulation.createSnapshot().resources.find((r) => r.id === node.id)!.amountRemaining).toBe(
-      amountBefore - 1,
-    );
+    expect(
+      simulation.createSnapshot().resources.find((r) => r.id === node.id)!.amountRemaining,
+    ).toBe(amountBefore - 1);
     // Auto-relance : le gisement ayant encore du stock, un nouveau canal démarre aussitôt
     // sur le même gisement sans nouvel appui (progression repartie de zéro).
     const relaunched = simulation.createSnapshot().player.interactionChannel;
@@ -311,7 +311,9 @@ describe('GameSimulation', () => {
     simulation.step(input(sequence++, { interact: true }));
 
     let guard = 0;
-    while (simulation.createSnapshot().resources.find((r) => r.id === node.id)!.amountRemaining > 0) {
+    while (
+      simulation.createSnapshot().resources.find((r) => r.id === node.id)!.amountRemaining > 0
+    ) {
       // Le clic n'est plus jamais renvoyé : on prouve que le maintien n'est pas requis.
       simulation.step(input(sequence++, { interact: false }));
       guard += 1;
@@ -372,8 +374,9 @@ describe('GameSimulation', () => {
 
     let sequence = harvestOneUnit(simulation, 1);
     sequence = harvestOneUnit(simulation, sequence);
-    const lowered = simulation.createSnapshot().resources.find((r) => r.id === node.id)!
-      .amountRemaining;
+    const lowered = simulation
+      .createSnapshot()
+      .resources.find((r) => r.id === node.id)!.amountRemaining;
     expect(lowered).toBeLessThan(wood.maxPerNode);
 
     // On éloigne le joueur du gisement : sinon l'auto-récolte engagée continuerait de
@@ -384,8 +387,9 @@ describe('GameSimulation', () => {
     for (let tick = 0; tick < regenTicks; tick += 1) {
       simulation.step(input(sequence++));
     }
-    const afterOne = simulation.createSnapshot().resources.find((r) => r.id === node.id)!
-      .amountRemaining;
+    const afterOne = simulation
+      .createSnapshot()
+      .resources.find((r) => r.id === node.id)!.amountRemaining;
     expect(afterOne).toBe(Math.min(wood.maxPerNode, lowered + wood.regenAmount));
 
     // Une très longue avance sature au plafond sans jamais le dépasser.

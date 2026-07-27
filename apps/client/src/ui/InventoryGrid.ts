@@ -29,7 +29,11 @@ export interface InventoryGridHandlers {
    * l'index de la case SOURCE, l'identifiant de la grille source, et l'index de
    * la case cible dans CETTE grille (à la disposition de l'appelant).
    */
-  onDropFromOther?: (sourceSlotIndex: number, sourceGridId: string, targetSlotIndex: number) => void;
+  onDropFromOther?: (
+    sourceSlotIndex: number,
+    sourceGridId: string,
+    targetSlotIndex: number,
+  ) => void;
   /** Maj+clic sur une pile occupée : raccourci pour un transfert complet de cette case. */
   onShiftClickStack?: (slotIndex: number) => void;
 }

@@ -20,7 +20,13 @@ import { InventoryGrid } from './InventoryGrid.js';
 export const VILLAGE_TRADE_HINT = 'E — Échanger avec le village';
 
 /** Ordre d'affichage stable du résumé multi-ressources du stock du village. */
-const RESOURCE_SUMMARY_ORDER: readonly ResourceType[] = ['wood', 'stone', 'iron', 'gold', 'diamond'];
+const RESOURCE_SUMMARY_ORDER: readonly ResourceType[] = [
+  'wood',
+  'stone',
+  'iron',
+  'gold',
+  'diamond',
+];
 
 /** Noms courts affichés dans le résumé du stock (dupliqués localement, cf. contrat). */
 const RESOURCE_LABELS: Readonly<Record<ResourceType, string>> = {

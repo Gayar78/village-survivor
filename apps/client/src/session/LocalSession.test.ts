@@ -56,7 +56,8 @@ describe('LocalSession GameSession contract', () => {
 
     const state = session.debug.getState();
     const villageWood = state.village.inventory.reduce(
-      (total, slot) => (slot !== undefined && slot.resourceType === 'wood' ? total + slot.quantity : total),
+      (total, slot) =>
+        slot !== undefined && slot.resourceType === 'wood' ? total + slot.quantity : total,
       0,
     );
     expect(villageWood).toBe(9);

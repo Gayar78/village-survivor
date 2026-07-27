@@ -302,7 +302,8 @@ export class GameSimulation {
     // croissants (fer < or < diamant, marge village pour bois/pierre) garantissent la
     // rareté sans imposer d'anneau régulier.
     const innerEdgeMargin = 100;
-    const edgeRadius = Math.min(this.content.world.width, this.content.world.height) / 2 - innerEdgeMargin;
+    const edgeRadius =
+      Math.min(this.content.world.width, this.content.world.height) / 2 - innerEdgeMargin;
     const resourceTypes: ResourceType[] = ['wood', 'stone', 'iron', 'gold', 'diamond'];
     let resourceIndex = 0;
     for (const resourceType of resourceTypes) {
@@ -1129,8 +1130,7 @@ export class GameSimulation {
   private findHarvestableResource(): MutableResource | undefined {
     return this.resources.find(
       (resource) =>
-        distance(resource.position, this.player.position) <=
-          this.content.player.interactionRange &&
+        distance(resource.position, this.player.position) <= this.content.player.interactionRange &&
         !this.isGuardianAlive(resource.guardianId) &&
         resource.amountRemaining > 0 &&
         hasRoomFor(this.player.inventory, resource.resourceType, PLAYER_STACK_SIZE),

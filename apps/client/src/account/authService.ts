@@ -184,7 +184,7 @@ class SupabaseAuthService implements AuthService {
       factorId,
     });
     if (challengeError) {
-      throw toError("Échec du démarrage de la vérification TOTP", challengeError);
+      throw toError('Échec du démarrage de la vérification TOTP', challengeError);
     }
     const { error: verifyError } = await supabase.auth.mfa.verify({
       factorId,

@@ -27,9 +27,9 @@ function cloneInventory(inventory: MutableInventory): (InventorySlot | undefined
  * Traduit le canal d'interaction interne en projection publique. Renvoie un objet
  * vide (clé omise) quand aucun canal n'est actif, pour rester comparable par égalité.
  */
-function describeInteractionChannel(
-  source: SnapshotSource,
-): { interactionChannel?: InteractionChannelState } {
+function describeInteractionChannel(source: SnapshotSource): {
+  interactionChannel?: InteractionChannelState;
+} {
   const channel = source.player.interactionChannel;
   if (channel === undefined) {
     return {};
