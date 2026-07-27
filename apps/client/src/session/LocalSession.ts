@@ -19,6 +19,12 @@ export interface LocalSessionOptions {
   seed?: string;
   content?: GameContent;
   scheduler?: FrameScheduler;
+  /**
+   * Nombre de joueurs de la partie co-op (chaque joueur exécute sa propre
+   * instance déterministe). Sert à renforcer les vagues d'ennemis. Par
+   * défaut 1 (comportement solo inchangé). Clampé à [1, 10] par `GameSimulation`.
+   */
+  playerCount?: number;
 }
 
 export interface VillageSurvivorDebug {
@@ -90,7 +96,9 @@ export class LocalSession implements GameSession {
   public constructor(options: LocalSessionOptions = {}) {
     this.content = options.content ?? defaultContent;
     this.scheduler = options.scheduler ?? browserScheduler;
-    this.simulation = new GameSimulation(this.content, options.seed ?? 'm1-default');
+    this.simulation = new GameSimulation(this.content, options.seed ?? 'm1-default', {
+      playerCount: options.playerCount ?? 1,
+    });
     this.debug = {
       getState: () => this.simulation.createSnapshot(),
       getMetrics: () => ({

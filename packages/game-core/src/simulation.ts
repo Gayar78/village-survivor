@@ -89,12 +89,27 @@ export class GameSimulation {
   private eventCounter = 0;
   private events: GameEvent[] = [];
   private upgradeChoices: UpgradeDefinition[] = [];
+  /**
+   * Nombre de joueurs de la partie co-op (chacun sa propre instance déterministe).
+   * Clampé à [1, 10] ; 1 par défaut, ce qui préserve exactement le comportement
+   * historique (aucune mise à l'échelle des vagues).
+   */
+  private readonly playerCount: number;
 
-  public constructor(content: GameContent, seed: string) {
+  public constructor(
+    content: GameContent,
+    seed: string,
+    options?: Readonly<{ playerCount?: number }>,
+  ) {
     this.content = content;
     this.seed = seed;
     this.random = new SeededRandom(seed);
     this.upgradeRandom = new SeededRandom(`${seed}:upgrades`);
+    const requestedPlayerCount = options?.playerCount;
+    this.playerCount =
+      requestedPlayerCount !== undefined && Number.isFinite(requestedPlayerCount)
+        ? Math.min(10, Math.max(1, Math.round(requestedPlayerCount)))
+        : 1;
     this.phaseRemainingMs = content.simulation.dayDurationMs;
     this.player = {
       position: { x: 0, y: content.world.playerStartOffsetY },
@@ -1033,7 +1048,7 @@ export class GameSimulation {
     this.spawnInstructions(
       nightSpawnInstructions(this.content, this.cycle),
       true,
-      this.cycleScale(),
+      this.assaultScale(),
     );
     this.addEvent('phase-changed', `Nuit ${this.cycle} : défendez le village.`);
   }
@@ -1052,7 +1067,7 @@ export class GameSimulation {
     this.phase = 'final';
     this.phaseRemainingMs = this.content.simulation.finalDurationMs;
     awakenAssailants(this.enemies);
-    this.spawnInstructions(finalSpawnInstructions(this.content), true, this.cycleScale());
+    this.spawnInstructions(finalSpawnInstructions(this.content), true, this.assaultScale());
     this.addEvent('phase-changed', 'Activation finale : tenez bon !');
   }
 
@@ -1065,13 +1080,48 @@ export class GameSimulation {
     };
   }
 
+  /**
+   * Facteur multiplicatif appliqué au NOMBRE d'assaillants générés par vague
+   * (nuit, renforts diurnes, vague finale), croissant linéairement avec le
+   * nombre de joueurs de la partie co-op. `playerCount = 1` ⇒ facteur 1 (aucun
+   * changement). Formule : `1 + (playerCount - 1) * enemyCountPerPlayer`.
+   */
+  private enemyCountScale(): number {
+    const extraPlayers = this.playerCount - 1;
+    return 1 + extraPlayers * this.content.waves.perPlayerScaling.enemyCountPerPlayer;
+  }
+
+  /**
+   * Multiplicateurs de PV/dégâts dus au nombre de joueurs uniquement (avant
+   * combinaison avec l'escalade par cycle). `playerCount = 1` ⇒ {1, 1}.
+   */
+  private playerStatScale(): Readonly<{ hp: number; damage: number }> {
+    const extraPlayers = this.playerCount - 1;
+    const scale = 1 + extraPlayers * this.content.waves.perPlayerScaling.enemyStatPerPlayer;
+    return { hp: scale, damage: scale };
+  }
+
+  /**
+   * Multiplicateurs de PV/dégâts combinés pour un assaut (nuit ou vague finale) :
+   * escalade par cycle × mise à l'échelle par joueur. Les renforts diurnes ne
+   * passent pas par cette méthode : ils ne montent pas en puissance (seul leur
+   * nombre est affecté par `enemyCountScale`), comme avant l'ajout du multijoueur.
+   */
+  private assaultScale(): Readonly<{ hp: number; damage: number }> {
+    const cycle = this.cycleScale();
+    const player = this.playerStatScale();
+    return { hp: cycle.hp * player.hp, damage: cycle.damage * player.damage };
+  }
+
   private spawnInstructions(
     instructions: readonly SpawnInstruction[],
     awake: boolean,
     statScale: Readonly<{ hp: number; damage: number }> = { hp: 1, damage: 1 },
   ): void {
+    const countScale = this.enemyCountScale();
     for (const instruction of instructions) {
-      for (let index = 0; index < instruction.count; index += 1) {
+      const scaledCount = Math.round(instruction.count * countScale);
+      for (let index = 0; index < scaledCount; index += 1) {
         const position = this.randomRingPosition(
           instruction.ring.minimumRadius,
           instruction.ring.maximumRadius,

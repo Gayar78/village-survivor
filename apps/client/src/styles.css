@@ -1771,3 +1771,701 @@ kbd {
 .menu-account-dropdown .menu-danger:hover {
   background: rgb(255 100 120 / 12%);
 }
+
+/* --- Hub multijoueur (chantier hub) --- */
+
+/* Écran hub : overlay plein écran, deux colonnes façon launcher sombre. */
+.hub-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgb(7 13 15 / 92%);
+  backdrop-filter: blur(7px);
+  transition:
+    opacity 180ms ease,
+    visibility 180ms ease;
+}
+
+.hub-screen.hub--hidden {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hub-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 22px;
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 80px);
+}
+
+.hub-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 80px);
+  padding: 24px 26px;
+  overflow-y: auto;
+  border: 1px solid rgb(244 199 111 / 22%);
+  border-radius: 18px;
+  background: rgb(8 15 17 / 94%);
+  box-shadow: 0 26px 90px rgb(0 0 0 / 55%);
+  scrollbar-width: thin;
+}
+
+.hub-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.hub-panel::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: rgb(255 255 255 / 10%);
+}
+
+/* En-tête « Ton hub » : avatar + identité. */
+.hub-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.hub-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #b78036, #f4c76f);
+  color: #17201f;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.hub-title {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.hub-subtitle {
+  margin: 2px 0 0;
+  color: #91a4a1;
+  font-size: 12px;
+}
+
+/* Bloc code d'équipe copiable. */
+.hub-code-block {
+  margin-bottom: 18px;
+}
+
+.hub-code-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #91a4a1;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hub-code-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.hub-code {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid rgb(244 199 111 / 26%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 30%);
+  color: #f4c76f;
+  font:
+    16px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.22em;
+  text-align: center;
+}
+
+.hub-copy {
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  color: #f5f1e8;
+  background: rgb(255 255 255 / 6%);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.hub-copy:hover:not(:disabled) {
+  border-color: rgb(244 199 111 / 50%);
+  background: rgb(244 199 111 / 10%);
+}
+
+.hub-copy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.hub-error,
+.friends-error {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgb(232 93 117 / 12%);
+  color: #ff9fae;
+  font-size: 12px;
+}
+
+/* Section membres. */
+.hub-members-block {
+  margin-bottom: 20px;
+}
+
+.hub-members-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.hub-section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8d3d0;
+}
+
+.hub-count {
+  color: #91a4a1;
+  font-size: 12px;
+}
+
+.hub-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hub-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 4%);
+}
+
+.hub-member-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #57d38b;
+  box-shadow: 0 0 8px rgb(87 211 139 / 55%);
+}
+
+.hub-member-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hub-badge-chief {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgb(244 199 111 / 16%);
+  color: #f4c76f;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.hub-kick {
+  padding: 4px 10px;
+  border: 1px solid rgb(232 93 117 / 35%);
+  border-radius: 8px;
+  background: none;
+  color: #ff8da1;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.hub-kick:hover {
+  border-color: rgb(232 93 117 / 60%);
+  background: rgb(232 93 117 / 12%);
+}
+
+/* Actions du hub. */
+.hub-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.hub-btn {
+  padding: 12px 16px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  color: #f5f1e8;
+  background: rgb(255 255 255 / 6%);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.hub-btn:hover:not(:disabled) {
+  border-color: rgb(244 199 111 / 50%);
+  background: rgb(244 199 111 / 10%);
+}
+
+.hub-btn--primary {
+  border: 0;
+  color: #17201f;
+  background: #f4c76f;
+  box-shadow: 0 12px 30px rgb(244 199 111 / 30%);
+}
+
+.hub-btn--primary:hover:not(:disabled) {
+  background: #f4c76f;
+  transform: translateY(-1px);
+}
+
+.hub-btn--ghost {
+  background: none;
+  color: #91a4a1;
+}
+
+.hub-btn--small {
+  padding: 10px 14px;
+  font-size: 12px;
+}
+
+.hub-hint {
+  margin: 0;
+  color: #91a4a1;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Champ « rejoindre par code », replié par défaut. */
+.hub-join {
+  display: none;
+  gap: 10px;
+}
+
+.hub-join.hub-join--open {
+  display: flex;
+}
+
+.hub-join-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 30%);
+  color: #f5f1e8;
+  font:
+    14px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hub-join-input:focus {
+  outline: none;
+  border-color: rgb(244 199 111 / 60%);
+  background: rgb(244 199 111 / 8%);
+}
+
+/* Colonne « Amis ». */
+.friends-panel {
+  gap: 0;
+}
+
+.friends-header {
+  margin-bottom: 14px;
+}
+
+.friends-title {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.friends-add {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.friends-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 30%);
+  color: #f5f1e8;
+  font:
+    14px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.friends-input:focus {
+  outline: none;
+  border-color: rgb(244 199 111 / 60%);
+  background: rgb(244 199 111 / 8%);
+}
+
+.friends-add-btn {
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  color: #17201f;
+  background: #f4c76f;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.friends-add-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.friends-add-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.friends-subtitle {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c8d3d0;
+}
+
+.friends-requests {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.friends-request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.friends-request {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgb(244 199 111 / 18%);
+  border-radius: 10px;
+  background: rgb(244 199 111 / 6%);
+}
+
+.friends-request-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.friends-request-code {
+  color: #91a4a1;
+  font:
+    11px/1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.1em;
+}
+
+.friends-request-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Liste d'amis. */
+.friends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.friends-empty {
+  margin: 8px 0 0;
+  color: #91a4a1;
+  font-size: 12px;
+}
+
+.friends-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 4%);
+}
+
+.friends-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.friends-dot--online {
+  background: #57d38b;
+  box-shadow: 0 0 8px rgb(87 211 139 / 55%);
+}
+
+.friends-dot--offline {
+  background: #6a7573;
+}
+
+.friends-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.friends-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friends-item-code {
+  color: #91a4a1;
+  font:
+    10px/1.3 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  letter-spacing: 0.08em;
+}
+
+.friends-item-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.friends-btn {
+  padding: 5px 11px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  color: #f5f1e8;
+  background: rgb(255 255 255 / 6%);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.friends-btn:hover {
+  border-color: rgb(244 199 111 / 50%);
+  background: rgb(244 199 111 / 10%);
+}
+
+.friends-btn--join,
+.friends-btn--accept {
+  border: 0;
+  color: #17201f;
+  background: #f4c76f;
+}
+
+.friends-btn--invite {
+  border-color: rgb(87 211 139 / 40%);
+  color: #7ee2a8;
+}
+
+.friends-btn--invite:hover {
+  border-color: rgb(87 211 139 / 70%);
+  background: rgb(87 211 139 / 12%);
+}
+
+.friends-btn--remove,
+.friends-btn--decline {
+  border-color: rgb(232 93 117 / 30%);
+  color: #ff8da1;
+}
+
+.friends-btn--remove:hover,
+.friends-btn--decline:hover {
+  border-color: rgb(232 93 117 / 60%);
+  background: rgb(232 93 117 / 12%);
+}
+
+/* Toasts empilés en haut à droite. */
+.toast-container {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(320px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.toast {
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 12px;
+  background: rgb(12 20 22 / 97%);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 55%);
+  pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.toast--leaving {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.toast--invite {
+  border-color: rgb(244 199 111 / 34%);
+}
+
+.toast-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
+  color: #c8d3d0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.toast-icon--invite {
+  background: rgb(244 199 111 / 16%);
+  color: #f4c76f;
+}
+
+.toast-text {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #91a4a1;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: #f5f1e8;
+}
+
+.toast-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.toast-btn {
+  padding: 7px 14px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  color: #f5f1e8;
+  background: rgb(255 255 255 / 6%);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.toast-btn--accept {
+  border: 0;
+  color: #17201f;
+  background: #f4c76f;
+}
+
+/* Responsive : colonnes empilées sur les fenêtres étroites. */
+@media (max-width: 900px) {
+  .hub-shell {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .hub-panel {
+    max-height: none;
+  }
+}

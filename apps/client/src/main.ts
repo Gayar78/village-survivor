@@ -4,15 +4,18 @@ import Phaser from 'phaser';
 import { authService } from './account/authService.js';
 import { isSupabaseConfigured } from './account/supabaseClient.js';
 import type { AccountSession } from './account/types.js';
+import { friendsService } from './hub/friendsService.js';
+import { realtimeService } from './hub/realtimeService.js';
+import type { LaunchPayload } from './hub/types.js';
 import { GameScene } from './scenes/GameScene.js';
 import { LocalSession, type VillageSurvivorDebug } from './session/LocalSession.js';
 import { AudioFeedback } from './ui/AudioFeedback.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
+import { Hub } from './ui/Hub.js';
 import { Hud } from './ui/Hud.js';
 import { Inventory } from './ui/Inventory.js';
-import { Menu } from './ui/Menu.js';
 import { ProfileScreen } from './ui/ProfileScreen.js';
 import { statsService } from './account/statsService.js';
 import { VILLAGE_TRADE_HINT, VillageTrade } from './ui/VillageTrade.js';
@@ -41,7 +44,7 @@ const gameElement = document.querySelector<HTMLElement>('#game');
 const hudElement = document.querySelector<HTMLElement>('#hud');
 const authElement = document.querySelector<HTMLElement>('#auth');
 const profileElement = document.querySelector<HTMLElement>('#profile');
-const menuElement = document.querySelector<HTMLElement>('#menu');
+const hubElement = document.querySelector<HTMLElement>('#hub');
 const escapeMenuElement = document.querySelector<HTMLElement>('#escape-menu');
 const inventoryElement = document.querySelector<HTMLElement>('#inventory');
 const villageTradeElement = document.querySelector<HTMLElement>('#village-trade');
@@ -51,7 +54,7 @@ if (
   hudElement === null ||
   authElement === null ||
   profileElement === null ||
-  menuElement === null ||
+  hubElement === null ||
   escapeMenuElement === null ||
   inventoryElement === null ||
   villageTradeElement === null ||
@@ -60,21 +63,37 @@ if (
   throw new Error('La page ne contient pas les points de montage attendus.');
 }
 
+// Clés sessionStorage posées par le hub au lancement d'une partie (co-op ou solo) :
+// graine commune du monde + nombre de joueurs, transmis via un rechargement.
+const COOP_SEED_KEY = 'vs-coop-seed';
+const COOP_PLAYERS_KEY = 'vs-coop-players';
+
+// Posé par « Recommencer » ou par le lancement depuis le hub : on saute alors les
+// écrans (hub/menu) et on relance directement la partie.
+const shouldAutostart = sessionStorage.getItem(AUTOSTART_STORAGE_KEY) === '1';
+const storedCoopSeed = sessionStorage.getItem(COOP_SEED_KEY);
+const storedCoopPlayers = sessionStorage.getItem(COOP_PLAYERS_KEY);
+if (shouldAutostart) {
+  sessionStorage.removeItem(AUTOSTART_STORAGE_KEY);
+  sessionStorage.removeItem(COOP_SEED_KEY);
+  sessionStorage.removeItem(COOP_PLAYERS_KEY);
+}
+
 const parameters = new URLSearchParams(location.search);
-const seed = parameters.get('seed') ?? crypto.randomUUID().slice(0, 8);
-const session = new LocalSession({ seed });
+const seed =
+  parameters.get('seed') ??
+  (shouldAutostart && storedCoopSeed !== null ? storedCoopSeed : null) ??
+  crypto.randomUUID().slice(0, 8);
+const playerCount =
+  shouldAutostart && storedCoopPlayers !== null
+    ? Math.max(1, Math.min(10, Number.parseInt(storedCoopPlayers, 10) || 1))
+    : 1;
+const session = new LocalSession({ seed, playerCount });
 const scene = new GameScene(session);
 const hud = new Hud(hudElement, (upgradeId) => scene.selectUpgrade(upgradeId));
 const audio = new AudioFeedback();
 const inventory = new Inventory(inventoryElement);
 const villageTrade = new VillageTrade(villageTradeElement, session);
-
-// Posé par le bouton « Recommencer » (écran de défaite ou menu Échap) juste avant
-// `location.reload()` : on saute alors l'écran-titre et on relance directement.
-const shouldAutostart = sessionStorage.getItem(AUTOSTART_STORAGE_KEY) === '1';
-if (shouldAutostart) {
-  sessionStorage.removeItem(AUTOSTART_STORAGE_KEY);
-}
 
 let gameStarted = shouldAutostart;
 
@@ -89,33 +108,66 @@ const profileScreen = new ProfileScreen(
 );
 profileScreen.hide();
 
-const menu = new Menu(
-  menuElement,
-  () => {
-    menu.hide();
-    gameStarted = true;
-    void session.start();
-  },
-  () => {
-    if (accountSession !== null) {
-      void profileScreen.open(accountSession);
-    }
-  },
-  () => {
-    if (window.confirm('Se déconnecter de ton compte ?')) {
-      // On recharge dans tous les cas : sans session, l'écran de connexion réapparaît.
-      void authService.signOut().finally(() => location.reload());
-    }
-  },
-);
-// Le menu et le jeu restent masqués derrière l'écran de connexion tant que le
-// joueur n'est pas authentifié : c'est l'auth qui débloque l'accès.
-menu.hide();
+// Barre compte (profil + déconnexion) affichée sur le hub, masquée en jeu.
+const accountBar = document.createElement('div');
+accountBar.id = 'account-bar';
+accountBar.style.cssText = 'position:fixed;top:16px;left:16px;z-index:46;display:none;gap:8px;';
+accountBar.innerHTML =
+  '<button type="button" class="hub-btn hub-btn--small" id="account-profile">Mon profil</button>' +
+  '<button type="button" class="hub-btn hub-btn--small" id="account-logout">Se déconnecter</button>';
+document.body.append(accountBar);
+accountBar.querySelector('#account-profile')?.addEventListener('click', () => {
+  if (accountSession !== null) {
+    void profileScreen.open(accountSession);
+  }
+});
+accountBar.querySelector('#account-logout')?.addEventListener('click', () => {
+  if (window.confirm('Se déconnecter de ton compte ?')) {
+    void authService.signOut().finally(() => location.reload());
+  }
+});
 
-// Une fois l'authentification acquise, on rejoue exactement l'ancien démarrage :
-// autostart direct (retour de « Recommencer ») ou affichage de l'écran-titre.
+// Alias non-nullable (le narrowing du bloc de garde ne se propage pas dans les
+// fonctions imbriquées comme `startHub`).
+const hubRoot: HTMLElement = hubElement;
+let hub: Hub | null = null;
+
+// Pose le flag d'autostart + la graine commune + le nombre de joueurs, puis recharge
+// pour démarrer la partie (chef ET membres reçoivent le même appel). Idempotent :
+// le chef reçoit à la fois son clic et l'écho réseau, on ne recharge qu'une fois.
+let coopLaunching = false;
+function beginLaunch(payload: LaunchPayload): void {
+  if (coopLaunching) {
+    return;
+  }
+  coopLaunching = true;
+  sessionStorage.setItem(AUTOSTART_STORAGE_KEY, '1');
+  sessionStorage.setItem(COOP_SEED_KEY, payload.seed);
+  sessionStorage.setItem(COOP_PLAYERS_KEY, String(payload.playerCount));
+  location.reload();
+}
+
+// Démarre la présence temps réel (code perso = code de hub) puis affiche le hub.
+async function startHub(account: AccountSession): Promise<void> {
+  const displayName = account.displayName.length > 0 ? account.displayName : account.email;
+  const hubSession = { userId: account.userId, displayName };
+  try {
+    const friendCode = await friendsService.getMyFriendCode();
+    await realtimeService.start(hubSession, friendCode);
+  } catch (error) {
+    console.warn('Démarrage temps réel impossible :', error);
+  }
+  // Membres non-chef : le lancement réseau déclenche le démarrage local.
+  realtimeService.onLaunch((payload) => beginLaunch(payload));
+  hub = new Hub(hubRoot, { onLaunch: (payload) => beginLaunch(payload), session: hubSession });
+  accountBar.style.display = 'flex';
+  void hub.open();
+}
+
+// Une fois l'authentification acquise : autostart direct (retour de « Recommencer »
+// ou lancement depuis le hub) ou affichage du hub.
 let revealed = false;
-function revealAfterAuth(): void {
+async function revealAfterAuth(): Promise<void> {
   if (revealed) {
     return;
   }
@@ -124,15 +176,17 @@ function revealAfterAuth(): void {
   if (shouldAutostart) {
     gameStarted = true;
     void session.start();
-  } else {
-    menu.show();
+    return;
+  }
+  if (accountSession !== null) {
+    await startHub(accountSession);
   }
 }
 
 const authScreen = new AuthScreen(authElement, () => {
   void authService.getSession().then((current) => {
     accountSession = current;
-    revealAfterAuth();
+    void revealAfterAuth();
   });
 });
 
@@ -176,11 +230,11 @@ if (!isSupabaseConfigured) {
       } else if (situation === 'needs-enroll') {
         authScreen.resumeEnrollment();
       } else {
-        revealAfterAuth();
+        void revealAfterAuth();
       }
     } catch {
       // En cas d'échec de la détection, on laisse entrer un utilisateur déjà authentifié.
-      revealAfterAuth();
+      void revealAfterAuth();
     }
   }
 

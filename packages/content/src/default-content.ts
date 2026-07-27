@@ -223,6 +223,12 @@ export const rawDefaultContent = {
         maximumRadius: 1_040,
       },
     },
+    // Mise à l'échelle multijoueur : facteur additionnel par joueur au-delà du
+    // premier (playerCount = 1 ⇒ aucun effet). Valeurs douces par défaut.
+    perPlayerScaling: {
+      enemyCountPerPlayer: 0.6,
+      enemyStatPerPlayer: 0.15,
+    },
   },
   upgrades: [
     {

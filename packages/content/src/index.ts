@@ -201,6 +201,18 @@ export const gameContentSchema = z
         bruteCount: z.number().int().nonnegative(),
         bruteSpawnRing: ringSchema,
       }),
+      /**
+       * Mise à l'échelle multijoueur : facteur ADDITIONNEL par joueur au-delà du
+       * premier (`playerCount = 1` ⇒ aucun effet). Appliqué au nombre d'assaillants
+       * générés par vague (nuit, renforts diurnes, vague finale) et, pour les
+       * assauts (nuit/finale), à une légère hausse de leurs PV/dégâts.
+       */
+      perPlayerScaling: z.object({
+        /** Facteur additionnel appliqué au NOMBRE d'assaillants par joueur supplémentaire. */
+        enemyCountPerPlayer: nonNegativeNumber,
+        /** Facteur additionnel appliqué aux PV/dégâts des assaillants par joueur supplémentaire. */
+        enemyStatPerPlayer: nonNegativeNumber,
+      }),
     }),
     upgrades: z.array(upgradeSchema).min(3),
   })
