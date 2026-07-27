@@ -49,7 +49,10 @@ function randomSeed(): string {
 
 /** Deux initiales majuscules à partir d'un nom d'affichage. */
 function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter((part) => part.length > 0);
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
   const first = parts[0];
   if (!first) {
     return '?';
@@ -307,9 +310,7 @@ export class Hub {
     if (this.hubState) {
       return this.hubState.members;
     }
-    return [
-      { userId: this.session.userId, displayName: this.session.displayName, isChief: true },
-    ];
+    return [{ userId: this.session.userId, displayName: this.session.displayName, isChief: true }];
   }
 
   /** Chef si on l'est dans l'état du hub, ou si l'on est seul dans son hub. */
@@ -385,7 +386,7 @@ export class Hub {
       try {
         await realtimeService.leaveHub();
         this.hubState = null;
-        this.toasts?.info('Tu as quitté l\'équipe.');
+        this.toasts?.info("Tu as quitté l'équipe.");
         this.renderHub();
       } catch (error) {
         this.error = this.describe(error);
@@ -408,7 +409,7 @@ export class Hub {
   private inviteFriend(friendUserId: string): void {
     const code = this.currentCode();
     if (!code) {
-      this.toasts?.info('Aucun code d\'équipe disponible pour inviter.');
+      this.toasts?.info("Aucun code d'équipe disponible pour inviter.");
       return;
     }
     void (async () => {

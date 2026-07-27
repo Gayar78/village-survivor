@@ -61,7 +61,12 @@ export interface RealtimeService {
   onLaunch(cb: (payload: LaunchPayload) => void): () => void;
   onKicked(cb: () => void): () => void;
   /** Invite un ami dans son hub (broadcast vers son canal perso). */
-  invite(friendUserId: string, myHubCode: string, fromDisplayName: string, fromUserId: string): Promise<void>;
+  invite(
+    friendUserId: string,
+    myHubCode: string,
+    fromDisplayName: string,
+    fromUserId: string,
+  ): Promise<void>;
   onInvite(cb: (invite: HubInvite) => void): () => void;
 }
 
@@ -143,7 +148,10 @@ function subscribeChannel(channel: RealtimeChannel): Promise<void> {
  * Retire proprement un canal (untrack optionnel puis removeChannel). Toutes les
  * erreurs sont avalées (journalisées) : le nettoyage ne doit jamais lever.
  */
-async function disposeChannel(channel: RealtimeChannel | null, untrackFirst: boolean): Promise<void> {
+async function disposeChannel(
+  channel: RealtimeChannel | null,
+  untrackFirst: boolean,
+): Promise<void> {
   if (channel === null) {
     return;
   }
@@ -227,7 +235,10 @@ function currentHubState(): HubState | null {
 // --- Diffusion aux abonnés ----------------------------------------------------
 
 function emitPresence(): void {
-  const entries = presenceChannel !== null ? computePresenceEntries(presenceChannel) : new Map<string, PresenceEntry>();
+  const entries =
+    presenceChannel !== null
+      ? computePresenceEntries(presenceChannel)
+      : new Map<string, PresenceEntry>();
   for (const cb of presenceCbs) {
     cb(entries);
   }
@@ -330,7 +341,9 @@ async function openHubChannel(code: string, isOwner: boolean): Promise<void> {
   if (sessionRef === null) {
     return;
   }
-  const channel = supabase.channel(`hub:${code}`, { config: { presence: { key: sessionRef.userId } } });
+  const channel = supabase.channel(`hub:${code}`, {
+    config: { presence: { key: sessionRef.userId } },
+  });
   channel.on('presence', { event: 'sync' }, () => emitHubState());
   channel.on('presence', { event: 'join' }, () => emitHubState());
   channel.on('presence', { event: 'leave' }, () => emitHubState());
@@ -378,7 +391,10 @@ async function leaveHubInternal(): Promise<void> {
   emitHubState();
 }
 
-async function setStatusInternal(status: PresenceStatus, hubCode: string | undefined): Promise<void> {
+async function setStatusInternal(
+  status: PresenceStatus,
+  hubCode: string | undefined,
+): Promise<void> {
   currentStatus = status;
   statusHubCode = hubCode;
   await trackGlobalPresence();
@@ -498,7 +514,11 @@ async function doInvite(
 function onPresence(cb: (entries: Map<string, PresenceEntry>) => void): () => void {
   presenceCbs.add(cb);
   // Poussée immédiate de l'état courant pour l'abonné.
-  cb(presenceChannel !== null ? computePresenceEntries(presenceChannel) : new Map<string, PresenceEntry>());
+  cb(
+    presenceChannel !== null
+      ? computePresenceEntries(presenceChannel)
+      : new Map<string, PresenceEntry>(),
+  );
   return () => {
     presenceCbs.delete(cb);
   };

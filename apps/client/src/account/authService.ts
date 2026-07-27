@@ -168,7 +168,22 @@ class SupabaseAuthService implements AuthService {
   }
 
   async enrollTotp(): Promise<MfaEnrollment> {
-    const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+    // Nettoie tout facteur TOTP resté « non vérifié » à cause d'une tentative
+    // d'enrôlement abandonnée : sans ça, un nouvel enrôlement échoue avec
+    // « a factor with the friendly name … already exists ».
+    const { data: factorsData } = await supabase.auth.mfa.listFactors();
+    if (factorsData) {
+      for (const factor of factorsData.all) {
+        if (factor.factor_type === 'totp' && factor.status !== 'verified') {
+          await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        }
+      }
+    }
+    // Nom unique : évite toute collision de « friendly name » résiduelle.
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName: `village-survivor-${Date.now()}`,
+    });
     if (error) {
       throw toError("Échec de l'enrôlement de la double authentification", error);
     }
