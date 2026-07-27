@@ -14,19 +14,15 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
-    // Phaser 4 ne se rend pas correctement quand le bundle de production est
-    // minifié par le moteur de Vite 8 (rolldown/oxc) : la simulation tourne mais
-    // le canvas reste vide. On désactive la minification pour un rendu fiable
-    // (bundle plus volumineux, sans incidence sur le gameplay).
+    // Minification désactivée le temps de valider le rendu en production ; à
+    // réactiver ensuite (aucune incidence sur le gameplay).
     minify: false,
     rollupOptions: {
       input: {
-        // Page principale du jeu.
+        // Page lobby : authentification + hub multijoueur.
         main: 'index.html',
-        // Page de diagnostic isolée du rendu Phaser (voir src/phasertest.ts).
-        phasertest: 'phasertest.html',
-        // Page de diagnostic : vraie scène de jeu isolée (voir src/gametest.ts).
-        gametest: 'gametest.html',
+        // Page de jeu dédiée (voir src/play.ts).
+        play: 'play.html',
       },
     },
   },
