@@ -212,6 +212,20 @@ function showConfigMissing(root: HTMLElement): void {
 if (!isSupabaseConfigured) {
   // Pas de clés : on n'appelle aucun service réseau, on guide simplement le joueur.
   showConfigMissing(authElement);
+} else if (shouldAutostart) {
+  // Lancement d'une partie : on va DIRECTEMENT au jeu, sans jamais afficher l'écran
+  // d'authentification (l'utilisateur est déjà connecté cette session). Sans ce
+  // court-circuit, le panneau d'auth s'affichait le temps de la vérification réseau
+  // puis se masquait en laissant son fond (vert) par-dessus le jeu. La session est
+  // récupérée en arrière-plan, uniquement pour l'enregistrement des statistiques.
+  authScreen.hide();
+  void revealAfterAuth();
+  void authService
+    .getSession()
+    .then((current) => {
+      accountSession = current;
+    })
+    .catch(() => {});
 } else {
   // Suit les changements d'état d'authentification (rafraîchissement de session,
   // déconnexion dans un autre onglet…) pour garder `accountSession` à jour.
