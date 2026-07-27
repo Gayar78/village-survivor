@@ -19,5 +19,13 @@ export default defineConfig({
     // le canvas reste vide. On désactive la minification pour un rendu fiable
     // (bundle plus volumineux, sans incidence sur le gameplay).
     minify: false,
+    rollupOptions: {
+      input: {
+        // Page principale du jeu.
+        main: 'index.html',
+        // Page de diagnostic isolée du rendu Phaser (voir src/phasertest.ts).
+        phasertest: 'phasertest.html',
+      },
+    },
   },
 });
