@@ -1,6 +1,6 @@
 import { defaultContent } from '@village-survivor/content';
 import { GameSimulation } from '@village-survivor/game-core';
-import type { PlayerInput, PublicGameState } from '@village-survivor/protocol';
+import type { InventorySlot, PlayerInput, PublicGameState } from '@village-survivor/protocol';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '../account/supabaseClient.js';
@@ -72,6 +72,30 @@ function isPublicGameState(value: unknown): value is PublicGameState {
     value !== null &&
     Array.isArray((value as { players?: unknown }).players)
   );
+}
+
+/**
+ * Un inventaire à cases sérialisé en JSON voit ses cases VIDES (`undefined`) devenir
+ * `null` (le comportement de `JSON.stringify` pour les trous de tableau). On rétablit
+ * `undefined` pour que l'invité manipule exactement la même forme qu'une partie locale.
+ */
+function normalizeInventory(
+  inventory: readonly (InventorySlot | undefined)[],
+): (InventorySlot | undefined)[] {
+  return inventory.map((slot) => slot ?? undefined);
+}
+
+/** Rétablit la forme locale de l'état reçu (cases d'inventaire `null` → `undefined`). */
+function normalizeReceivedState(state: PublicGameState): PublicGameState {
+  return {
+    ...state,
+    player: { ...state.player, inventory: normalizeInventory(state.player.inventory) },
+    players: state.players.map((player) => ({
+      ...player,
+      inventory: normalizeInventory(player.inventory),
+    })),
+    village: { ...state.village, inventory: normalizeInventory(state.village.inventory) },
+  };
 }
 
 interface InputMessage {
@@ -257,15 +281,18 @@ class GuestSession implements RenderableSession {
       if (this.stateCount === 1) {
         console.info('[coop:guest] premier état reçu de l’hôte ✔');
       }
-      // Réexpose l'avatar local du point de vue de cet invité.
-      const mine = payload.players.find((player) => player.id === this.me);
+      // Rétablit la forme locale (cases d'inventaire `null` → `undefined`) puis réexpose
+      // l'avatar local du point de vue de cet invité.
+      const normalized = normalizeReceivedState(payload);
+      const mine = normalized.players.find((player) => player.id === this.me);
       if (this.stateCount === 1 && mine === undefined) {
         console.warn(
           `[coop:guest] mon avatar « ${this.me} » est absent du roster reçu`,
-          payload.players.map((p) => p.id),
+          normalized.players.map((player) => player.id),
         );
       }
-      const state: PublicGameState = mine === undefined ? payload : { ...payload, player: mine };
+      const state: PublicGameState =
+        mine === undefined ? normalized : { ...normalized, player: mine };
       this.lastState = state;
       this.lastStateAt = performance.now();
       for (const listener of this.listeners) {
