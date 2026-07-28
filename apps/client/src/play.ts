@@ -107,6 +107,10 @@ if (coopConfig !== null && coopConfig.roster.length > 1) {
   session = new LocalSession({ seed, playerCount });
 }
 const scene = new GameScene(session);
+if (coopConfig !== null) {
+  // Libellés d'alliés avec les vrais pseudos (roster du hub) plutôt que l'identifiant.
+  scene.setPlayerNames(new Map(coopConfig.roster.map((entry) => [entry.id, entry.name])));
+}
 const hud = new Hud(hudElement, (upgradeId) => scene.selectUpgrade(upgradeId));
 const audio = new AudioFeedback();
 const inventory = new Inventory(inventoryElement);
@@ -250,7 +254,7 @@ document.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) {
     return;
   }
-  if (latestState?.interactionHint !== VILLAGE_TRADE_HINT) {
+  if (latestState?.player.interactionHint !== VILLAGE_TRADE_HINT) {
     return;
   }
   const target = event.target;

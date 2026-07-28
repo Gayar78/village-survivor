@@ -80,6 +80,12 @@ export type PlayerState = Readonly<{
   heal: AbilityState & Readonly<{ buffRemainingMs: number }>;
   /** Canal de récolte/réparation en cours, ou `undefined` si aucun. */
   interactionChannel?: InteractionChannelState;
+  /**
+   * Info-bulle d'interaction PROPRE à cet avatar (récolter, réparer, échanger,
+   * construire…), ou `undefined`. En co-op, chaque joueur reçoit la sienne selon SA
+   * position — le client doit lire `state.player.interactionHint`, pas le champ global.
+   */
+  interactionHint?: string;
   selectedUpgrades: readonly string[];
   /** Améliorations gagnées et pas encore choisies, l'offre courante comprise. */
   pendingUpgrades: number;

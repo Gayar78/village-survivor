@@ -124,6 +124,8 @@ export class GameScene extends Phaser.Scene {
    * Créées/détruites à mesure que des alliés apparaissent/disparaissent.
    */
   private readonly allyLabels = new Map<string, Phaser.GameObjects.Text>();
+  /** Noms d'affichage par identifiant d'avatar (co-op), pour les libellés d'alliés. */
+  private playerNames = new Map<string, string>();
   /** Positions de rendu interpolées des ennemis, indexées par leur `id`. */
   private readonly renderEnemyPos = new Map<string, Vector2>();
   private unsubscribe: (() => void) | undefined;
@@ -160,6 +162,11 @@ export class GameScene extends Phaser.Scene {
   public constructor(session: RenderableSession) {
     super({ key: 'GameScene' });
     this.session = session;
+  }
+
+  /** Renseigne les noms d'affichage des avatars (co-op) pour les libellés d'alliés. */
+  public setPlayerNames(names: ReadonlyMap<string, string>): void {
+    this.playerNames = new Map(names);
   }
 
   public create(): void {
@@ -201,7 +208,7 @@ export class GameScene extends Phaser.Scene {
         // Quand l'indice est « Échanger avec le village », l'ouverture de la vue
         // d'échange est prise en charge par main.ts sur ce même clic : on
         // n'active alors pas l'état continu de récolte/réparation.
-        if (this.state?.interactionHint === VILLAGE_TRADE_HINT) {
+        if (this.state?.player.interactionHint === VILLAGE_TRADE_HINT) {
           return;
         }
         this.leftButtonDown = true;
@@ -790,7 +797,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private renderInteractionPrompt(state: PublicGameState): void {
-    const hint = state.interactionHint;
+    const hint = state.player.interactionHint;
     const isInteractive = hint?.startsWith('E — ') === true || hint?.startsWith('B — ') === true;
     const target = isInteractive ? this.findInteractionTarget(state) : undefined;
     if (target === undefined) {
@@ -930,10 +937,11 @@ export class GameScene extends Phaser.Scene {
       const position = this.playerRenderPos(player);
       const x = position.x + this.offsetX;
       const y = position.y + this.offsetY - 40;
+      const labelText = this.playerNames.get(player.id) ?? player.id.slice(0, 4);
       const existing = this.allyLabels.get(player.id);
       if (existing === undefined) {
         const label = this.add
-          .text(x, y, player.id.slice(0, 4), {
+          .text(x, y, labelText, {
             color: '#ffe1f5',
             fontFamily: 'system-ui, sans-serif',
             fontSize: '12px',
@@ -946,6 +954,7 @@ export class GameScene extends Phaser.Scene {
         this.allyLabels.set(player.id, label);
       } else {
         existing.setPosition(x, y);
+        existing.setText(labelText);
       }
     }
     for (const [id, label] of this.allyLabels) {

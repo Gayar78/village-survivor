@@ -206,6 +206,7 @@ export class GameSimulation {
       healCooldownRemainingMs: 0,
       interactionChannel: undefined,
       interactionCommitted: false,
+      interactionHint: undefined,
       selectedUpgrades: [],
       pendingUpgrades: 0,
       lastAim: { x: 1, y: 0 },
@@ -327,7 +328,12 @@ export class GameSimulation {
   }
 
   public createSnapshot(): PublicGameState {
-    const interactionHint = this.getInteractionHint();
+    // Info-bulle recalculée PAR avatar (chaque joueur voit la sienne). Le champ global
+    // reste celui de l'avatar primaire pour compatibilité.
+    for (const avatar of this.avatars) {
+      avatar.interactionHint = this.getInteractionHint(avatar);
+    }
+    const interactionHint = this.canonicalPlayer.interactionHint;
     return createPublicGameState({
       tick: this.tick,
       elapsedMs: this.elapsedMs,
@@ -1332,12 +1338,12 @@ export class GameSimulation {
     return undefined;
   }
 
-  private getInteractionHint(): string | undefined {
+  private getInteractionHint(avatar: MutablePlayer): string | undefined {
     if (this.status !== 'running') {
       return undefined;
     }
-    // Info-bulle du point de vue de l'avatar primaire (l'avatar « local » du snapshot).
-    const player = this.canonicalPlayer;
+    // Info-bulle du point de vue de CET avatar (chaque joueur reçoit la sienne).
+    const player = avatar;
     const resource = this.findNearbyResource(player);
     if (resource !== undefined) {
       const label = RESOURCE_LABELS[resource.resourceType];

@@ -72,6 +72,8 @@ export interface MutablePlayer {
    * ou sac plein.
    */
   interactionCommitted: boolean;
+  /** Info-bulle d'interaction propre à cet avatar, recalculée à chaque snapshot. */
+  interactionHint: string | undefined;
   selectedUpgrades: string[];
   pendingUpgrades: number;
   lastAim: Vector2;

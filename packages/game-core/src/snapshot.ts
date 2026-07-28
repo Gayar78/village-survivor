@@ -118,6 +118,7 @@ function buildPlayerState(source: SnapshotSource, avatar: MutablePlayer, id: str
       buffRemainingMs: avatar.healBuffRemainingMs,
     },
     ...describeAvatarInteractionChannel(source, avatar),
+    ...(avatar.interactionHint === undefined ? {} : { interactionHint: avatar.interactionHint }),
     selectedUpgrades: [...avatar.selectedUpgrades],
     pendingUpgrades: avatar.pendingUpgrades,
   };

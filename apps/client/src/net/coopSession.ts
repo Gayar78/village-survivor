@@ -103,6 +103,22 @@ interface InputMessage {
   input: PlayerInput;
 }
 
+/** Vrai si la commande porte une action ponctuelle (à transmettre sans délai). */
+function hasDiscreteAction(input: PlayerInput): boolean {
+  return (
+    input.interact === true ||
+    input.buildDefense === true ||
+    input.activateSword === true ||
+    input.activateBarrier === true ||
+    input.activateHeal === true ||
+    input.depositAll === true ||
+    input.upgradeHeart === true ||
+    input.selectUpgradeId !== undefined ||
+    input.depositSlot !== undefined ||
+    input.withdrawSlot !== undefined
+  );
+}
+
 /**
  * Session HÔTE : simulation locale + diffusion de l'état. Implémente `RenderableSession`
  * pour être utilisée telle quelle par `GameScene`/`play.ts`, comme `LocalSession`.
@@ -339,6 +355,12 @@ class GuestSession implements RenderableSession {
 
   public sendInput(input: PlayerInput): void {
     this.latestInput = input;
+    // Les actions PONCTUELLES (construction, compétences, récolte, dépôt, améliorations)
+    // ne doivent pas dépendre de l'échantillonnage périodique : on les envoie tout de
+    // suite, sinon un appui bref pourrait tomber entre deux battements et être perdu.
+    if (hasDiscreteAction(input)) {
+      this.flushInput();
+    }
   }
 
   public getRenderAlpha(): number {
