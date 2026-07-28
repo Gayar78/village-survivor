@@ -1,6 +1,12 @@
 import Phaser from 'phaser';
 
-import type { EnemyKind, PlayerInput, PublicGameState, Vector2 } from '@village-survivor/protocol';
+import type {
+  EnemyKind,
+  PlayerInput,
+  PlayerState,
+  PublicGameState,
+  Vector2,
+} from '@village-survivor/protocol';
 import { defaultContent } from '@village-survivor/content';
 
 import { HitFlashTracker, matchEnemyAt } from '../render/hit-flash.js';
@@ -29,6 +35,8 @@ const COLORS = {
   village: 0xf4c76f,
   villageCore: 0xffe9a6,
   player: 0x72ddf7,
+  /** Teinte des avatars alliés (tous les joueurs de `state.players` sauf le local). */
+  ally: 0xff8fd9,
   ward: 0x82aaff,
   resource: 0x75c96b,
   resourceEmpty: 0x415348,
@@ -108,8 +116,14 @@ export class GameScene extends Phaser.Scene {
    * (joueur, ennemis) entre deux ticks de simulation pour un rendu fluide.
    */
   private previousState: PublicGameState | undefined;
-  /** Position de rendu interpolée du joueur (repère `player.position`). */
-  private renderPlayerPos: Vector2 = { x: 0, y: 0 };
+  /** Positions de rendu interpolées de chaque avatar (`player.id` -> position). */
+  private readonly renderPlayerPositions = new Map<string, Vector2>();
+  /**
+   * Étiquettes de nom affichées au-dessus des avatars alliés (jamais pour le
+   * local, dont le rendu doit rester identique à la version mono-joueur).
+   * Créées/détruites à mesure que des alliés apparaissent/disparaissent.
+   */
+  private readonly allyLabels = new Map<string, Phaser.GameObjects.Text>();
   /** Positions de rendu interpolées des ennemis, indexées par leur `id`. */
   private readonly renderEnemyPos = new Map<string, Vector2>();
   private unsubscribe: (() => void) | undefined;
@@ -217,7 +231,13 @@ export class GameScene extends Phaser.Scene {
       this.previousState = this.state;
       this.state = state;
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsubscribe?.());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.unsubscribe?.();
+      for (const label of this.allyLabels.values()) {
+        label.destroy();
+      }
+      this.allyLabels.clear();
+    });
   }
 
   public override update(_time: number, delta: number): void {
@@ -344,14 +364,19 @@ export class GameScene extends Phaser.Scene {
   private computeInterpolation(state: PublicGameState): void {
     const alpha = this.session.getRenderAlpha();
     const previous = this.previousState;
-    const previousPlayer = previous?.player.position;
-    this.renderPlayerPos =
-      previousPlayer === undefined
-        ? state.player.position
-        : {
-            x: lerp(previousPlayer.x, state.player.position.x, alpha),
-            y: lerp(previousPlayer.y, state.player.position.y, alpha),
-          };
+    this.renderPlayerPositions.clear();
+    for (const player of state.players) {
+      const previousPlayer = previous?.players.find((item) => item.id === player.id);
+      this.renderPlayerPositions.set(
+        player.id,
+        previousPlayer === undefined
+          ? player.position
+          : {
+              x: lerp(previousPlayer.position.x, player.position.x, alpha),
+              y: lerp(previousPlayer.position.y, player.position.y, alpha),
+            },
+      );
+    }
     this.renderEnemyPos.clear();
     for (const enemy of state.enemies) {
       const previousEnemy = previous?.enemies.find((item) => item.id === enemy.id);
@@ -372,6 +397,11 @@ export class GameScene extends Phaser.Scene {
     return this.renderEnemyPos.get(enemy.id) ?? enemy.position;
   }
 
+  /** Position de rendu interpolée d'un avatar (repli sur sa position brute). */
+  private playerRenderPos(player: PlayerState): Vector2 {
+    return this.renderPlayerPositions.get(player.id) ?? player.position;
+  }
+
   /** Dessine le cercle de progression de récolte/réparation autour du joueur. */
   private renderChannelRing(state: PublicGameState): void {
     const graphics = this.channelRing;
@@ -380,7 +410,7 @@ export class GameScene extends Phaser.Scene {
     if (channel === undefined) {
       return;
     }
-    const playerPos = this.renderPlayerPos;
+    const playerPos = this.playerRenderPos(state.player);
     const x = playerPos.x + this.offsetX;
     const y = playerPos.y + this.offsetY;
     const color =
@@ -407,6 +437,7 @@ export class GameScene extends Phaser.Scene {
     this.drawSortedBodies(state, visuals);
     this.drawHealthBars(state);
     this.drawBarrierDome(state);
+    this.syncPlayerLabels(state);
   }
 
   private drawGround(state: PublicGameState, visuals: PhaseVisuals): void {
@@ -468,7 +499,9 @@ export class GameScene extends Phaser.Scene {
     for (const enemy of state.enemies) {
       this.drawShadow(this.enemyRenderPos(enemy), enemyRadius(enemy.kind), visuals.shadowAlpha);
     }
-    this.drawShadow(this.renderPlayerPos, PLAYER_FOOTPRINT_RADIUS, visuals.shadowAlpha);
+    for (const player of state.players) {
+      this.drawShadow(this.playerRenderPos(player), PLAYER_FOOTPRINT_RADIUS, visuals.shadowAlpha);
+    }
   }
 
   /**
@@ -502,7 +535,9 @@ export class GameScene extends Phaser.Scene {
     state.enemies.forEach((enemy, index) => {
       this.pushDepth(this.enemyRenderPos(enemy).y, DRAW_ENEMY, index);
     });
-    this.pushDepth(this.renderPlayerPos.y, DRAW_PLAYER, 0);
+    state.players.forEach((player, index) => {
+      this.pushDepth(this.playerRenderPos(player).y, DRAW_PLAYER, index);
+    });
     this.depthOrder.sort((first, second) => first.y - second.y);
 
     for (const entry of this.depthOrder) {
@@ -520,7 +555,7 @@ export class GameScene extends Phaser.Scene {
           this.drawEnemy(state, entry.index, visuals);
           break;
         case DRAW_PLAYER:
-          this.drawPlayer(state, visuals);
+          this.drawPlayer(state, entry.index, visuals);
           break;
       }
     }
@@ -619,15 +654,28 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private drawPlayer(state: PublicGameState, visuals: PhaseVisuals): void {
+  /**
+   * Dessine l'avatar `state.players[index]`. L'avatar local (`state.player.id`)
+   * garde exactement le rendu historique (même couleur `COLORS.player`) ; les
+   * autres avatars ("alliés") sont teintés différemment (`COLORS.ally`) pour
+   * rester visuellement distincts.
+   */
+  private drawPlayer(state: PublicGameState, index: number, visuals: PhaseVisuals): void {
+    const player = state.players[index];
+    if (player === undefined) {
+      return;
+    }
     const graphics = this.graphics;
-    const x = this.renderPlayerPos.x + this.offsetX;
-    const y = this.renderPlayerPos.y + this.offsetY;
-    if (state.player.ward > 0) {
+    const position = this.playerRenderPos(player);
+    const x = position.x + this.offsetX;
+    const y = position.y + this.offsetY;
+    const isLocal = player.id === state.player.id;
+    const bodyColor = isLocal ? COLORS.player : COLORS.ally;
+    if (player.ward > 0) {
       graphics.lineStyle(3, COLORS.ward, 0.8);
       graphics.strokeCircle(x, y, 23);
     }
-    graphics.fillStyle(COLORS.player, 1);
+    graphics.fillStyle(bodyColor, 1);
     graphics.fillCircle(x, y, 16);
     graphics.lineStyle(2, visuals.outline, 0.9);
     graphics.strokeCircle(x, y, 16);
@@ -669,6 +717,22 @@ export class GameScene extends Phaser.Scene {
         enemyColor(enemy.kind),
       );
     }
+    // Pas de barre pour l'avatar local : son rendu doit rester identique à
+    // celui d'aujourd'hui (aucune barre de vie affichée au-dessus de soi).
+    for (const player of state.players) {
+      if (player.id === state.player.id) {
+        continue;
+      }
+      const position = this.playerRenderPos(player);
+      this.drawHealthBar(
+        graphics,
+        position.x + this.offsetX - 18,
+        position.y + this.offsetY - 34,
+        36,
+        player.hp / player.maxHp,
+        COLORS.ally,
+      );
+    }
   }
 
   private drawBarrierDome(state: PublicGameState): void {
@@ -676,8 +740,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const graphics = this.graphics;
-    const x = this.renderPlayerPos.x + this.offsetX;
-    const y = this.renderPlayerPos.y + this.offsetY;
+    const position = this.playerRenderPos(state.player);
+    const x = position.x + this.offsetX;
+    const y = position.y + this.offsetY;
     graphics.fillStyle(COLORS.ward, 0.1);
     graphics.fillCircle(x, y, 175);
     graphics.lineStyle(3, COLORS.ward, 0.75);
@@ -691,10 +756,12 @@ export class GameScene extends Phaser.Scene {
   private updateCamera(state: PublicGameState, delta: number): void {
     const camera = this.cameras.main;
     camera.setBounds(0, 0, state.world.width, state.world.height);
-    const playerX = this.renderPlayerPos.x + this.offsetX;
+    // La caméra ne suit que l'avatar LOCAL, jamais les alliés.
+    const localPosition = this.playerRenderPos(state.player);
+    const playerX = localPosition.x + this.offsetX;
     // La caméra centre 50px SOUS le joueur : celui-ci apparaît donc rendu 50px
     // plus haut à l'écran que le centre. Appliqué sur la position interpolée.
-    const playerY = this.renderPlayerPos.y + this.offsetY + CAMERA_VERTICAL_OFFSET;
+    const playerY = localPosition.y + this.offsetY + CAMERA_VERTICAL_OFFSET;
     const pointer = this.input.activePointer.positionToCamera(camera) as Vector2;
     const targetX =
       playerX +
@@ -835,9 +902,58 @@ export class GameScene extends Phaser.Scene {
     const villagePoint = point(state.village.position);
     graphics.fillStyle(COLORS.village, 1);
     graphics.fillCircle(villagePoint.x, villagePoint.y, 4);
+    for (const player of state.players) {
+      if (player.id === state.player.id) {
+        continue;
+      }
+      const allyPoint = point(player.position);
+      graphics.fillStyle(COLORS.ally, 1);
+      graphics.fillCircle(allyPoint.x, allyPoint.y, 3);
+    }
     const playerPoint = point(state.player.position);
     graphics.fillStyle(COLORS.player, 1);
     graphics.fillCircle(playerPoint.x, playerPoint.y, 3);
+  }
+
+  /**
+   * Crée/détruit/déplace les étiquettes de nom des avatars alliés au fil des
+   * apparitions/disparitions dans `state.players`. Le local n'a jamais
+   * d'étiquette : son rendu reste identique à la version mono-joueur.
+   */
+  private syncPlayerLabels(state: PublicGameState): void {
+    const seenIds = new Set<string>();
+    for (const player of state.players) {
+      if (player.id === state.player.id) {
+        continue;
+      }
+      seenIds.add(player.id);
+      const position = this.playerRenderPos(player);
+      const x = position.x + this.offsetX;
+      const y = position.y + this.offsetY - 40;
+      const existing = this.allyLabels.get(player.id);
+      if (existing === undefined) {
+        const label = this.add
+          .text(x, y, player.id.slice(0, 4), {
+            color: '#ffe1f5',
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '12px',
+            fontStyle: 'bold',
+            stroke: '#11181b',
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5)
+          .setDepth(49);
+        this.allyLabels.set(player.id, label);
+      } else {
+        existing.setPosition(x, y);
+      }
+    }
+    for (const [id, label] of this.allyLabels) {
+      if (!seenIds.has(id)) {
+        label.destroy();
+        this.allyLabels.delete(id);
+      }
+    }
   }
 
   private drawHealthBar(

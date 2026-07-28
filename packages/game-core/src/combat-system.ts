@@ -11,12 +11,34 @@ export interface CombatContext {
   content: GameContent;
   enemies: MutableEnemy[];
   defenses: MutableDefense[];
-  player: MutablePlayer;
+  /** Tous les avatars de la partie (un seul en solo). Les ennemis ciblent le plus proche vivant. */
+  players: MutablePlayer[];
   village: MutableVillage;
   damageEnemy(enemy: MutableEnemy, amount: number): void;
-  damagePlayer(amount: number, attackerPosition: Vector2): void;
+  /** Point d'entrée UNIQUE des dégâts subis par un avatar donné. */
+  damagePlayer(avatar: MutablePlayer, amount: number, attackerPosition: Vector2): void;
   destroyDefense(defense: MutableDefense): void;
   addEvent(type: GameEventType, message: string, details?: EventDetails): void;
+}
+
+/** Avatar VIVANT le plus proche d'une position, ou `undefined` si tous sont à terre. */
+function nearestLivingAvatar(
+  players: readonly MutablePlayer[],
+  position: Vector2,
+): MutablePlayer | undefined {
+  let nearest: MutablePlayer | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const avatar of players) {
+    if (avatar.hp <= 0) {
+      continue;
+    }
+    const candidateDistance = distance(avatar.position, position);
+    if (candidateDistance < nearestDistance) {
+      nearestDistance = candidateDistance;
+      nearest = avatar;
+    }
+  }
+  return nearest;
 }
 
 export function updateDefenseCombat(context: CombatContext): void {
@@ -64,14 +86,17 @@ export function updateEnemyCombat(
 }
 
 function updateGuardian(context: CombatContext, enemy: MutableEnemy, deltaSeconds: number): void {
-  const playerDistance = distance(enemy.position, context.player.position);
+  const target = nearestLivingAvatar(context.players, enemy.position);
+  const playerDistance =
+    target === undefined ? Number.POSITIVE_INFINITY : distance(enemy.position, target.position);
   const homeDistance = distance(enemy.position, enemy.home);
   if (
-    playerDistance <= context.content.enemyBehavior.guardianAggroRange ||
-    (enemy.awake && playerDistance <= context.content.enemyBehavior.guardianChaseRange)
+    target !== undefined &&
+    (playerDistance <= context.content.enemyBehavior.guardianAggroRange ||
+      (enemy.awake && playerDistance <= context.content.enemyBehavior.guardianChaseRange))
   ) {
     enemy.awake = true;
-    moveOrAttackPlayer(context, enemy, deltaSeconds);
+    moveOrAttackPlayer(context, enemy, target, deltaSeconds);
     return;
   }
   if (homeDistance > context.content.enemyBehavior.guardianReturnTolerance) {
@@ -83,13 +108,16 @@ function updateGuardian(context: CombatContext, enemy: MutableEnemy, deltaSecond
 }
 
 function updateDayEnemy(context: CombatContext, enemy: MutableEnemy, deltaSeconds: number): void {
-  const playerDistance = distance(enemy.position, context.player.position);
+  const target = nearestLivingAvatar(context.players, enemy.position);
+  const playerDistance =
+    target === undefined ? Number.POSITIVE_INFINITY : distance(enemy.position, target.position);
   if (
-    playerDistance <= context.content.enemyBehavior.dayAggroRange ||
-    (enemy.awake && playerDistance <= context.content.enemyBehavior.dayChaseRange)
+    target !== undefined &&
+    (playerDistance <= context.content.enemyBehavior.dayAggroRange ||
+      (enemy.awake && playerDistance <= context.content.enemyBehavior.dayChaseRange))
   ) {
     enemy.awake = true;
-    moveOrAttackPlayer(context, enemy, deltaSeconds);
+    moveOrAttackPlayer(context, enemy, target, deltaSeconds);
     return;
   }
   if (distance(enemy.position, enemy.home) > context.content.enemyBehavior.dayReturnTolerance) {
@@ -106,11 +134,13 @@ function updateAssaultEnemy(
   deltaSeconds: number,
 ): void {
   enemy.awake = true;
+  const target = nearestLivingAvatar(context.players, enemy.position);
   if (
-    distance(enemy.position, context.player.position) <=
-    context.content.enemyBehavior.assaultPlayerPriorityRange
+    target !== undefined &&
+    distance(enemy.position, target.position) <=
+      context.content.enemyBehavior.assaultPlayerPriorityRange
   ) {
-    moveOrAttackPlayer(context, enemy, deltaSeconds);
+    moveOrAttackPlayer(context, enemy, target, deltaSeconds);
     return;
   }
 
@@ -129,24 +159,21 @@ function updateAssaultEnemy(
 function moveOrAttackPlayer(
   context: CombatContext,
   enemy: MutableEnemy,
+  target: MutablePlayer,
   deltaSeconds: number,
 ): void {
   const definition = context.content.enemies[enemy.kind];
   if (
-    distance(enemy.position, context.player.position) <=
+    distance(enemy.position, target.position) <=
     definition.attackRange + context.content.enemyBehavior.collisionRadius
   ) {
     if (enemy.attackCooldownRemainingMs <= 0) {
-      context.damagePlayer(definition.damage * enemy.damageScale, enemy.position);
+      context.damagePlayer(target, definition.damage * enemy.damageScale, enemy.position);
       enemy.attackCooldownRemainingMs = definition.attackCooldownMs;
     }
     return;
   }
-  enemy.position = moveTowards(
-    enemy.position,
-    context.player.position,
-    definition.speed * deltaSeconds,
-  );
+  enemy.position = moveTowards(enemy.position, target.position, definition.speed * deltaSeconds);
 }
 
 function moveOrAttackDefense(
@@ -184,11 +211,14 @@ function moveOrAttackVillage(
   ) {
     if (enemy.attackCooldownRemainingMs <= 0) {
       let damage = definition.damage * enemy.damageScale;
-      if (
-        context.player.barrierActiveRemainingMs > 0 &&
-        distance(context.player.position, context.village.position) <=
-          context.content.barrier.activeRadius
-      ) {
+      // La réduction s'applique si UN avatar au moins couvre le village de sa barrière.
+      const villageShielded = context.players.some(
+        (avatar) =>
+          avatar.barrierActiveRemainingMs > 0 &&
+          distance(avatar.position, context.village.position) <=
+            context.content.barrier.activeRadius,
+      );
+      if (villageShielded) {
         damage *= 1 - context.content.barrier.damageReduction;
       }
       context.village.hp = Math.max(0, context.village.hp - damage);
