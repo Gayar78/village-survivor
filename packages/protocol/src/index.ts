@@ -58,7 +58,7 @@ export type InteractionChannelState = Readonly<{
 }>;
 
 export type PlayerState = Readonly<{
-  id: 'player-1';
+  id: string;
   position: Vector2;
   hp: number;
   maxHp: number;
@@ -178,7 +178,18 @@ export type PublicGameState = Readonly<{
   phase: GamePhase;
   cycle: number;
   phaseRemainingMs: number;
+  /**
+   * Avatar « local » = celui contrôlé par le client qui reçoit cet état. En solo
+   * c'est l'unique joueur ; en co-op, la session réseau renseigne l'avatar propre au
+   * client. Toujours présent et toujours l'un des éléments de `players`.
+   */
   player: PlayerState;
+  /**
+   * Tous les avatars de la partie (le joueur local et ses coéquipiers). En solo, ce
+   * tableau contient uniquement `player`. La progression (niveau, améliorations) est
+   * partagée : tous les avatars affichent le même niveau.
+   */
+  players: readonly PlayerState[];
   village: VillageState;
   defenses: readonly DefenseState[];
   resources: readonly ResourceNodeState[];

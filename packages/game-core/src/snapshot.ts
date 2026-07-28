@@ -6,6 +6,7 @@ import type {
   GameStatus,
   InteractionChannelState,
   InventorySlot,
+  PlayerState,
   PublicGameState,
   UpgradeChoice,
 } from '@village-survivor/protocol';
@@ -27,10 +28,13 @@ function cloneInventory(inventory: MutableInventory): (InventorySlot | undefined
  * Traduit le canal d'interaction interne en projection publique. Renvoie un objet
  * vide (clé omise) quand aucun canal n'est actif, pour rester comparable par égalité.
  */
-function describeInteractionChannel(source: SnapshotSource): {
+function describeAvatarInteractionChannel(
+  source: SnapshotSource,
+  avatar: MutablePlayer,
+): {
   interactionChannel?: InteractionChannelState;
 } {
-  const channel = source.player.interactionChannel;
+  const channel = avatar.interactionChannel;
   if (channel === undefined) {
     return {};
   }
@@ -58,7 +62,15 @@ export interface SnapshotSource {
   phase: GamePhase;
   cycle: number;
   phaseRemainingMs: number;
+  /** Avatar « principal » (compat solo). En co-op, voir `players`. */
   player: MutablePlayer;
+  /**
+   * Tous les avatars avec leur identifiant. Optionnel tant que la simulation N joueurs
+   * n'est pas branchée : si absent, on retombe sur `[{ avatar: player, id: 'player-1' }]`.
+   */
+  players?: readonly { avatar: MutablePlayer; id: string }[];
+  /** Identifiant de l'avatar local à exposer via `PublicGameState.player`. */
+  localPlayerId?: string;
   village: MutableVillage;
   defenses: readonly MutableDefense[];
   resources: readonly MutableResource[];
@@ -69,10 +81,62 @@ export interface SnapshotSource {
   events: readonly GameEvent[];
 }
 
+/**
+ * Construit la projection publique d'un avatar. Les champs de progression (niveau,
+ * améliorations, statuts d'épée…) sont partagés en co-op : ils proviennent tous du
+ * même `MutablePlayer`, donc chaque avatar affiche le même niveau.
+ */
+function buildPlayerState(source: SnapshotSource, avatar: MutablePlayer, id: string): PlayerState {
+  return {
+    id,
+    position: { ...avatar.position },
+    hp: avatar.hp,
+    maxHp: avatar.maxHp,
+    ward: avatar.ward,
+    maxWard: avatar.maxWard,
+    moveSpeed: avatar.moveSpeed,
+    inventory: cloneInventory(avatar.inventory),
+    experience: avatar.experience,
+    experienceToNext: avatar.experienceToNext,
+    level: avatar.level,
+    swordAutoDamage: avatar.swordAutoDamage,
+    swordAutoRange: avatar.swordAutoRange,
+    swordAutoCooldownMs: avatar.swordAutoCooldownMs,
+    swordAutoCooldownRemainingMs: avatar.swordAutoCooldownRemainingMs,
+    sword: {
+      cooldownMs: avatar.swordCooldownMs,
+      cooldownRemainingMs: avatar.swordCooldownRemainingMs,
+    },
+    barrier: {
+      cooldownMs: avatar.barrierCooldownMs,
+      cooldownRemainingMs: avatar.barrierCooldownRemainingMs,
+      activeRemainingMs: avatar.barrierActiveRemainingMs,
+    },
+    heal: {
+      cooldownMs: avatar.healCooldownMs,
+      cooldownRemainingMs: avatar.healCooldownRemainingMs,
+      buffRemainingMs: avatar.healBuffRemainingMs,
+    },
+    ...describeAvatarInteractionChannel(source, avatar),
+    selectedUpgrades: [...avatar.selectedUpgrades],
+    pendingUpgrades: avatar.pendingUpgrades,
+  };
+}
+
 export function createPublicGameState(source: SnapshotSource): PublicGameState {
   const result = source.resultReason === undefined ? {} : { resultReason: source.resultReason };
   const hint =
     source.interactionHint === undefined ? {} : { interactionHint: source.interactionHint };
+  // Étape multijoueur en cours : la simulation ne gère encore qu'un avatar. On
+  // publie néanmoins le contrat `players[]` (ici un seul élément) pour que le rendu
+  // et le netcode s'appuient déjà dessus.
+  const avatars: readonly { avatar: MutablePlayer; id: string }[] =
+    source.players !== undefined ? source.players : [{ avatar: source.player, id: 'player-1' }];
+  const players = avatars.map(({ avatar, id }) => buildPlayerState(source, avatar, id));
+  const localPlayer =
+    players.find(({ id }) => id === source.localPlayerId) ??
+    players[0] ??
+    buildPlayerState(source, source.player, 'player-1');
   return {
     tick: source.tick,
     elapsedMs: source.elapsedMs,
@@ -86,40 +150,8 @@ export function createPublicGameState(source: SnapshotSource): PublicGameState {
     phase: source.phase,
     cycle: source.cycle,
     phaseRemainingMs: Math.max(0, source.phaseRemainingMs),
-    player: {
-      id: 'player-1',
-      position: { ...source.player.position },
-      hp: source.player.hp,
-      maxHp: source.player.maxHp,
-      ward: source.player.ward,
-      maxWard: source.player.maxWard,
-      moveSpeed: source.player.moveSpeed,
-      inventory: cloneInventory(source.player.inventory),
-      experience: source.player.experience,
-      experienceToNext: source.player.experienceToNext,
-      level: source.player.level,
-      swordAutoDamage: source.player.swordAutoDamage,
-      swordAutoRange: source.player.swordAutoRange,
-      swordAutoCooldownMs: source.player.swordAutoCooldownMs,
-      swordAutoCooldownRemainingMs: source.player.swordAutoCooldownRemainingMs,
-      sword: {
-        cooldownMs: source.player.swordCooldownMs,
-        cooldownRemainingMs: source.player.swordCooldownRemainingMs,
-      },
-      barrier: {
-        cooldownMs: source.player.barrierCooldownMs,
-        cooldownRemainingMs: source.player.barrierCooldownRemainingMs,
-        activeRemainingMs: source.player.barrierActiveRemainingMs,
-      },
-      heal: {
-        cooldownMs: source.player.healCooldownMs,
-        cooldownRemainingMs: source.player.healCooldownRemainingMs,
-        buffRemainingMs: source.player.healBuffRemainingMs,
-      },
-      ...describeInteractionChannel(source),
-      selectedUpgrades: [...source.player.selectedUpgrades],
-      pendingUpgrades: source.player.pendingUpgrades,
-    },
+    player: localPlayer,
+    players,
     village: {
       position: { ...source.village.position },
       areaRadius: source.content.village.areaRadius,
