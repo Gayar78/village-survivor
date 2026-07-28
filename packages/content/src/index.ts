@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 import { rawDefaultContent } from './default-content.js';
 
+// Contenu partagé du nouveau jeu (Phase 1), indépendant du schéma de l'ancien.
+export * from './tower.js';
+
 const positiveNumber = z.number().finite().positive();
 const nonNegativeNumber = z.number().finite().nonnegative();
 
