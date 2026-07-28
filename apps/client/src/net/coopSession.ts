@@ -97,13 +97,19 @@ class HostSession implements RenderableSession {
   private accumulatorMs = 0;
   private lastBroadcastMs = 0;
 
+  private readonly topic: string;
+  private readonly seenInputIds = new Set<string>();
+  private broadcastCount = 0;
+  private lastLogMs = 0;
+
   public constructor(config: CoopConfig) {
     this.me = config.me;
+    this.topic = `game:${config.code}`;
     this.simulation = new GameSimulation(defaultContent, config.seed, {
       playerIds: config.roster.map((entry) => entry.id),
     });
     this.tickMs = defaultContent.simulation.tickMs;
-    this.channel = supabase.channel(`game:${config.code}`, {
+    this.channel = supabase.channel(this.topic, {
       config: { broadcast: { self: false } },
     });
     this.channel.on<InputMessage>('broadcast', { event: 'input' }, (message) => {
@@ -113,6 +119,10 @@ class HostSession implements RenderableSession {
         payload.input !== undefined &&
         payload.id !== this.me
       ) {
+        if (!this.seenInputIds.has(payload.id)) {
+          this.seenInputIds.add(payload.id);
+          console.info(`[coop:host] première commande reçue de ${payload.id}`);
+        }
         this.inputsById[payload.id] = payload.input;
       }
     });
@@ -124,7 +134,9 @@ class HostSession implements RenderableSession {
     }
     this.running = true;
     this.simulation.start();
-    this.channel.subscribe((status: string) => {
+    console.info(`[coop:host] abonnement au canal « ${this.topic} »…`);
+    this.channel.subscribe((status: string, err?: Error) => {
+      console.info(`[coop:host] canal « ${this.topic} » : ${status}`, err ?? '');
       if (status === 'SUBSCRIBED') {
         this.channelReady = true;
       }
@@ -190,7 +202,22 @@ class HostSession implements RenderableSession {
       }
       if (this.channelReady && timestamp - this.lastBroadcastMs >= STATE_INTERVAL_MS) {
         this.lastBroadcastMs = timestamp;
-        void this.channel.send({ type: 'broadcast', event: 'state', payload: snapshot });
+        this.broadcastCount += 1;
+        void this.channel
+          .send({ type: 'broadcast', event: 'state', payload: snapshot })
+          .then((res) => {
+            if (res !== 'ok') {
+              console.warn(`[coop:host] échec d'envoi d'état : ${String(res)}`);
+            }
+          });
+        // Journal périodique (toutes les ~2 s) : nombre d'états diffusés + taille.
+        if (timestamp - this.lastLogMs >= 2_000) {
+          this.lastLogMs = timestamp;
+          const bytes = JSON.stringify(snapshot).length;
+          console.info(
+            `[coop:host] ${this.broadcastCount} états diffusés (prêt=${String(this.channelReady)}, ~${bytes} o/état, invités vus=${this.seenInputIds.size})`,
+          );
+        }
       }
     }
     this.frameHandle = requestAnimationFrame(this.onFrame);
@@ -211,18 +238,33 @@ class GuestSession implements RenderableSession {
   private running = false;
   private sendHandle: number | undefined;
 
+  private readonly topic: string;
+  private stateCount = 0;
+
   public constructor(config: CoopConfig) {
     this.me = config.me;
-    this.channel = supabase.channel(`game:${config.code}`, {
+    this.topic = `game:${config.code}`;
+    this.channel = supabase.channel(this.topic, {
       config: { broadcast: { self: false } },
     });
     this.channel.on<PublicGameState>('broadcast', { event: 'state' }, (message) => {
       const payload = message.payload;
       if (!isPublicGameState(payload)) {
+        console.warn('[coop:guest] état reçu mais malformé, ignoré');
         return;
+      }
+      this.stateCount += 1;
+      if (this.stateCount === 1) {
+        console.info('[coop:guest] premier état reçu de l’hôte ✔');
       }
       // Réexpose l'avatar local du point de vue de cet invité.
       const mine = payload.players.find((player) => player.id === this.me);
+      if (this.stateCount === 1 && mine === undefined) {
+        console.warn(
+          `[coop:guest] mon avatar « ${this.me} » est absent du roster reçu`,
+          payload.players.map((p) => p.id),
+        );
+      }
       const state: PublicGameState = mine === undefined ? payload : { ...payload, player: mine };
       this.lastState = state;
       this.lastStateAt = performance.now();
@@ -237,9 +279,19 @@ class GuestSession implements RenderableSession {
       return;
     }
     this.running = true;
-    this.channel.subscribe((status: string) => {
+    console.info(`[coop:guest] abonnement au canal « ${this.topic} » (moi=${this.me})…`);
+    this.channel.subscribe((status: string, err?: Error) => {
+      console.info(`[coop:guest] canal « ${this.topic} » : ${status}`, err ?? '');
       if (status === 'SUBSCRIBED') {
         this.sendHandle = window.setInterval(() => this.flushInput(), INPUT_INTERVAL_MS);
+        // Avertissement si aucun état n'arrive dans les 5 s (hôte injoignable ?).
+        window.setTimeout(() => {
+          if (this.stateCount === 0) {
+            console.warn(
+              `[coop:guest] aucun état reçu après 5 s sur « ${this.topic} » — l'hôte diffuse-t-il ? même code ?`,
+            );
+          }
+        }, 5_000);
       }
     });
   }
@@ -289,5 +341,9 @@ class GuestSession implements RenderableSession {
  * Crée la session co-op adaptée au rôle : hôte (le chef, `me === hostId`) ou invité.
  */
 export function createCoopSession(config: CoopConfig): RenderableSession {
-  return config.me === config.hostId ? new HostSession(config) : new GuestSession(config);
+  const isHost = config.me === config.hostId;
+  console.info(
+    `[coop] rôle=${isHost ? 'HÔTE' : 'INVITÉ'} · canal=game:${config.code} · moi=${config.me} · hôte=${config.hostId} · roster=${config.roster.map((entry) => entry.id).join(',')}`,
+  );
+  return isHost ? new HostSession(config) : new GuestSession(config);
 }
