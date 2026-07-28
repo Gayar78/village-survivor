@@ -121,6 +121,13 @@ function buildPlayerState(source: SnapshotSource, avatar: MutablePlayer, id: str
     ...(avatar.interactionHint === undefined ? {} : { interactionHint: avatar.interactionHint }),
     selectedUpgrades: [...avatar.selectedUpgrades],
     pendingUpgrades: avatar.pendingUpgrades,
+    upgradeChoices: avatar.upgradeChoices.map((upgrade): UpgradeChoice => ({
+      id: upgrade.id,
+      name: upgrade.name,
+      description: upgrade.description,
+      discipline: upgrade.discipline,
+    })),
+    downedRemainingMs: avatar.downedRemainingMs,
   };
 }
 

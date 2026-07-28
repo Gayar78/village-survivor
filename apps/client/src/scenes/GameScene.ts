@@ -677,6 +677,15 @@ export class GameScene extends Phaser.Scene {
     const x = position.x + this.offsetX;
     const y = position.y + this.offsetY;
     const isLocal = player.id === state.player.id;
+    // Avatar « à terre » (K.O.) : rendu grisé et estompé, sans anneau ni pointe de visée.
+    const downed = player.downedRemainingMs > 0;
+    if (downed) {
+      graphics.fillStyle(0x6a7079, 0.45);
+      graphics.fillCircle(x, y, 16);
+      graphics.lineStyle(2, 0x3a3f47, 0.6);
+      graphics.strokeCircle(x, y, 16);
+      return;
+    }
     const bodyColor = isLocal ? COLORS.player : COLORS.ally;
     if (player.ward > 0) {
       graphics.lineStyle(3, COLORS.ward, 0.8);

@@ -59,13 +59,13 @@ export class Hud {
   }
 
   public render(state: PublicGameState): void {
-    const upgradeSignature = state.upgradeChoices.map((choice) => choice.id).join('|');
+    const upgradeSignature = state.player.upgradeChoices.map((choice) => choice.id).join('|');
     const isTerminal = state.status === 'victory' || state.status === 'defeat';
-    if (state.upgradeChoices.length === 0) {
+    if (state.player.upgradeChoices.length === 0) {
       this.upgradePanelOpen = false;
     }
     const showUpgradePanel =
-      state.status === 'running' && this.upgradePanelOpen && state.upgradeChoices.length > 0;
+      state.status === 'running' && this.upgradePanelOpen && state.player.upgradeChoices.length > 0;
     if (
       isTerminal &&
       state.status === this.terminalStatus &&
@@ -102,7 +102,7 @@ export class Hud {
             <h2>Choisissez une amélioration</h2>
             <p>Le monde continue pendant votre choix. <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> ou clic.</p>
             <div class="upgrade-grid">
-              ${state.upgradeChoices
+              ${state.player.upgradeChoices
                 .map(
                   (
                     upgrade,

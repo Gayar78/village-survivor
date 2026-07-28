@@ -58,6 +58,8 @@ const REPAIR_CHANNEL_MS = 300;
  * donc rigoureusement inchangé.
  */
 const AVATAR_START_SPACING = 48;
+/** Durée « à terre » avant réapparition en co-op (30 s). */
+const DOWNED_DURATION_MS = 30_000;
 /** Libellés français des ressources, pour les info-bulles d'interaction. */
 const RESOURCE_LABELS: Record<ResourceType, string> = {
   wood: 'bois',
@@ -103,7 +105,6 @@ export class GameSimulation {
   private readonly avatarsHurtThisTick = new Set<MutablePlayer>();
   private eventCounter = 0;
   private events: GameEvent[] = [];
-  private upgradeChoices: UpgradeDefinition[] = [];
   /**
    * Nombre de joueurs de la partie co-op (chacun sa propre instance déterministe).
    * Clampé à [1, 10] ; 1 par défaut, ce qui préserve exactement le comportement
@@ -209,7 +210,9 @@ export class GameSimulation {
       interactionHint: undefined,
       selectedUpgrades: [],
       pendingUpgrades: 0,
+      upgradeChoices: [],
       lastAim: { x: 1, y: 0 },
+      downedRemainingMs: 0,
     };
   }
 
@@ -259,6 +262,12 @@ export class GameSimulation {
     this.updateDefenseCooldowns(deltaMs);
     for (const { avatar, input } of entries) {
       this.updateAvatarCooldowns(avatar, deltaMs);
+      this.updateDownedState(avatar, deltaMs);
+      // Un avatar à terre (K.O.) ne se déplace plus, n'active plus de compétence et
+      // n'inflige plus de dégâts jusqu'à sa réapparition.
+      if (avatar.downedRemainingMs > 0) {
+        continue;
+      }
       updatePlayerMovement(
         avatar,
         input,
@@ -275,12 +284,16 @@ export class GameSimulation {
     this.removeDefeatedEnemies();
     this.updateResourceRegen(deltaMs);
     for (const { avatar, input } of entries) {
+      if (avatar.downedRemainingMs > 0) {
+        continue;
+      }
       this.updateVillageSupport(avatar, deltaSeconds);
       this.handleInteraction(avatar, input);
       this.updateInteractionChannel(avatar, input, deltaMs);
     }
-    for (const { input } of entries) {
-      this.handleUpgradeSelection(input);
+    // La sélection d'amélioration reste possible même à terre (action de menu).
+    for (const { avatar, input } of entries) {
+      this.handleUpgradeSelection(avatar, input);
     }
     this.syncSharedProgression();
     this.updatePhase(deltaMs);
@@ -298,23 +311,12 @@ export class GameSimulation {
       if (avatar === source) {
         continue;
       }
+      // Seuls le NIVEAU et l'XP sont partagés (tous montent ensemble). Les choix
+      // d'améliorations, les statistiques dérivées (épée, barrière…) et le nombre de
+      // choix en attente restent PERSONNELS à chaque avatar.
       avatar.level = source.level;
       avatar.experience = source.experience;
       avatar.experienceToNext = source.experienceToNext;
-      avatar.pendingUpgrades = source.pendingUpgrades;
-      avatar.selectedUpgrades = [...source.selectedUpgrades];
-      avatar.swordAutoDamage = source.swordAutoDamage;
-      avatar.swordAutoRange = source.swordAutoRange;
-      avatar.swordAutoCooldownMs = source.swordAutoCooldownMs;
-      avatar.swordCooldownMs = source.swordCooldownMs;
-      avatar.barrierCooldownMs = source.barrierCooldownMs;
-      avatar.barrierDurationMs = source.barrierDurationMs;
-      avatar.healCooldownMs = source.healCooldownMs;
-      avatar.maxHp = source.maxHp;
-      avatar.moveSpeed = source.moveSpeed;
-      avatar.maxWard = source.maxWard;
-      avatar.hp = Math.min(avatar.hp, avatar.maxHp);
-      avatar.ward = Math.min(avatar.ward, avatar.maxWard);
     }
   }
 
@@ -353,7 +355,7 @@ export class GameSimulation {
       defenses: this.defenses,
       resources: this.resources,
       enemies: this.enemies,
-      upgradeChoices: this.upgradeChoices,
+      upgradeChoices: this.canonicalPlayer.upgradeChoices,
       interactionHint,
       objective: this.getObjective(),
       events: this.events,
@@ -549,6 +551,23 @@ export class GameSimulation {
     }
   }
 
+  /**
+   * Décompte « à terre » d'un avatar K.O. : à l'expiration, il réapparaît au village
+   * avec ses PV pleins. Sans effet sur un avatar actif.
+   */
+  private updateDownedState(avatar: MutablePlayer, deltaMs: number): void {
+    if (avatar.downedRemainingMs <= 0) {
+      return;
+    }
+    avatar.downedRemainingMs = Math.max(0, avatar.downedRemainingMs - deltaMs);
+    if (avatar.downedRemainingMs <= 0) {
+      avatar.hp = avatar.maxHp;
+      avatar.ward = avatar.maxWard;
+      avatar.wardRefreshRemainingMs = this.content.barrier.wardRefreshMs;
+      avatar.position = { x: VILLAGE_POSITION.x, y: VILLAGE_POSITION.y };
+    }
+  }
+
   private useAbilities(avatar: MutablePlayer, input: PlayerInput): void {
     if (input.activateSword === true && avatar.swordCooldownRemainingMs <= 0) {
       const start = avatar.position;
@@ -641,6 +660,16 @@ export class GameSimulation {
       if (this.activeConstructionBuilder === avatar) {
         this.interruptDefenseConstruction();
       }
+    }
+    // En co-op, un avatar qui tombe à 0 PV passe « à terre » (réapparition différée)
+    // plutôt que de provoquer la défaite. En solo, il n'y a pas de réapparition : la
+    // défaite est gérée par `checkDefeat`.
+    if (avatar.hp <= 0 && avatar.downedRemainingMs <= 0 && this.avatars.length > 1) {
+      avatar.downedRemainingMs = DOWNED_DURATION_MS;
+      avatar.interactionChannel = undefined;
+      avatar.interactionCommitted = false;
+      avatar.barrierActiveRemainingMs = 0;
+      avatar.healBuffRemainingMs = 0;
     }
   }
 
@@ -1078,6 +1107,11 @@ export class GameSimulation {
    * Les niveaux s'empilent : une offre en attente ne suspend plus la progression,
    * afin que le joueur puisse repousser son choix jusqu'à un moment calme.
    */
+  /**
+   * L'XP est MISE EN COMMUN : le niveau, l'expérience et le seuil sont partagés (tous
+   * les avatars montent ensemble). En revanche, CHAQUE avatar gagne son propre choix
+   * d'amélioration à chaque niveau — les améliorations sont personnelles.
+   */
   private addExperience(amount: number): void {
     const player = this.canonicalPlayer;
     player.experience += amount;
@@ -1087,56 +1121,58 @@ export class GameSimulation {
       player.experienceToNext =
         this.content.progression.experiencePerLevel[player.level - 1] ??
         this.content.progression.fallbackExperienceToNext;
-      player.pendingUpgrades += 1;
+      // Chaque avatar reçoit un choix personnel à chaque montée de niveau.
+      for (const avatar of this.avatars) {
+        avatar.pendingUpgrades += 1;
+      }
       this.addEvent('level-up', `Niveau ${player.level} atteint.`, {
         position: player.position,
       });
     }
-    this.refreshUpgradeChoices();
+    for (const avatar of this.avatars) {
+      this.refreshUpgradeChoices(avatar);
+    }
   }
 
   /**
    * Une offre est tirée à la demande, jamais d'avance : deux niveaux empilés ne
-   * peuvent donc pas proposer deux fois la même amélioration.
+   * peuvent donc pas proposer deux fois la même amélioration. Propre à chaque avatar.
    */
-  private refreshUpgradeChoices(): void {
-    const player = this.canonicalPlayer;
-    if (player.pendingUpgrades <= 0 || this.upgradeChoices.length > 0) {
+  private refreshUpgradeChoices(avatar: MutablePlayer): void {
+    if (avatar.pendingUpgrades <= 0 || avatar.upgradeChoices.length > 0) {
       return;
     }
     const choices = selectWeightedUpgrades(
       this.content.upgrades,
-      player.selectedUpgrades,
+      avatar.selectedUpgrades,
       this.content.progression.upgradeChoiceCount,
       this.upgradeRandom,
     );
     if (choices.length === 0) {
       // Catalogue épuisé : plus rien à choisir, la dette est abandonnée.
-      player.pendingUpgrades = 0;
+      avatar.pendingUpgrades = 0;
       return;
     }
-    this.upgradeChoices = choices;
+    avatar.upgradeChoices = choices;
   }
 
-  private handleUpgradeSelection(input: PlayerInput): void {
-    if (input.selectUpgradeId === undefined || this.upgradeChoices.length === 0) {
+  private handleUpgradeSelection(avatar: MutablePlayer, input: PlayerInput): void {
+    if (input.selectUpgradeId === undefined || avatar.upgradeChoices.length === 0) {
       return;
     }
-    const upgrade = this.upgradeChoices.find((choice) => choice.id === input.selectUpgradeId);
+    const upgrade = avatar.upgradeChoices.find((choice) => choice.id === input.selectUpgradeId);
     if (upgrade === undefined) {
       return;
     }
-    const player = this.canonicalPlayer;
-    this.applyUpgrade(upgrade);
-    player.selectedUpgrades.push(upgrade.id);
-    this.upgradeChoices = [];
-    player.pendingUpgrades = Math.max(0, player.pendingUpgrades - 1);
-    this.addEvent('upgrade-selected', upgrade.name, { position: player.position });
-    this.refreshUpgradeChoices();
+    this.applyUpgrade(avatar, upgrade);
+    avatar.selectedUpgrades.push(upgrade.id);
+    avatar.upgradeChoices = [];
+    avatar.pendingUpgrades = Math.max(0, avatar.pendingUpgrades - 1);
+    this.addEvent('upgrade-selected', upgrade.name, { position: avatar.position });
+    this.refreshUpgradeChoices(avatar);
   }
 
-  private applyUpgrade(upgrade: UpgradeDefinition): void {
-    const player = this.canonicalPlayer;
+  private applyUpgrade(player: MutablePlayer, upgrade: UpgradeDefinition): void {
     switch (upgrade.effect) {
       case 'sword-damage':
         player.swordAutoDamage *= upgrade.value;
@@ -1271,8 +1307,9 @@ export class GameSimulation {
     if (this.status !== 'running') {
       return;
     }
-    // Défaite quand TOUS les avatars sont à terre : en solo, l'unique avatar suffit.
-    if (this.avatars.every((avatar) => avatar.hp <= 0)) {
+    // En SOLO, la chute de l'unique avatar est une défaite (pas de réapparition). En
+    // co-op, les avatars tombés réapparaissent : la défaite ne vient QUE du village.
+    if (this.avatars.length === 1 && (this.avatars[0]?.hp ?? 0) <= 0) {
       this.status = 'defeat';
       this.resultReason = 'Le personnage est tombé.';
       this.addEvent('defeat', this.resultReason);

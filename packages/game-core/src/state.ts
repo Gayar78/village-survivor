@@ -1,3 +1,4 @@
+import type { UpgradeDefinition } from '@village-survivor/content';
 import type { EnemyKind, InventorySlot, ResourceType, Vector2 } from '@village-survivor/protocol';
 
 export interface MutableEnemy {
@@ -74,9 +75,18 @@ export interface MutablePlayer {
   interactionCommitted: boolean;
   /** Info-bulle d'interaction propre à cet avatar, recalculée à chaque snapshot. */
   interactionHint: string | undefined;
+  /** Améliorations DÉJÀ choisies par cet avatar (personnelles, non partagées). */
   selectedUpgrades: string[];
+  /** Améliorations gagnées mais pas encore choisies par cet avatar. */
   pendingUpgrades: number;
+  /** Offre d'améliorations courante PROPRE à cet avatar (vide si aucune à choisir). */
+  upgradeChoices: UpgradeDefinition[];
   lastAim: Vector2;
+  /**
+   * Temps restant « à terre » avant réapparition (ms). > 0 ⇒ l'avatar est K.O. : il
+   * n'agit plus et n'inflige plus de dégâts jusqu'à sa réapparition. 0 ⇒ actif.
+   */
+  downedRemainingMs: number;
 }
 
 export interface MutableVillage {

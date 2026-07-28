@@ -231,7 +231,7 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'KeyF') {
-    if (latestState.upgradeChoices.length > 0) {
+    if (latestState.player.upgradeChoices.length > 0) {
       hud.toggleUpgradePanel();
       hud.render(latestState);
     }
@@ -241,7 +241,7 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   const index = ['Digit1', 'Digit2', 'Digit3'].indexOf(event.code);
-  const choice = index < 0 ? undefined : latestState.upgradeChoices[index];
+  const choice = index < 0 ? undefined : latestState.player.upgradeChoices[index];
   if (choice !== undefined) {
     scene.selectUpgrade(choice.id);
   }

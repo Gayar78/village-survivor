@@ -89,6 +89,16 @@ export type PlayerState = Readonly<{
   selectedUpgrades: readonly string[];
   /** Améliorations gagnées et pas encore choisies, l'offre courante comprise. */
   pendingUpgrades: number;
+  /**
+   * Offre d'améliorations PROPRE à cet avatar (les améliorations sont personnelles en
+   * co-op). Le client doit lire `state.player.upgradeChoices`.
+   */
+  upgradeChoices: readonly UpgradeChoice[];
+  /**
+   * Temps restant « à terre » avant réapparition (ms), 0 si l'avatar est actif. > 0 ⇒
+   * le joueur est K.O. (n'agit plus, n'inflige plus de dégâts) et réapparaîtra bientôt.
+   */
+  downedRemainingMs: number;
 }>;
 
 export type VillageState = Readonly<{

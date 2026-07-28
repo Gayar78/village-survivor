@@ -37,6 +37,26 @@ body,
   overflow: hidden;
 }
 
+/* En jeu, on désactive la sélection de texte et le glisser d'image sur toute
+ * l'interface : sinon un clic maintenu sélectionne du texte au lieu de cliquer un
+ * bouton (améliorations) ou de glisser-déposer un objet d'inventaire. */
+#game,
+#hud,
+#inventory,
+#village-trade,
+#escape-menu,
+#game-over {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#hud img,
+#inventory img,
+#village-trade img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 body {
   min-width: 960px;
   min-height: 620px;

@@ -68,35 +68,69 @@ describe('GameSimulation co-op (N avatars, progression partagée)', () => {
     expect(secondary!.experienceToNext).toBe(primary!.experienceToNext);
   });
 
-  it('ne perd la partie que lorsque TOUS les avatars sont à terre', () => {
-    // Avatars fragiles (1 PV, aucun bouclier) pour rendre les morts déterministes.
+  it('met un avatar « à terre » à 0 PV puis le fait réapparaître, sans défaite en co-op', () => {
+    // Avatars fragiles (1 PV) pour rendre la chute déterministe.
     const fragile = {
       ...defaultContent,
       player: { ...defaultContent.player, maxHp: 1 },
       barrier: { ...defaultContent.barrier, maxWard: 0 },
     };
-    const simulation = new GameSimulation(fragile, 'coop-defeat', { playerIds: [...COOP_IDS] });
+    const simulation = new GameSimulation(fragile, 'coop-downed', { playerIds: [...COOP_IDS] });
     simulation.start();
 
-    // Met l'avatar primaire à 0 PV ; le second reste vivant → la partie continue.
+    // Met l'avatar primaire à 0 PV : il passe « à terre » (pas de défaite en co-op).
     simulation.damagePlayer(10);
     let snapshot = simulation.createSnapshot();
-    expect(snapshot.players.find((player) => player.id === 'player-1')!.hp).toBe(0);
-    expect(snapshot.players.find((player) => player.id === 'player-2')!.hp).toBeGreaterThan(0);
+    const downed = snapshot.players.find((player) => player.id === 'player-1')!;
+    expect(downed.hp).toBe(0);
+    expect(downed.downedRemainingMs).toBeGreaterThan(0);
     expect(snapshot.status).toBe('running');
 
-    // Achève le second avatar via un assaillant posé sur lui : la défaite se déclenche alors.
-    const secondPosition = snapshot.players.find((player) => player.id === 'player-2')!.position;
-    simulation.spawnEnemy('raider', secondPosition);
+    // Avance jusqu'à la réapparition (les avatars restent immobiles, le village est sûr).
     let guard = 0;
-    while (simulation.createSnapshot().status === 'running' && guard < 500) {
+    while (
+      guard < 4000 &&
+      (simulation.createSnapshot().players.find((player) => player.id === 'player-1')?.hp ?? 0) <= 0
+    ) {
       simulation.stepMulti({});
       guard += 1;
     }
 
     snapshot = simulation.createSnapshot();
-    expect(snapshot.players.every((player) => player.hp <= 0)).toBe(true);
-    expect(snapshot.status).toBe('defeat');
+    const revived = snapshot.players.find((player) => player.id === 'player-1')!;
+    expect(revived.hp).toBeGreaterThan(0);
+    expect(revived.downedRemainingMs).toBe(0);
+    expect(snapshot.status).toBe('running');
+  });
+
+  it('donne à chaque avatar ses PROPRES améliorations (choix personnels)', () => {
+    const simulation = new GameSimulation(defaultContent, 'coop-upg', { playerIds: [...COOP_IDS] });
+    simulation.start();
+
+    // Un niveau gagné en commun ⇒ chaque avatar reçoit une offre d'amélioration.
+    const firstThreshold = defaultContent.progression.experiencePerLevel[0]!;
+    simulation.giveExperience(firstThreshold + 5);
+    simulation.stepMulti({});
+
+    const offer = simulation.createSnapshot().players;
+    const p1Offer = offer.find((player) => player.id === 'player-1')!;
+    const p2Offer = offer.find((player) => player.id === 'player-2')!;
+    expect(p1Offer.upgradeChoices.length).toBeGreaterThan(0);
+    expect(p2Offer.upgradeChoices.length).toBeGreaterThan(0);
+
+    // player-1 choisit une amélioration ; player-2 n'y touche pas.
+    const chosen = p1Offer.upgradeChoices[0]!.id;
+    simulation.stepMulti({
+      'player-1': { sequence: 1, moveX: 0, moveY: 0, selectUpgradeId: chosen },
+    });
+
+    const after = simulation.createSnapshot().players;
+    const p1 = after.find((player) => player.id === 'player-1')!;
+    const p2 = after.find((player) => player.id === 'player-2')!;
+    // Le choix est PERSONNEL : seul player-1 l'a enregistré, player-2 garde son offre.
+    expect(p1.selectedUpgrades).toContain(chosen);
+    expect(p2.selectedUpgrades).not.toContain(chosen);
+    expect(p2.upgradeChoices.length).toBeGreaterThan(0);
   });
 
   it('conserve le comportement solo : step applique tout à player-1', () => {
