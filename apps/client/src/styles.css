@@ -57,6 +57,189 @@ body,
   user-select: none;
 }
 
+/* ─── Nouveau jeu (Tower) : HUD, boutique de tourelle, montée de niveau ─────── */
+.tower-hud {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #eee;
+  font:
+    13px/1.3 system-ui,
+    sans-serif;
+  pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+}
+.tower-hud .bar {
+  position: relative;
+  width: 240px;
+  height: 18px;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+}
+.tower-hud .bar > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  background: linear-gradient(90deg, #9f3347, #e85d75);
+}
+.tower-hud .bar--xp {
+  height: 10px;
+}
+.tower-hud .bar--xp > i {
+  background: linear-gradient(90deg, #6a4bd0, #b18cff);
+}
+.tower-hud .bar > span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+.tower-hud-level {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 240px;
+}
+.tower-hud-resources {
+  display: flex;
+  gap: 16px;
+}
+.tower-hud-resource {
+  display: flex;
+  gap: 5px;
+  align-items: baseline;
+}
+.tower-hud-resource strong {
+  color: #f4c76f;
+  font-size: 15px;
+}
+.tower-hud-wave {
+  font-weight: 700;
+  color: #9be8ff;
+}
+
+#turret-shop {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 36;
+  transform: translateX(-50%);
+}
+.turret-shop {
+  width: min(680px, 92vw);
+  padding: 14px 16px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 12px;
+  background: rgb(8 15 17 / 96%);
+  color: #eee;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 55%);
+}
+.turret-shop h2 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+.turret-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.turret-shop-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 5%);
+  color: #eee;
+  text-align: left;
+  cursor: pointer;
+}
+.turret-shop-item:hover:not(:disabled) {
+  background: rgb(244 199 111 / 12%);
+}
+.turret-shop-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.turret-shop-item strong {
+  font-size: 13px;
+}
+.turret-shop-item small {
+  color: #9aa7ad;
+  font-size: 11px;
+}
+.turret-shop-item span {
+  color: #f4c76f;
+  font-size: 11px;
+  font-weight: 700;
+}
+.turret-shop-item--repair {
+  grid-column: 1 / -1;
+}
+
+#levelup {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+#levelup:empty {
+  display: none;
+}
+.tower-levelup {
+  width: min(760px, 94vw);
+  padding: 20px 22px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 14px;
+  background: rgb(8 15 17 / 96%);
+  color: #eee;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 60%);
+  pointer-events: auto;
+}
+.tower-levelup h2 {
+  margin: 4px 0 12px;
+}
+.tower-levelup-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.tower-levelup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 2px solid #888;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 5%);
+  color: #eee;
+  text-align: left;
+  cursor: pointer;
+}
+.tower-levelup-card:hover {
+  background: rgb(255 255 255 / 10%);
+}
+.tower-levelup-card strong {
+  font-size: 15px;
+}
+.tower-levelup-card small {
+  color: #b8c2c6;
+  font-size: 12px;
+}
+
 body {
   min-width: 960px;
   min-height: 620px;
