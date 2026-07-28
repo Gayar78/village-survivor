@@ -93,10 +93,19 @@ function readCoopConfig(): CoopConfig | null {
 
 const coopConfig = readCoopConfig();
 // Co-op (au moins 2 joueurs) → session réseau hôte/invité ; sinon partie solo locale.
-const session: RenderableSession =
-  coopConfig !== null && coopConfig.roster.length > 1
-    ? createCoopSession(coopConfig)
-    : new LocalSession({ seed, playerCount });
+let session: RenderableSession;
+if (coopConfig !== null && coopConfig.roster.length > 1) {
+  session = createCoopSession(coopConfig);
+} else {
+  console.info(
+    `[play] démarrage SOLO — ${
+      coopConfig === null
+        ? 'aucune config co-op (lancement direct, ou page rafraîchie : relance depuis le hub)'
+        : `roster insuffisant (${String(coopConfig.roster.length)})`
+    }`,
+  );
+  session = new LocalSession({ seed, playerCount });
+}
 const scene = new GameScene(session);
 const hud = new Hud(hudElement, (upgradeId) => scene.selectUpgrade(upgradeId));
 const audio = new AudioFeedback();
