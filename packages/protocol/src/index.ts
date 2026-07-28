@@ -3,6 +3,10 @@ export type Vector2 = Readonly<{
   y: number;
 }>;
 
+// Contrat du nouveau jeu (« Tower / arme à feu », Phase 1) — construit en parallèle
+// de l'ancien jusqu'à la bascule finale.
+export * from './tower.js';
+
 export type GameStatus = 'ready' | 'running' | 'victory' | 'defeat';
 export type GamePhase = 'day' | 'night' | 'final';
 export type EnemyKind = 'guardian' | 'sleeper' | 'raider' | 'brute';
