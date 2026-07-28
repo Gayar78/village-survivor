@@ -47,12 +47,27 @@ export interface HubInvite {
   hubCode: string;
 }
 
+/** Un avatar de la partie co-op : identifiant (userId) + nom affiché. */
+export interface LaunchRosterEntry {
+  id: string;
+  name: string;
+}
+
 /** Paramètres d'un lancement de partie diffusé par le chef à tout le hub. */
 export interface LaunchPayload {
   /** Graine commune du monde : tous les membres démarrent le même monde. */
   seed: string;
   /** Nombre de joueurs de la partie (sert à l'échelle de difficulté). */
   playerCount: number;
+  /**
+   * Code du hub = topic du canal de jeu co-op (`game:<code>`). Absent ⇒ partie solo
+   * (ancien comportement : chaque client joue sa propre simulation).
+   */
+  code?: string;
+  /** userId de l'hôte (le chef) : c'est lui qui fait tourner l'unique simulation. */
+  hostId?: string;
+  /** Roster ordonné (hôte en premier) : un avatar par membre du hub au lancement. */
+  roster?: readonly LaunchRosterEntry[];
 }
 
 /** Capacité maximale d'un hub / partie co-op à cette étape. */

@@ -4,8 +4,10 @@ import Phaser from 'phaser';
 import { authService } from './account/authService.js';
 import type { AccountSession } from './account/types.js';
 import { statsService } from './account/statsService.js';
+import { createCoopSession, type CoopConfig } from './net/coopSession.js';
 import { GameScene } from './scenes/GameScene.js';
 import { LocalSession, type VillageSurvivorDebug } from './session/LocalSession.js';
+import type { RenderableSession } from './session/RenderableSession.js';
 import { AudioFeedback } from './ui/AudioFeedback.js';
 import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
@@ -61,7 +63,40 @@ function restartGame(): void {
   location.assign(`play.html?players=${String(playerCount)}`);
 }
 
-const session = new LocalSession({ seed, playerCount });
+// Configuration co-op posée par le lobby juste avant la navigation (clé consommée
+// une seule fois : un simple rafraîchissement de la page retombe donc en solo).
+const NETCODE_KEY = 'vs-coop-netcode';
+function readCoopConfig(): CoopConfig | null {
+  const raw = sessionStorage.getItem(NETCODE_KEY);
+  if (raw === null) {
+    return null;
+  }
+  sessionStorage.removeItem(NETCODE_KEY);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as CoopConfig).seed === 'string' &&
+      typeof (parsed as CoopConfig).code === 'string' &&
+      typeof (parsed as CoopConfig).hostId === 'string' &&
+      typeof (parsed as CoopConfig).me === 'string' &&
+      Array.isArray((parsed as CoopConfig).roster)
+    ) {
+      return parsed as CoopConfig;
+    }
+  } catch (error) {
+    console.warn('Configuration co-op illisible, démarrage en solo.', error);
+  }
+  return null;
+}
+
+const coopConfig = readCoopConfig();
+// Co-op (au moins 2 joueurs) → session réseau hôte/invité ; sinon partie solo locale.
+const session: RenderableSession =
+  coopConfig !== null && coopConfig.roster.length > 1
+    ? createCoopSession(coopConfig)
+    : new LocalSession({ seed, playerCount });
 const scene = new GameScene(session);
 const hud = new Hud(hudElement, (upgradeId) => scene.selectUpgrade(upgradeId));
 const audio = new AudioFeedback();
@@ -236,7 +271,9 @@ const game = new Phaser.Game({
   scene: [scene],
 });
 
-if (import.meta.env.DEV) {
+// Métriques de dev : uniquement en solo (la session locale expose `debug`). Les
+// sessions co-op (hôte/invité) ne fournissent pas cette console de débogage.
+if (import.meta.env.DEV && session instanceof LocalSession) {
   window.__VILLAGE_SURVIVOR_DEBUG__ = session.debug;
   const metrics = document.createElement('output');
   metrics.className = 'debug-metrics';

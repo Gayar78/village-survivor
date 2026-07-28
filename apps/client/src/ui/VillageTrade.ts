@@ -6,7 +6,7 @@ import type {
   ResourceType,
 } from '@village-survivor/protocol';
 
-import type { LocalSession } from '../session/LocalSession.js';
+import type { RenderableSession } from '../session/RenderableSession.js';
 import { InventoryGrid } from './InventoryGrid.js';
 
 /**
@@ -57,7 +57,7 @@ const RESOURCE_LABELS: Readonly<Record<ResourceType, string>> = {
  */
 export class VillageTrade {
   private readonly element: HTMLElement;
-  private readonly session: LocalSession;
+  private readonly session: RenderableSession;
   private readonly playerGrid = new InventoryGrid({
     id: 'player',
     handlers: {
@@ -95,7 +95,7 @@ export class VillageTrade {
   /** Handler clavier scopé : n'est branché que pendant que la vue est ouverte. */
   private readonly onKeyDown = (event: KeyboardEvent): void => this.handleKeyDown(event);
 
-  public constructor(element: HTMLElement, session: LocalSession) {
+  public constructor(element: HTMLElement, session: RenderableSession) {
     this.element = element;
     this.session = session;
   }

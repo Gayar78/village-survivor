@@ -11,7 +11,7 @@ import { defaultContent } from '@village-survivor/content';
 
 import { HitFlashTracker, matchEnemyAt } from '../render/hit-flash.js';
 import { lerpColor, resolvePhaseVisuals, type PhaseVisuals } from '../render/theme.js';
-import type { LocalSession } from '../session/LocalSession.js';
+import type { RenderableSession } from '../session/RenderableSession.js';
 import { VILLAGE_TRADE_HINT } from '../ui/VillageTrade.js';
 
 /**
@@ -105,7 +105,7 @@ export class GameScene extends Phaser.Scene {
   /** Rayon du cercle de chargement, calé autour du corps du joueur. */
   private static readonly CHANNEL_RING_RADIUS = 30;
 
-  private readonly session: LocalSession;
+  private readonly session: RenderableSession;
   private graphics!: Phaser.GameObjects.Graphics;
   private minimap!: Phaser.GameObjects.Graphics;
   private channelRing!: Phaser.GameObjects.Graphics;
@@ -157,7 +157,7 @@ export class GameScene extends Phaser.Scene {
   /** Halo discret (anneau fin) posé autour de l'objet interactif à portée. */
   private interactionHalo!: Phaser.GameObjects.Graphics;
 
-  public constructor(session: LocalSession) {
+  public constructor(session: RenderableSession) {
     super({ key: 'GameScene' });
     this.session = session;
   }

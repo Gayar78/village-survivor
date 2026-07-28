@@ -356,7 +356,20 @@ export class Hub {
     if (!this.isChief()) {
       return;
     }
-    const payload: LaunchPayload = { seed: randomSeed(), playerCount: this.members().length };
+    // Roster ordonné (chef en premier) : chaque membre du hub devient un avatar. Les
+    // identifiants d'avatar sont les userId, l'hôte est le chef (= le joueur local ici).
+    const members = this.members();
+    const roster = [...members]
+      .sort((a, b) => (a.isChief === b.isChief ? 0 : a.isChief ? -1 : 1))
+      .map((member) => ({ id: member.userId, name: member.displayName }));
+    const code = this.currentCode();
+    const payload: LaunchPayload = {
+      seed: randomSeed(),
+      playerCount: members.length,
+      ...(code.length > 0 && roster.length > 0
+        ? { code, hostId: this.session.userId, roster }
+        : {}),
+    };
     void (async () => {
       try {
         await realtimeService.launch(payload);

@@ -357,7 +357,20 @@ async function openHubChannel(code: string, isOwner: boolean): Promise<void> {
   channel.on<LaunchPayload>('broadcast', { event: 'launch' }, (message) => {
     const p = message.payload;
     if (typeof p?.seed === 'string' && typeof p.playerCount === 'number') {
-      emitLaunch({ seed: p.seed, playerCount: p.playerCount });
+      // On transmet aussi les champs co-op (code/hostId/roster) quand ils sont présents
+      // et bien formés, sans jamais laisser un payload malformé casser le lancement.
+      const coop =
+        typeof p.code === 'string' && typeof p.hostId === 'string' && Array.isArray(p.roster)
+          ? {
+              code: p.code,
+              hostId: p.hostId,
+              roster: p.roster.filter(
+                (entry): entry is { id: string; name: string } =>
+                  typeof entry?.id === 'string' && typeof entry.name === 'string',
+              ),
+            }
+          : {};
+      emitLaunch({ seed: p.seed, playerCount: p.playerCount, ...coop });
     }
   });
 

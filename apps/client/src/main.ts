@@ -66,6 +66,28 @@ function beginLaunch(payload: LaunchPayload): void {
     return;
   }
   coopLaunching = true;
+  const me = accountSession?.userId;
+  // Co-op réel : le payload porte le canal (code), l'hôte et un roster d'au moins 2
+  // joueurs. On dépose la config réseau (consommée par play.ts) puis on navigue.
+  if (
+    payload.code !== undefined &&
+    payload.hostId !== undefined &&
+    payload.roster !== undefined &&
+    payload.roster.length > 1 &&
+    me !== undefined
+  ) {
+    const config = {
+      seed: payload.seed,
+      code: payload.code,
+      hostId: payload.hostId,
+      me,
+      roster: payload.roster,
+    };
+    sessionStorage.setItem('vs-coop-netcode', JSON.stringify(config));
+    location.assign('play.html');
+    return;
+  }
+  // Sinon : partie solo (graine + nombre de joueurs pour l'échelle de difficulté).
   const query = `seed=${encodeURIComponent(payload.seed)}&players=${String(payload.playerCount)}`;
   location.assign(`play.html?${query}`);
 }
