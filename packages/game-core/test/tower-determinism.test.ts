@@ -49,7 +49,7 @@ describe('Tower lockstep determinism', () => {
     expect(createTowerStateFingerprint(changed)).not.toBe(createTowerStateFingerprint(state));
     expect(createTowerStateFingerprint(state)).toMatch(/^tower-v1:[0-9a-f]{16}$/);
     // Golden vector: changing canonicalization/hash requires a deliberate `tower-v2` bump.
-    expect(createTowerStateFingerprint(state)).toBe('tower-v1:b2cad01f98805077');
+    expect(createTowerStateFingerprint(state)).toBe('tower-v1:c9b59edd31acfa64');
   });
 
   it('keeps two same-seed simulations identical through movement, combat, weapons and upgrades', () => {

@@ -1,14 +1,15 @@
-// Contrat de données du NOUVEAU jeu (« Tower / arme à feu ») — Phase 1.
+// Contrat de données du NOUVEAU jeu (« Tower / arme à feu ») — Phase 3.
 //
 // Ce module est volontairement séparé de `index.ts` (l'ancien survivor à épée) :
 // tant que la bascule finale (Lot D) n'est pas faite, l'ancien jeu continue de
 // compiler et d'être déployé. Le nouveau moteur (game-core), le rendu et l'UI se
 // construisent en parallèle contre ce contrat figé.
 //
-// Modèle réseau : host-autoritaire. L'hôte fait tourner l'unique simulation et
-// diffuse `TowerGameState` ~20 Hz ; chaque client envoie son `TowerInput`. Chaque
-// joueur a un avatar (position/arme/PV/niveau/build PERSONNELS) ; la base (Cœur,
-// 4 tourelles, ferraille commune, vagues, carte) est PARTAGÉE.
+// Modèle réseau : lockstep P2P. Chaque pair applique les mêmes `TowerInput` au même
+// tick. Le contrat ne transporte donc que des données sérialisables et déterministes :
+// les durées sont des temps de simulation, jamais l'heure réelle. Chaque joueur a un
+// avatar (position/arme/PV/niveau/build PERSONNELS) ; la base (Cœur, 4 tourelles,
+// ferraille commune, vagues, carte) est PARTAGÉE.
 
 import type { Vector2 } from './index.js';
 
@@ -17,6 +18,32 @@ export type TowerStatus = 'ready' | 'running' | 'defeat';
 
 /** Les quatre tourelles fixes autour du Cœur. */
 export type TurretDir = 'N' | 'E' | 'S' | 'W';
+
+/** Règle déterministe utilisée par une tourelle pour départager ses cibles valides. */
+export type TurretTargetPriority = 'nearest' | 'strongest' | 'heartward';
+
+/** Modules uniques installables sur une tourelle. */
+export type TurretModuleId = 'overclock' | 'piercer' | 'capacitor';
+
+/** Améliorations persistantes achetées pour tout le réseau défensif. */
+export type TowerGlobalDefenseOfferId = 'fortify-heart' | 'network-damage' | 'network-range';
+
+/** Actions historiques de la boutique, conservées sans changement de protocole. */
+export type LegacyTurretShopAction =
+  'repair' | 'dmg' | 'range' | 'rate' | 'hp' | 'energy' | 'maxenergy';
+
+/**
+ * Grammaire fermée des actions de boutique transmises en lockstep.
+ *
+ * Les préfixes empêchent toute collision entre les catalogues. Une entrée reçue du
+ * réseau qui ne correspond pas exactement à cette union doit être ignorée avant
+ * mutation de la simulation ; les actions historiques restent valides telles quelles.
+ */
+export type TurretShopAction =
+  | LegacyTurretShopAction
+  | `module:${TurretModuleId}`
+  | `priority:${TurretTargetPriority}`
+  | `global:${TowerGlobalDefenseOfferId}`;
 
 /** Types de monstres du set MVP (Phase 1). Le roster complet viendra plus tard. */
 export type TowerMonsterKind = 'chaser' | 'runner' | 'brute' | 'kamikaze';
@@ -58,10 +85,13 @@ export type TowerInput = Readonly<{
    */
   selectUpgradeId?: string;
   /**
-   * Action de boutique de tourelle demandée ce tick : améliorer/réparer une tourelle.
-   * `upgradeId` = id d'une amélioration de boutique, ou 'repair'. Ignorée si le joueur
-   * n'est pas à portée d'une tourelle ou si la ferraille commune est insuffisante.
+   * Action de boutique demandée ce tick. Formats admis : action historique,
+   * `module:<TurretModuleId>`, `priority:<TurretTargetPriority>` ou
+   * `global:<TowerGlobalDefenseOfferId>`. Une action globale conserve `turret` pour
+   * rester compatible avec l'enveloppe historique et exige la même proximité.
    */
+  // `string` reste volontairement rétrocompatible sur le fil ; `TurretShopAction`
+  // décrit les seules valeurs reconnues après validation à la frontière réseau.
   turretShop?: Readonly<{ turret: TurretDir; action: string }>;
 }>;
 
@@ -130,6 +160,25 @@ export type TowerProjectileState = Readonly<{
   weaponId?: TowerWeaponId;
 }>;
 
+/** Niveau persistant d'une amélioration globale, partagé par tous les joueurs. */
+export type TowerGlobalDefenseUpgradeState = Readonly<{
+  id: TowerGlobalDefenseOfferId;
+  level: number;
+}>;
+
+/**
+ * Paquet courant de trois offres globales. `rotationId` est un index déterministe du
+ * catalogue de rotations (généralement `wave % rotationCount`), jamais un timestamp.
+ */
+export type TowerGlobalDefenseShopState = Readonly<{
+  rotationId: number;
+  offerIds: readonly [
+    TowerGlobalDefenseOfferId,
+    TowerGlobalDefenseOfferId,
+    TowerGlobalDefenseOfferId,
+  ];
+}>;
+
 export type TurretState = Readonly<{
   dir: TurretDir;
   position: Vector2;
@@ -140,6 +189,10 @@ export type TurretState = Readonly<{
   energy: number;
   maxEnergy: number;
   range: number;
+  /** Modules uniques, sans doublon et dans l'ordre canonique du catalogue partagé. */
+  modules: readonly TurretModuleId[];
+  /** `heartward` cible le monstre actuellement le plus proche du Cœur. */
+  targetPriority: TurretTargetPriority;
   alive: boolean;
 }>;
 
@@ -195,6 +248,10 @@ export type TowerGameState = Readonly<{
   wave: number;
   /** Ferraille COMMUNE (fonds de défense partagé pour la boutique de tourelle). */
   scrapFund: number;
+  /** Niveaux globaux persistants, triés dans l'ordre canonique du catalogue. */
+  globalDefenseUpgrades: readonly TowerGlobalDefenseUpgradeState[];
+  /** Trois offres globales de la vague courante et leur rotation déterministe. */
+  globalDefenseShop: TowerGlobalDefenseShopState;
   /** Avatar local (celui du client qui reçoit l'état) ; toujours l'un de `players`. */
   player: TowerPlayerState;
   players: readonly TowerPlayerState[];

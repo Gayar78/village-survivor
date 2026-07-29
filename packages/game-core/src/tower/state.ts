@@ -4,6 +4,8 @@
 import type {
   ProjectileSource,
   TowerMonsterKind,
+  TurretModuleId,
+  TurretTargetPriority,
   TowerUpgradeCard,
   TowerWeaponId,
   TurretDir,
@@ -133,6 +135,12 @@ export interface MutableTurret {
   fireRate: number;
   fireCooldownRemaining: number;
   alive: boolean;
+  /** Modules achetés pour cette tourelle, uniques et conservés dans l'ordre du catalogue. */
+  modules: TurretModuleId[];
+  /** Stratégie de ciblage locale, modifiable gratuitement par le joueur. */
+  targetPriority: TurretTargetPriority;
+  /** Perforations ajoutées aux projectiles de cette tourelle. */
+  pierce: number;
 }
 
 export interface MutableHeart {

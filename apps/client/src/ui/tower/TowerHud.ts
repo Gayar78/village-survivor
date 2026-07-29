@@ -1,10 +1,14 @@
 import type { TowerGameState } from '@village-survivor/protocol';
-import { TOWER_WEAPONS } from '@village-survivor/content';
+import { TOWER_GLOBAL_DEFENSE_OFFERS, TOWER_WEAPONS } from '@village-survivor/content';
 
 import './tower-ui.css';
 
 function percentage(value: number, maximum: number): number {
   return maximum <= 0 ? 0 : Math.max(0, Math.min(100, (value / maximum) * 100));
+}
+
+function defenseOfferLabel(id: string): string {
+  return TOWER_GLOBAL_DEFENSE_OFFERS.find((offer) => offer.id === id)?.label ?? id;
 }
 
 /**
@@ -23,6 +27,8 @@ export class TowerHud {
 
   public render(state: TowerGameState): void {
     const player = state.player;
+    const defenseRotation = state.globalDefenseShop.rotationId;
+    const defenseOffers = state.globalDefenseShop.offerIds.map(defenseOfferLabel).join(' · ');
     const signature = [
       Math.ceil(player.hp),
       player.maxHp,
@@ -32,6 +38,8 @@ export class TowerHud {
       state.scrapFund,
       player.gold,
       state.wave,
+      defenseRotation,
+      defenseOffers,
       player.activeWeaponId,
       ...player.weapons.flatMap((weapon) => [
         weapon.level,
@@ -82,6 +90,10 @@ export class TowerHud {
             </div>
           </div>
           <div class="tower-hud-wave" data-testid="tower-hud-wave"><span>Veille</span> Vague ${state.wave}</div>
+          <div class="tower-hud-network" data-testid="tower-hud-defense-network">
+            <span>Réseau · rotation ${defenseRotation + 1}</span>
+            <strong>${defenseOffers}</strong>
+          </div>
         </div>
       </div>
     `;

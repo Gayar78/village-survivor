@@ -5,8 +5,12 @@
 // le `TowerGameState` figé du protocole. Déterministe (SeededRandom) pour les tests.
 
 import {
+  TOWER_GLOBAL_DEFENSE_OFFERS,
+  TOWER_GLOBAL_DEFENSE_ROTATIONS,
   TOWER_TURRET_REPAIR_COST_PER_HP,
+  TOWER_TURRET_MODULES,
   TOWER_TURRET_SHOP,
+  TOWER_TURRET_TARGET_PRIORITIES,
   TOWER_WEAPONS,
   type TowerWeaponDefinition,
 } from '@village-survivor/content';
@@ -16,6 +20,7 @@ import type {
   TowerEvent,
   TowerEventType,
   TowerGameState,
+  TowerGlobalDefenseOfferId,
   TowerInput,
   TowerMonsterKind,
   TowerMonsterState,
@@ -79,6 +84,9 @@ const TURRET_DIRS: readonly TurretDir[] = ['N', 'E', 'S', 'W'];
 const MONSTER_KINDS: readonly TowerMonsterKind[] = ['chaser', 'runner', 'brute', 'kamikaze'];
 
 const WEAPON_ACTION_PREFIX = 'weapon:';
+const MODULE_ACTION_PREFIX = 'module:';
+const PRIORITY_ACTION_PREFIX = 'priority:';
+const GLOBAL_ACTION_PREFIX = 'global:';
 
 function weaponDefinition(id: TowerWeaponId): TowerWeaponDefinition {
   const definition = TOWER_WEAPONS.find((candidate) => candidate.id === id);
@@ -124,6 +132,10 @@ export class TowerSimulation {
   private readonly monsters: MutableTowerMonster[] = [];
   private readonly projectiles: MutableTowerProjectile[] = [];
   private readonly scraps: MutableScrap[] = [];
+  private readonly globalDefenseUpgrades: Array<{
+    id: TowerGlobalDefenseOfferId;
+    level: number;
+  }> = TOWER_GLOBAL_DEFENSE_OFFERS.map((offer) => ({ id: offer.id, level: 0 }));
 
   private status: TowerStatus = 'ready';
   private tick = 0;
@@ -235,6 +247,9 @@ export class TowerSimulation {
       fireRate: TURRET.fireRate,
       fireCooldownRemaining: 0,
       alive: true,
+      modules: [],
+      targetPriority: 'nearest',
+      pierce: 0,
     };
   }
 
@@ -483,8 +498,8 @@ export class TowerSimulation {
   }
 
   private findTurretTarget(turret: MutableTurret): MutableTowerMonster | undefined {
-    let nearest: MutableTowerMonster | undefined;
-    let nearestDistance = Infinity;
+    let selected: MutableTowerMonster | undefined;
+    let selectedScore = Infinity;
     for (const monster of this.monsters) {
       if (monster.hp <= 0) {
         continue;
@@ -503,12 +518,29 @@ export class TowerSimulation {
       if (angleDifferenceDeg(angleToMonster, turret.angle) > turret.halfArcDeg) {
         continue;
       }
-      if (gap < nearestDistance) {
-        nearestDistance = gap;
-        nearest = monster;
+      const score = this.turretTargetScore(turret, monster, gap);
+      // L'ordre d'apparition des monstres est le départage canonique en cas d'égalité.
+      if (score < selectedScore) {
+        selectedScore = score;
+        selected = monster;
       }
     }
-    return nearest;
+    return selected;
+  }
+
+  private turretTargetScore(
+    turret: MutableTurret,
+    monster: MutableTowerMonster,
+    gap: number,
+  ): number {
+    switch (turret.targetPriority) {
+      case 'nearest':
+        return gap;
+      case 'strongest':
+        return -monster.hp;
+      case 'heartward':
+        return distance(monster.position, this.heart.position);
+    }
   }
 
   private spawnTurretBullet(turret: MutableTurret, target: MutableTowerMonster): void {
@@ -527,7 +559,7 @@ export class TowerSimulation {
       source: 'turret',
       weaponId: undefined,
       remainingRange: turret.bulletRange,
-      pierce: 0,
+      pierce: turret.pierce,
       bounce: 0,
       burnStacks: 0,
       explodeOnKill: false,
@@ -1135,7 +1167,102 @@ export class TowerSimulation {
       this.repairTurret(turret);
       return;
     }
+    if (request.action.startsWith(MODULE_ACTION_PREFIX)) {
+      this.buyTurretModule(turret, request.action.slice(MODULE_ACTION_PREFIX.length));
+      return;
+    }
+    if (request.action.startsWith(PRIORITY_ACTION_PREFIX)) {
+      this.setTurretTargetPriority(turret, request.action.slice(PRIORITY_ACTION_PREFIX.length));
+      return;
+    }
+    if (request.action.startsWith(GLOBAL_ACTION_PREFIX)) {
+      this.buyGlobalDefenseUpgrade(request.action.slice(GLOBAL_ACTION_PREFIX.length));
+      return;
+    }
     this.buyTurretUpgrade(turret, request.action);
+  }
+
+  private buyTurretModule(turret: MutableTurret, requestedId: string): void {
+    const module = TOWER_TURRET_MODULES.find((candidate) => candidate.id === requestedId);
+    if (
+      module === undefined ||
+      turret.modules.includes(module.id) ||
+      this.scrapFund < module.cost
+    ) {
+      return;
+    }
+
+    switch (module.effect.kind) {
+      case 'fire-cooldown-multiplier':
+        turret.fireRate = Math.max(
+          TURRET_SHOP_EFFECTS.rateMinimum,
+          turret.fireRate * module.effect.multiplier,
+        );
+        break;
+      case 'projectile-pierce-bonus':
+        turret.pierce += module.effect.amount;
+        break;
+      case 'energy-capacity-and-grant':
+        turret.maxEnergy += module.effect.capacityBonus;
+        turret.energy = Math.min(turret.maxEnergy, turret.energy + module.effect.energyGrant);
+        break;
+    }
+
+    turret.modules.push(module.id);
+    turret.modules.sort(
+      (left, right) =>
+        TOWER_TURRET_MODULES.findIndex((entry) => entry.id === left) -
+        TOWER_TURRET_MODULES.findIndex((entry) => entry.id === right),
+    );
+    this.scrapFund -= module.cost;
+  }
+
+  private setTurretTargetPriority(turret: MutableTurret, requested: string): void {
+    const priority = TOWER_TURRET_TARGET_PRIORITIES.find((candidate) => candidate.id === requested);
+    if (priority !== undefined) {
+      turret.targetPriority = priority.id;
+    }
+  }
+
+  private buyGlobalDefenseUpgrade(requestedId: string): void {
+    const offer = TOWER_GLOBAL_DEFENSE_OFFERS.find((candidate) => candidate.id === requestedId);
+    if (offer === undefined || !this.currentGlobalDefenseOfferIds().includes(offer.id)) {
+      return;
+    }
+    const upgrade = this.globalDefenseUpgrades.find((candidate) => candidate.id === offer.id);
+    if (upgrade === undefined || upgrade.level >= offer.maxLevel || this.scrapFund < offer.cost) {
+      return;
+    }
+
+    switch (offer.effect.kind) {
+      case 'heart-max-hp-bonus':
+        this.heart.maxHp += offer.effect.amount;
+        this.heart.hp += offer.effect.amount;
+        break;
+      case 'turret-damage-multiplier':
+        for (const networkTurret of this.turrets) {
+          networkTurret.bulletDamage *= offer.effect.multiplier;
+        }
+        break;
+      case 'turret-range-bonus':
+        for (const networkTurret of this.turrets) {
+          networkTurret.range += offer.effect.amount;
+          networkTurret.bulletRange += offer.effect.amount;
+        }
+        break;
+    }
+
+    upgrade.level += 1;
+    this.scrapFund -= offer.cost;
+  }
+
+  private currentGlobalDefenseOfferIds(): readonly TowerGlobalDefenseOfferId[] {
+    const rotation = TOWER_GLOBAL_DEFENSE_ROTATIONS[this.currentGlobalDefenseRotationId()];
+    return rotation ?? [];
+  }
+
+  private currentGlobalDefenseRotationId(): number {
+    return this.wave % TOWER_GLOBAL_DEFENSE_ROTATIONS.length;
   }
 
   private buyTurretUpgrade(turret: MutableTurret, action: string): void {
@@ -1297,6 +1424,11 @@ export class TowerSimulation {
     if (primary === undefined) {
       throw new Error('TowerSimulation requiert au moins un joueur.');
     }
+    const rotationId = this.currentGlobalDefenseRotationId();
+    const offerIds = TOWER_GLOBAL_DEFENSE_ROTATIONS[rotationId];
+    if (offerIds === undefined) {
+      throw new Error('Le catalogue Tower requiert au moins une rotation globale.');
+    }
     return {
       tick: this.tick,
       elapsedMs: this.elapsedMs,
@@ -1309,6 +1441,8 @@ export class TowerSimulation {
       },
       wave: this.wave,
       scrapFund: this.scrapFund,
+      globalDefenseUpgrades: this.globalDefenseUpgrades.map((upgrade) => ({ ...upgrade })),
+      globalDefenseShop: { rotationId, offerIds: [...offerIds] },
       player: primary,
       players,
       heart: this.projectHeart(),
@@ -1381,6 +1515,8 @@ export class TowerSimulation {
       energy: turret.energy,
       maxEnergy: turret.maxEnergy,
       range: turret.range,
+      modules: [...turret.modules],
+      targetPriority: turret.targetPriority,
       alive: turret.alive,
     };
   }
