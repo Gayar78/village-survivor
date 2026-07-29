@@ -8,6 +8,7 @@ import type {
   TowerMonsterState,
   TowerPlayerState,
   TowerProjectileState,
+  TowerWeaponId,
   TurretState,
   Vector2,
 } from '@village-survivor/protocol';
@@ -54,6 +55,18 @@ const MONSTER_COLORS: Readonly<Record<TowerMonsterKind, number>> = {
   runner: 0xd0a749,
   brute: 0x765a82,
   kamikaze: 0xd66a3f,
+};
+
+const WEAPON_COLORS: Readonly<Record<TowerWeaponId, number>> = {
+  rifle: 0xd9d1b5,
+  shotgun: 0xf6b866,
+  marksman: 0xa9d8c8,
+};
+
+const WEAPON_BARRELS: Readonly<Record<TowerWeaponId, { width: number; length: number }>> = {
+  rifle: { width: 5, length: 14 },
+  shotgun: { width: 8, length: 10 },
+  marksman: { width: 3, length: 21 },
 };
 
 /** Demi-largeur (radians) de l'arc de portée d'une tourelle (110° au total). */
@@ -363,7 +376,11 @@ export class TowerScene extends Phaser.Scene {
     for (const projectile of state.projectiles) {
       const { x, y } = this.toScreen(this.projectileRenderPos(projectile));
       const color =
-        projectile.source === 'player' ? COLORS.projectilePlayer : COLORS.projectileTurret;
+        projectile.source === 'player'
+          ? projectile.weaponId === undefined
+            ? COLORS.projectilePlayer
+            : WEAPON_COLORS[projectile.weaponId]
+          : COLORS.projectileTurret;
       graphics.fillStyle(color, projectile.source === 'player' ? 0.2 : 0.16);
       graphics.fillCircle(x, y, projectile.radius + 4);
       graphics.fillStyle(color, 1);
@@ -437,14 +454,15 @@ export class TowerScene extends Phaser.Scene {
     }
     const bodyColor = isLocal ? COLORS.local : COLORS.ally;
     const aimAngle = Math.atan2(player.aim.y, player.aim.x);
+    const barrel = WEAPON_BARRELS[player.activeWeaponId];
     // Canon : petit trait orienté vers la direction de visée, dessiné avant le
     // corps pour que celui-ci le recouvre partiellement (aspect « arme tenue »).
-    graphics.lineStyle(5, COLORS.barrel, 0.95);
+    graphics.lineStyle(barrel.width, WEAPON_COLORS[player.activeWeaponId], 0.95);
     graphics.lineBetween(
       x + Math.cos(aimAngle) * (PLAYER_RADIUS - 4),
       y + Math.sin(aimAngle) * (PLAYER_RADIUS - 4),
-      x + Math.cos(aimAngle) * (PLAYER_RADIUS + 14),
-      y + Math.sin(aimAngle) * (PLAYER_RADIUS + 14),
+      x + Math.cos(aimAngle) * (PLAYER_RADIUS + barrel.length),
+      y + Math.sin(aimAngle) * (PLAYER_RADIUS + barrel.length),
     );
     graphics.fillStyle(bodyColor, 1);
     graphics.fillCircle(x, y, PLAYER_RADIUS);

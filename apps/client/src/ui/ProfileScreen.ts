@@ -4,7 +4,7 @@ import type { AccountSession, PlayerStats } from '../account/types.js';
 
 type ProfileState =
   | { kind: 'loading'; session: AccountSession }
-  | { kind: 'ready'; session: AccountSession; stats: PlayerStats }
+  | { kind: 'ready'; session: AccountSession; stats: PlayerStats; accountGold: number | null }
   | { kind: 'error'; session: AccountSession; message: string };
 
 /** Échappe le texte dynamique injecté dans du innerHTML. */
@@ -17,11 +17,7 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Écran de profil, ouvert depuis le menu : affiche l'identité du joueur ainsi
- * que ses statistiques cumulées (parties, temps de jeu, ressources
- * récoltées…) et permet de se déconnecter.
- */
+/** Écran de profil, ouvert depuis le menu : identité et repères de progression. */
 export class ProfileScreen {
   private readonly element: HTMLElement;
   private readonly onClose: () => void;
@@ -53,8 +49,11 @@ export class ProfileScreen {
     this.show();
     this.render();
     try {
-      const stats = await statsService.loadStats();
-      this.state = { kind: 'ready', session, stats };
+      const [stats, accountGold] = await Promise.all([
+        statsService.loadStats(),
+        statsService.loadAccountGold().catch(() => null),
+      ]);
+      this.state = { kind: 'ready', session, stats, accountGold };
     } catch (error) {
       this.state = { kind: 'error', session, message: this.describeError(error) };
     }
@@ -67,12 +66,17 @@ export class ProfileScreen {
       return;
     }
     const { session } = this.state;
+    const initial = session.displayName.trim().charAt(0).toUpperCase() || 'V';
     this.element.innerHTML = `
       <div class="profile-panel">
         <div class="profile-header">
-          <div>
-            <h2 class="profile-name">${escapeHtml(session.displayName)}</h2>
-            <p class="profile-email">${escapeHtml(session.email)}</p>
+          <div class="profile-identity">
+            <span class="profile-avatar" aria-hidden="true">${escapeHtml(initial)}</span>
+            <div>
+              <p class="profile-kicker">Fiche de survivant</p>
+              <h2 class="profile-name">${escapeHtml(session.displayName)}</h2>
+              <p class="profile-email">${escapeHtml(session.email)}</p>
+            </div>
           </div>
           <button type="button" class="profile-close" id="profile-close">Fermer</button>
         </div>
@@ -95,52 +99,38 @@ export class ProfileScreen {
       return '';
     }
     if (this.state.kind === 'loading') {
-      return `<p class="profile-hint">Chargement des statistiques…</p>`;
+      return `<p class="profile-hint">Chargement de la fiche…</p>`;
     }
     if (this.state.kind === 'error') {
       return `<p class="auth-error">${escapeHtml(this.state.message)}</p>`;
     }
     const stats = this.state.stats;
+    const { accountGold } = this.state;
     return `
-      <div class="profile-stats-grid">
-        <div class="profile-stat"><span>Parties jouées</span><strong>${stats.gamesPlayed}</strong></div>
-        <div class="profile-stat"><span>Parties gagnées</span><strong>${stats.gamesWon}</strong></div>
-        <div class="profile-stat"><span>Parties perdues</span><strong>${stats.gamesLost}</strong></div>
-        <div class="profile-stat">
-          <span>Temps de jeu</span><strong>${escapeHtml(this.formatDuration(stats.totalPlayMs))}</strong>
+      <section class="profile-wallet" aria-label="Or du compte">
+        <div>
+          <span class="profile-wallet__eyebrow">Trésor personnel</span>
+          <strong class="profile-wallet__value">${accountGold === null ? '—' : this.formatNumber(accountGold)} <span>or</span></strong>
+          <p>${accountGold === null ? 'Solde de compte bientôt disponible.' : 'Réserve disponible sur votre compte.'}</p>
         </div>
-        <div class="profile-stat"><span>Meilleure vague</span><strong>${stats.bestCycle}</strong></div>
-        <div class="profile-stat"><span>Niveau max</span><strong>${stats.maxPlayerLevel}</strong></div>
-      </div>
-      <h3 class="profile-subtitle">Ressources récoltées</h3>
-      <div class="profile-resources-grid">
-        <div class="profile-resource">
-          <span class="profile-resource-icon profile-resource-icon--wood"></span>
-          <span class="profile-resource-label">Bois</span>
-          <strong>${stats.resourcesGathered.wood}</strong>
+        <span class="profile-wallet__coin" aria-hidden="true">✦</span>
+      </section>
+      <section class="profile-overview" aria-labelledby="profile-overview-title">
+        <h3 class="profile-subtitle" id="profile-overview-title">Expédition</h3>
+        <div class="profile-stats-grid">
+          <div class="profile-stat"><span>Parties</span><strong>${this.formatNumber(stats.gamesPlayed)}</strong></div>
+          <div class="profile-stat"><span>Victoires</span><strong>${this.formatNumber(stats.gamesWon)}</strong></div>
+          <div class="profile-stat"><span>Meilleure vague</span><strong>${this.formatNumber(stats.bestCycle)}</strong></div>
+          <div class="profile-stat">
+            <span>Temps de jeu</span><strong>${escapeHtml(this.formatDuration(stats.totalPlayMs))}</strong>
+          </div>
         </div>
-        <div class="profile-resource">
-          <span class="profile-resource-icon profile-resource-icon--stone"></span>
-          <span class="profile-resource-label">Pierre</span>
-          <strong>${stats.resourcesGathered.stone}</strong>
-        </div>
-        <div class="profile-resource">
-          <span class="profile-resource-icon profile-resource-icon--iron"></span>
-          <span class="profile-resource-label">Fer</span>
-          <strong>${stats.resourcesGathered.iron}</strong>
-        </div>
-        <div class="profile-resource">
-          <span class="profile-resource-icon profile-resource-icon--gold"></span>
-          <span class="profile-resource-label">Or</span>
-          <strong>${stats.resourcesGathered.gold}</strong>
-        </div>
-        <div class="profile-resource">
-          <span class="profile-resource-icon profile-resource-icon--diamond"></span>
-          <span class="profile-resource-label">Diamant</span>
-          <strong>${stats.resourcesGathered.diamond}</strong>
-        </div>
-      </div>
+      </section>
     `;
+  }
+
+  private formatNumber(value: number): string {
+    return new Intl.NumberFormat('fr-FR').format(value);
   }
 
   private attachListeners(): void {

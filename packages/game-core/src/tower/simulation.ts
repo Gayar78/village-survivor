@@ -4,7 +4,12 @@
 // base partagée (Cœur, 4 tourelles, ferraille commune, vagues) et projette le tout dans
 // le `TowerGameState` figé du protocole. Déterministe (SeededRandom) pour les tests.
 
-import { TOWER_TURRET_REPAIR_COST_PER_HP, TOWER_TURRET_SHOP } from '@village-survivor/content';
+import {
+  TOWER_TURRET_REPAIR_COST_PER_HP,
+  TOWER_TURRET_SHOP,
+  TOWER_WEAPONS,
+  type TowerWeaponDefinition,
+} from '@village-survivor/content';
 import type {
   HeartState,
   ProjectileSource,
@@ -18,6 +23,8 @@ import type {
   TowerProjectileState,
   TowerStatus,
   TowerUpgradeCard,
+  TowerWeaponId,
+  TowerWeaponState,
   TurretDir,
   TurretState,
   ScrapPickupState,
@@ -70,6 +77,16 @@ const NEUTRAL_INPUT: TowerInput = { sequence: 0, moveX: 0, moveY: 0, aimX: 0, ai
 const TURRET_DIRS: readonly TurretDir[] = ['N', 'E', 'S', 'W'];
 
 const MONSTER_KINDS: readonly TowerMonsterKind[] = ['chaser', 'runner', 'brute', 'kamikaze'];
+
+const WEAPON_ACTION_PREFIX = 'weapon:';
+
+function weaponDefinition(id: TowerWeaponId): TowerWeaponDefinition {
+  const definition = TOWER_WEAPONS.find((candidate) => candidate.id === id);
+  if (definition === undefined) {
+    throw new Error(`Arme Tower inconnue : ${id}`);
+  }
+  return definition;
+}
 
 const UPGRADE_RARITIES: readonly UpgradeRarity[] = [
   'common',
@@ -163,6 +180,16 @@ export class TowerSimulation {
       pendingUpgrades: 0,
       upgradeChoices: [],
       downedRemainingMs: 0,
+      activeWeaponId: 'rifle',
+      weapons: TOWER_WEAPONS.map((weapon) => ({
+        id: weapon.id,
+        level: 1,
+        damageMultiplier: 1,
+        fireRateMultiplier: 1,
+        spreadMultiplier: 1,
+        pierceBonus: 0,
+        fireCooldownRemaining: 0,
+      })),
       speed: PLAYER.speed,
       pickupRadius: PLAYER.pickupRadius,
       fireRate: PLAYER.fireRate,
@@ -254,6 +281,7 @@ export class TowerSimulation {
     this.updateNaturalScrap(deltaMs);
 
     for (const { player, input } of entries) {
+      this.handleWeaponSelection(player, input);
       this.handleTurretShop(player, input);
       this.handleUpgradeSelection(player, input);
     }
@@ -308,8 +336,12 @@ export class TowerSimulation {
     input: TowerInput,
     deltaSeconds: number,
   ): void {
-    player.fireCooldownRemaining = Math.max(0, player.fireCooldownRemaining - deltaSeconds);
-    if (input.fire !== true || player.fireCooldownRemaining > 0) {
+    const weapon = player.weapons.find((candidate) => candidate.id === player.activeWeaponId);
+    if (weapon === undefined) {
+      return;
+    }
+    weapon.fireCooldownRemaining = Math.max(0, weapon.fireCooldownRemaining - deltaSeconds);
+    if (input.fire !== true || weapon.fireCooldownRemaining > 0) {
       return;
     }
     const aimLength = Math.hypot(player.aim.x, player.aim.y);
@@ -317,13 +349,18 @@ export class TowerSimulation {
       return;
     }
     const baseAngle = Math.atan2(player.aim.y, player.aim.x);
+    const definition = weaponDefinition(weapon.id);
     const extraShots = this.rollMultishot(player.multishotChance);
-    const totalShots = 1 + extraShots;
+    const totalShots = definition.projectileCount + extraShots;
+    const spreadStep =
+      definition.projectileCount > 1
+        ? definition.spreadRad * weapon.spreadMultiplier
+        : MULTISHOT_SPREAD_RAD;
     for (let index = 0; index < totalShots; index += 1) {
-      const spread = (index - (totalShots - 1) / 2) * MULTISHOT_SPREAD_RAD;
-      this.spawnPlayerBullet(player, baseAngle + spread);
+      const spread = (index - (totalShots - 1) / 2) * spreadStep;
+      this.spawnPlayerBullet(player, weapon, definition, baseAngle + spread);
     }
-    player.fireCooldownRemaining = player.fireRate;
+    weapon.fireCooldownRemaining = this.weaponFireRate(player, weapon, definition);
   }
 
   private rollMultishot(chance: number): number {
@@ -338,8 +375,13 @@ export class TowerSimulation {
     return extra;
   }
 
-  private spawnPlayerBullet(player: MutableTowerPlayer, angle: number): void {
-    let damage = player.bulletDamage;
+  private spawnPlayerBullet(
+    player: MutableTowerPlayer,
+    weapon: MutableTowerPlayer['weapons'][number],
+    definition: TowerWeaponDefinition,
+    angle: number,
+  ): void {
+    let damage = this.weaponDamage(player, weapon, definition);
     if (player.critChance > 0 && this.combatRandom.next() < player.critChance) {
       damage *= player.critMult;
     }
@@ -347,13 +389,14 @@ export class TowerSimulation {
     this.projectiles.push({
       id: `bullet-${this.projectileCounter}`,
       position: { x: player.position.x, y: player.position.y },
-      velocityX: Math.cos(angle) * player.bulletSpeed,
-      velocityY: Math.sin(angle) * player.bulletSpeed,
-      radius: player.bulletRadius,
+      velocityX: Math.cos(angle) * this.weaponBulletSpeed(player, definition),
+      velocityY: Math.sin(angle) * this.weaponBulletSpeed(player, definition),
+      radius: this.weaponBulletRadius(player, definition),
       damage,
       source: 'player',
-      remainingRange: player.bulletRange,
-      pierce: player.pierce,
+      weaponId: weapon.id,
+      remainingRange: this.weaponBulletRange(player, definition),
+      pierce: definition.basePierce + player.pierce + weapon.pierceBonus,
       bounce: player.bounce,
       burnStacks: player.burnStacks,
       explodeOnKill: player.explodeOnKill,
@@ -362,6 +405,44 @@ export class TowerSimulation {
       ownerId: player.id,
       hitMonsterIds: new Set<string>(),
     });
+  }
+
+  private weaponDamage(
+    player: MutableTowerPlayer,
+    weapon: MutableTowerPlayer['weapons'][number],
+    definition: TowerWeaponDefinition,
+  ): number {
+    return (
+      definition.bulletDamage *
+      (player.bulletDamage / PLAYER.bulletDamage) *
+      weapon.damageMultiplier
+    );
+  }
+
+  private weaponFireRate(
+    player: MutableTowerPlayer,
+    weapon: MutableTowerPlayer['weapons'][number],
+    definition: TowerWeaponDefinition,
+  ): number {
+    return Math.max(
+      TURRET_SHOP_EFFECTS.rateMinimum,
+      definition.fireRate * (player.fireRate / PLAYER.fireRate) * weapon.fireRateMultiplier,
+    );
+  }
+
+  private weaponBulletSpeed(player: MutableTowerPlayer, definition: TowerWeaponDefinition): number {
+    return Math.max(1, definition.bulletSpeed + player.bulletSpeed - PLAYER.bulletSpeed);
+  }
+
+  private weaponBulletRange(player: MutableTowerPlayer, definition: TowerWeaponDefinition): number {
+    return Math.max(1, definition.bulletRange + player.bulletRange - PLAYER.bulletRange);
+  }
+
+  private weaponBulletRadius(
+    player: MutableTowerPlayer,
+    definition: TowerWeaponDefinition,
+  ): number {
+    return Math.max(1, definition.bulletRadius + player.bulletRadius - PLAYER.bulletRadius);
   }
 
   private applyPlayerAura(player: MutableTowerPlayer, deltaSeconds: number): void {
@@ -444,6 +525,7 @@ export class TowerSimulation {
       radius: turret.bulletRadius,
       damage: turret.bulletDamage,
       source: 'turret',
+      weaponId: undefined,
       remainingRange: turret.bulletRange,
       pierce: 0,
       bounce: 0,
@@ -788,6 +870,9 @@ export class TowerSimulation {
       // Co-op : l'avatar passe « à terre » et réapparaîtra ; il n'agit plus d'ici là.
       player.downedRemainingMs = DOWNED_DURATION_MS;
       player.fireCooldownRemaining = 0;
+      for (const weapon of player.weapons) {
+        weapon.fireCooldownRemaining = 0;
+      }
     }
   }
 
@@ -940,14 +1025,14 @@ export class TowerSimulation {
     if (player.pendingUpgrades <= 0 || player.upgradeChoices.length > 0) {
       return;
     }
-    player.upgradeChoices = this.rollUpgradeOffer();
+    player.upgradeChoices = this.rollUpgradeOffer(player);
   }
 
-  private rollUpgradeOffer(): TowerUpgradeCard[] {
+  private rollUpgradeOffer(player: MutableTowerPlayer): TowerUpgradeCard[] {
     const offer: TowerUpgradeCard[] = [];
     const usedIds = new Set<string>();
     for (let slot = 0; slot < UPGRADE_CHOICE_COUNT; slot += 1) {
-      const card = this.drawUpgradeCard(usedIds);
+      const card = this.drawUpgradeCard(player, usedIds);
       if (card === undefined) {
         break;
       }
@@ -957,13 +1042,18 @@ export class TowerSimulation {
     return offer;
   }
 
-  private drawUpgradeCard(usedIds: Set<string>): TowerUpgradeCard | undefined {
+  private drawUpgradeCard(
+    player: MutableTowerPlayer,
+    usedIds: Set<string>,
+  ): TowerUpgradeCard | undefined {
     // Tirage pondéré par rareté, puis une carte de cette rareté non déjà présente ;
     // repli sur n'importe quelle carte restante si la rareté tirée est épuisée.
     const rarity = this.pickRarity();
     const pools: UpgradeRarity[] = [rarity, ...UPGRADE_RARITIES.filter((r) => r !== rarity)];
     for (const pool of pools) {
-      const candidates = getUpgradesByRarity(pool).filter((card) => !usedIds.has(card.id));
+      const candidates = getUpgradesByRarity(pool).filter(
+        (card) => !usedIds.has(card.id) && (card.isEligible?.(player) ?? true),
+      );
       if (candidates.length === 0) {
         continue;
       }
@@ -978,6 +1068,7 @@ export class TowerSimulation {
         rarity: chosen.rarity,
         label: chosen.label,
         description: chosen.description,
+        ...(chosen.weaponId === undefined ? {} : { weaponId: chosen.weaponId }),
       };
     }
     return undefined;
@@ -1012,6 +1103,18 @@ export class TowerSimulation {
     player.pendingUpgrades = Math.max(0, player.pendingUpgrades - 1);
     this.addEvent('upgrade-selected', { position: player.position });
     this.refreshUpgradeOffer(player);
+  }
+
+  private handleWeaponSelection(player: MutableTowerPlayer, input: TowerInput): void {
+    const action = input.selectUpgradeId;
+    if (action === undefined || !action.startsWith(WEAPON_ACTION_PREFIX)) {
+      return;
+    }
+    const requested = action.slice(WEAPON_ACTION_PREFIX.length);
+    const weapon = player.weapons.find((candidate) => candidate.id === requested);
+    if (weapon !== undefined) {
+      player.activeWeaponId = weapon.id;
+    }
   }
 
   // ── Boutique de tourelle ─────────────────────────────────────────────────────
@@ -1219,6 +1322,12 @@ export class TowerSimulation {
 
   private projectPlayer(player: MutableTowerPlayer): TowerPlayerState {
     const nearTurret = this.nearTurretFor(player);
+    const activeWeapon = this.projectWeapons(player).find(
+      (weapon) => weapon.id === player.activeWeaponId,
+    );
+    if (activeWeapon === undefined) {
+      throw new Error(`Arme active absente de l'arsenal : ${player.activeWeaponId}`);
+    }
     return {
       id: player.id,
       position: { ...player.position },
@@ -1229,13 +1338,28 @@ export class TowerSimulation {
       experience: player.experience,
       experienceToNext: player.experienceToNext,
       gold: player.gold,
-      fireRate: player.fireRate,
-      bulletDamage: player.bulletDamage,
+      activeWeaponId: player.activeWeaponId,
+      weapons: this.projectWeapons(player),
+      fireRate: activeWeapon.fireRate,
+      bulletDamage: activeWeapon.bulletDamage,
       pendingUpgrades: player.pendingUpgrades,
       upgradeChoices: player.upgradeChoices.map((card) => ({ ...card })),
       downedRemainingMs: player.downedRemainingMs,
       ...(nearTurret === undefined ? {} : { nearTurret }),
     };
+  }
+
+  private projectWeapons(player: MutableTowerPlayer): TowerWeaponState[] {
+    return player.weapons.map((weapon) => {
+      const definition = weaponDefinition(weapon.id);
+      return {
+        id: weapon.id,
+        level: weapon.level,
+        fireRate: this.weaponFireRate(player, weapon, definition),
+        bulletDamage: this.weaponDamage(player, weapon, definition),
+        projectileCount: definition.projectileCount,
+      };
+    });
   }
 
   private projectHeart(): HeartState {
@@ -1280,6 +1404,7 @@ export class TowerSimulation {
       radius: bullet.radius,
       source,
       friendly: true,
+      ...(bullet.weaponId === undefined ? {} : { weaponId: bullet.weaponId }),
     };
   }
 

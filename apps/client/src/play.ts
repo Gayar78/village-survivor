@@ -1,3 +1,4 @@
+import { TOWER_WEAPONS } from '@village-survivor/content';
 import type { TowerGameState, TowerInput, TurretDir } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
@@ -7,6 +8,8 @@ import {
   type TowerCoopConfig,
   type TowerRenderableSession,
 } from './net/towerSession.js';
+import { authService } from './account/authService.js';
+import { statsService } from './account/statsService.js';
 import { TowerScene } from './scenes/TowerScene.js';
 import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
@@ -17,7 +20,7 @@ import './styles.css';
 
 // Page de JEU (« Tower / arme à feu », Phase 1). Assemble : session (solo ou co-op
 // host-autoritaire), scène de rendu, HUD, boutique de tourelle, écran de niveau, et la
-// capture des entrées (déplacement clavier + visée souris + tir).
+// capture des entrées (déplacement clavier + visée souris + tir + arsenal 1/2/3).
 
 const gameElement = document.querySelector<HTMLElement>('#game');
 const hudElement = document.querySelector<HTMLElement>('#hud');
@@ -119,12 +122,31 @@ const gameOver = new GameOverScreen(gameOverElement, {
 });
 
 let latestState: TowerGameState | undefined;
+let accountGoldCredited = false;
+
+async function creditAccountGoldAtEndOfRun(gold: number): Promise<void> {
+  if (accountGoldCredited || !Number.isSafeInteger(gold) || gold <= 0) {
+    return;
+  }
+  accountGoldCredited = true;
+  try {
+    const account = await authService.getSession();
+    if (account !== null) {
+      await statsService.creditAccountGold(gold);
+    }
+  } catch (error) {
+    // L'écran de fin doit rester utilisable même si Supabase est indisponible.
+    console.error("Échec de l'enregistrement de l'or de cette partie.", error);
+  }
+}
+
 session.subscribe((state) => {
   latestState = state;
   hud.render(state);
   turretShop.render(state);
   levelUp.render(state);
   if (state.status === 'defeat') {
+    void creditAccountGoldAtEndOfRun(state.player.gold);
     gameOver.show();
   }
 });
@@ -160,6 +182,11 @@ window.addEventListener('keydown', (event) => {
     const card = latestState.player.upgradeChoices[digit];
     if (card !== undefined) {
       pendingSelect = card.offerId;
+      return;
+    }
+    const weapon = TOWER_WEAPONS[digit];
+    if (latestState.player.upgradeChoices.length === 0 && weapon !== undefined) {
+      pendingSelect = `weapon:${weapon.id}`;
     }
   }
 });

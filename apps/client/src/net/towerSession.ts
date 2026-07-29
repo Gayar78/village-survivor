@@ -415,7 +415,8 @@ export class TowerLocalSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
   }
 
-  public onConnectionIssue(_listener: (message: string) => void): () => void {
+  public onConnectionIssue(listener: (message: string) => void): () => void {
+    void listener;
     return () => undefined;
   }
 
@@ -552,7 +553,8 @@ class TowerHostSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
   }
 
-  public onConnectionIssue(_listener: (message: string) => void): () => void {
+  public onConnectionIssue(listener: (message: string) => void): () => void {
+    void listener;
     return () => undefined;
   }
 

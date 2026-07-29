@@ -5,9 +5,21 @@ import type {
   ProjectileSource,
   TowerMonsterKind,
   TowerUpgradeCard,
+  TowerWeaponId,
   TurretDir,
   Vector2,
 } from '@village-survivor/protocol';
+
+export interface MutableTowerWeapon {
+  id: TowerWeaponId;
+  level: number;
+  damageMultiplier: number;
+  fireRateMultiplier: number;
+  spreadMultiplier: number;
+  pierceBonus: number;
+  /** Recharge propre à cette arme : une bascule ne réinitialise pas son tir. */
+  fireCooldownRemaining: number;
+}
 
 /**
  * Avatar joueur mutable. Regroupe la position, l'arme classique et le « build »
@@ -27,6 +39,8 @@ export interface MutableTowerPlayer {
   pendingUpgrades: number;
   upgradeChoices: TowerUpgradeCard[];
   downedRemainingMs: number;
+  activeWeaponId: TowerWeaponId;
+  weapons: MutableTowerWeapon[];
 
   // ── Arme / build ──────────────────────────────────────────────────────────
   speed: number;
@@ -83,6 +97,7 @@ export interface MutableTowerProjectile {
   radius: number;
   damage: number;
   source: ProjectileSource;
+  weaponId: TowerWeaponId | undefined;
   /** Portée restante (px) avant disparition. */
   remainingRange: number;
   /** Perforations restantes (pierce). */

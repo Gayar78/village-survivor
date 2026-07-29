@@ -75,6 +75,7 @@ export class TowerLevelUp {
               >
                 <span class="tower-levelup-card__rarity">${escapeHtml(card.rarity)}</span>
                 <strong>${escapeHtml(card.label)}</strong>
+                ${card.weaponId === undefined ? '' : `<span class="tower-levelup-card__weapon">Arme : ${escapeHtml(card.weaponId)}</span>`}
                 <small>${escapeHtml(card.description)}</small>
               </button>`,
             )
@@ -82,7 +83,6 @@ export class TowerLevelUp {
         </div>
       </section>
     `;
-
   }
 
   private readonly handleSelection = (event: Event): void => {

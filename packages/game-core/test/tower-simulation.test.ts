@@ -26,6 +26,89 @@ function run(
 }
 
 describe('TowerSimulation', () => {
+  it('change d’arme par action bornée et conserve un arsenal personnel en co-op', () => {
+    const simulation = new TowerSimulation('seed-arsenal-coop', {
+      playerIds: ['player-1', 'player-2'],
+    });
+    simulation.start();
+
+    simulation.step({
+      'player-1': input({ selectUpgradeId: 'weapon:shotgun' }),
+      'player-2': input({ selectUpgradeId: 'weapon:marksman' }),
+    });
+    const snapshot = simulation.createSnapshot();
+    expect(snapshot.players.find((player) => player.id === 'player-1')?.activeWeaponId).toBe(
+      'shotgun',
+    );
+    expect(snapshot.players.find((player) => player.id === 'player-2')?.activeWeaponId).toBe(
+      'marksman',
+    );
+    expect(snapshot.players.every((player) => player.weapons.length === 3)).toBe(true);
+
+    simulation.step({ 'player-1': input({ selectUpgradeId: 'weapon:invalid' }) });
+    expect(simulation.createSnapshot().player.activeWeaponId).toBe('shotgun');
+    expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+  });
+
+  it('produit des tirs distincts pour fusil, tromblon et arme de précision', () => {
+    const fireWith = (weapon: 'rifle' | 'shotgun' | 'marksman') => {
+      const simulation = new TowerSimulation(`seed-fire-${weapon}`);
+      simulation.start();
+      simulation.step({ 'player-1': input({ selectUpgradeId: `weapon:${weapon}` }) });
+      simulation.step({ 'player-1': input({ fire: true, aimX: 1 }) });
+      return simulation.createSnapshot();
+    };
+
+    const rifle = fireWith('rifle');
+    const shotgun = fireWith('shotgun');
+    const marksman = fireWith('marksman');
+    expect(rifle.projectiles.filter((shot) => shot.weaponId === 'rifle')).toHaveLength(1);
+    expect(shotgun.projectiles.filter((shot) => shot.weaponId === 'shotgun')).toHaveLength(5);
+    expect(marksman.projectiles.filter((shot) => shot.weaponId === 'marksman')).toHaveLength(1);
+    expect(marksman.player.bulletDamage).toBeGreaterThan(rifle.player.bulletDamage);
+    expect(marksman.player.fireRate).toBeGreaterThan(shotgun.player.fireRate);
+  });
+
+  it('ne propose que des cartes compatibles et applique une progression propre au tromblon', () => {
+    const simulation = new TowerSimulation('seed-shotgun-upgrade');
+    simulation.start();
+    simulation.step({ 'player-1': input({ selectUpgradeId: 'weapon:shotgun' }) });
+    simulation.giveExperience('player-1', 100_000);
+
+    let shotgunOffer = simulation
+      .createSnapshot()
+      .player.upgradeChoices.find((card) => card.upgradeId === 'shotgun-choke');
+    for (let index = 0; index < 80 && shotgunOffer === undefined; index += 1) {
+      const state = simulation.createSnapshot();
+      expect(state.player.upgradeChoices.every((card) => card.weaponId !== 'rifle')).toBe(true);
+      expect(state.player.upgradeChoices.every((card) => card.weaponId !== 'marksman')).toBe(true);
+      const fallback = state.player.upgradeChoices[0];
+      expect(fallback).toBeDefined();
+      if (fallback === undefined) {
+        throw new Error('Une offre était attendue.');
+      }
+      simulation.step({ 'player-1': input({ selectUpgradeId: fallback.offerId }) });
+      shotgunOffer = simulation
+        .createSnapshot()
+        .player.upgradeChoices.find((card) => card.upgradeId === 'shotgun-choke');
+    }
+    expect(shotgunOffer).toBeDefined();
+
+    const before = simulation.createSnapshot().player;
+    const shotgunBefore = before.weapons.find((weapon) => weapon.id === 'shotgun');
+    const rifleBefore = before.weapons.find((weapon) => weapon.id === 'rifle');
+    if (shotgunOffer === undefined) {
+      throw new Error('La carte du tromblon était attendue.');
+    }
+    simulation.step({ 'player-1': input({ selectUpgradeId: shotgunOffer.offerId }) });
+    const after = simulation.createSnapshot().player;
+    const shotgunAfter = after.weapons.find((weapon) => weapon.id === 'shotgun');
+    const rifleAfter = after.weapons.find((weapon) => weapon.id === 'rifle');
+    expect(shotgunAfter?.level).toBe((shotgunBefore?.level ?? 0) + 1);
+    expect(shotgunAfter?.bulletDamage).toBeCloseTo((shotgunBefore?.bulletDamage ?? 0) * 1.12);
+    expect(rifleAfter?.level).toBe(rifleBefore?.level);
+  });
+
   it('une balle tue un monstre proche et lâche une ferraille ramassable qui alimente scrapFund', () => {
     const simulation = new TowerSimulation('seed-bullet');
     simulation.start();

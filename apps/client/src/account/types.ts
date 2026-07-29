@@ -24,6 +24,9 @@ export interface GameRunSummary {
   resourcesGathered: Record<ResourceType, number>;
 }
 
+/** Solde d'or persistant du compte, toujours un entier JavaScript sûr et non négatif. */
+export type AccountGoldBalance = number;
+
 /** Données d'enrôlement TOTP. `qrCode` est une source prête pour <img src="..."> (data URL SVG renvoyée par Supabase). */
 export interface MfaEnrollment {
   factorId: string;

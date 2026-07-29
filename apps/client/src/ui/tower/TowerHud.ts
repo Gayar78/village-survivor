@@ -1,4 +1,5 @@
 import type { TowerGameState } from '@village-survivor/protocol';
+import { TOWER_WEAPONS } from '@village-survivor/content';
 
 import './tower-ui.css';
 
@@ -31,6 +32,12 @@ export class TowerHud {
       state.scrapFund,
       player.gold,
       state.wave,
+      player.activeWeaponId,
+      ...player.weapons.flatMap((weapon) => [
+        weapon.level,
+        weapon.fireRate.toFixed(3),
+        weapon.bulletDamage.toFixed(2),
+      ]),
     ].join('|');
     if (signature === this.signature) {
       return;
@@ -54,6 +61,17 @@ export class TowerHud {
           <div class="tower-hud-level" data-testid="tower-hud-level">
             <div class="tower-hud__bar-label"><span>Niveau ${player.level}</span><span>Essence</span></div>
             <div class="bar bar--xp"><i style="width:${xpPercent}%"></i></div>
+          </div>
+          <div class="tower-hud-arsenal" data-testid="tower-hud-weapon">
+            ${TOWER_WEAPONS.map((definition, index) => {
+              const weapon = player.weapons.find((candidate) => candidate.id === definition.id);
+              const active = player.activeWeaponId === definition.id;
+              return `<div class="tower-hud-weapon${active ? ' tower-hud-weapon--active' : ''}">
+                <kbd>${index + 1}</kbd>
+                <span>${definition.label}</span>
+                <strong>Niv. ${weapon?.level ?? 1}</strong>
+              </div>`;
+            }).join('')}
           </div>
           <div class="tower-hud-resources" data-testid="tower-hud-resources">
             <div class="tower-hud-resource" data-testid="tower-hud-scrap">

@@ -2,7 +2,7 @@
 // (pondérée dans `tuning.ts`) et un effet `apply(player)` appliqué au « build » PERSONNEL
 // de l'avatar qui la choisit. Les cartes peuvent s'empiler d'une offre à l'autre.
 
-import type { UpgradeRarity } from '@village-survivor/protocol';
+import type { TowerWeaponId, UpgradeRarity } from '@village-survivor/protocol';
 
 import { TURRET_SHOP_EFFECTS } from './tuning.js';
 import type { MutableTowerPlayer } from './state.js';
@@ -12,11 +12,25 @@ export interface UpgradeCardDefinition {
   rarity: UpgradeRarity;
   label: string;
   description: string;
+  weaponId?: TowerWeaponId;
+  isEligible?: (player: MutableTowerPlayer) => boolean;
   apply: (player: MutableTowerPlayer) => void;
 }
 
 /** Borne basse de cadence (partagée avec la tourelle pour rester cohérent). */
 const MIN_FIRE_RATE = TURRET_SHOP_EFFECTS.rateMinimum;
+
+function weaponUpgrade(
+  player: MutableTowerPlayer,
+  id: TowerWeaponId,
+): MutableTowerPlayer['weapons'][number] {
+  const weapon = player.weapons.find((candidate) => candidate.id === id);
+  if (weapon === undefined) {
+    throw new Error(`Amélioration reçue pour une arme absente : ${id}`);
+  }
+  weapon.level += 1;
+  return weapon;
+}
 
 export const UPGRADE_CATALOG: readonly UpgradeCardDefinition[] = [
   // ── common ────────────────────────────────────────────────────────────────
@@ -66,6 +80,17 @@ export const UPGRADE_CATALOG: readonly UpgradeCardDefinition[] = [
       player.hp += 30;
     },
   },
+  {
+    id: 'rifle-overclock',
+    rarity: 'common',
+    label: 'Culasse huilée',
+    description: 'Fusil : +18 % de cadence.',
+    weaponId: 'rifle',
+    isEligible: (player) => player.activeWeaponId === 'rifle',
+    apply: (player) => {
+      weaponUpgrade(player, 'rifle').fireRateMultiplier *= 0.82;
+    },
+  },
   // ── rare ──────────────────────────────────────────────────────────────────
   {
     id: 'multishot',
@@ -113,6 +138,19 @@ export const UPGRADE_CATALOG: readonly UpgradeCardDefinition[] = [
       player.critChance += 0.1;
     },
   },
+  {
+    id: 'shotgun-choke',
+    rarity: 'rare',
+    label: 'Étranglement forgé',
+    description: 'Tromblon : gerbe 35 % plus serrée et +12 % dégâts.',
+    weaponId: 'shotgun',
+    isEligible: (player) => player.activeWeaponId === 'shotgun',
+    apply: (player) => {
+      const weapon = weaponUpgrade(player, 'shotgun');
+      weapon.spreadMultiplier *= 0.65;
+      weapon.damageMultiplier *= 1.12;
+    },
+  },
   // ── epic ──────────────────────────────────────────────────────────────────
   {
     id: 'bounce',
@@ -148,6 +186,19 @@ export const UPGRADE_CATALOG: readonly UpgradeCardDefinition[] = [
     description: '+5 % de vol de vie.',
     apply: (player) => {
       player.lifestealPct += 0.05;
+    },
+  },
+  {
+    id: 'marksman-calibration',
+    rarity: 'epic',
+    label: 'Lunette calibrée',
+    description: 'Longue-vue : +25 % dégâts et +1 perforation.',
+    weaponId: 'marksman',
+    isEligible: (player) => player.activeWeaponId === 'marksman',
+    apply: (player) => {
+      const weapon = weaponUpgrade(player, 'marksman');
+      weapon.damageMultiplier *= 1.25;
+      weapon.pierceBonus += 1;
     },
   },
   // ── legendary ─────────────────────────────────────────────────────────────

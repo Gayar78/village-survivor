@@ -82,6 +82,41 @@
   width: auto;
 }
 
+#hud .tower-hud-arsenal {
+  display: grid;
+  gap: 4px;
+}
+
+#hud .tower-hud-weapon {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  border: 1px solid rgb(209 225 175 / 10%);
+  border-radius: 6px;
+  color: #aeb99d;
+  background: rgb(5 12 9 / 24%);
+}
+
+#hud .tower-hud-weapon--active {
+  border-color: rgb(246 184 102 / 55%);
+  color: #f5e7c6;
+  background: rgb(89 67 42 / 38%);
+}
+
+#hud .tower-hud-weapon kbd {
+  color: #f6c873;
+  font:
+    700 10px/1 ui-monospace,
+    monospace;
+}
+
+#hud .tower-hud-weapon strong {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
 #hud .tower-hud__bar-label {
   display: flex;
   justify-content: space-between;
@@ -352,6 +387,14 @@
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#levelup .tower-levelup-card__weapon {
+  color: #f4c76f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 

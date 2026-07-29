@@ -21,6 +21,9 @@ export type TurretDir = 'N' | 'E' | 'S' | 'W';
 /** Types de monstres du set MVP (Phase 1). Le roster complet viendra plus tard. */
 export type TowerMonsterKind = 'chaser' | 'runner' | 'brute' | 'kamikaze';
 
+/** Arsenal personnel disponible dès le début d'une partie Tower. */
+export type TowerWeaponId = 'rifle' | 'shotgun' | 'marksman';
+
 /** Raretés des cartes de montée de niveau (pondérées côté contenu). */
 export type UpgradeRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic' | 'divin';
 
@@ -48,7 +51,11 @@ export type TowerInput = Readonly<{
    * Les anciennes commandes sans identifiant restent valides.
    */
   discreteActionId?: string;
-  /** Id de la carte d'amélioration choisie ce tick (montée de niveau). */
+  /**
+   * Id de la carte d'amélioration choisie ce tick (montée de niveau), ou commande
+   * bornée `weapon:<TowerWeaponId>` pour changer d'arme. Ce multiplexage conserve
+   * le canal d'action ponctuelle fiable/idempotent des anciennes sessions co-op.
+   */
   selectUpgradeId?: string;
   /**
    * Action de boutique de tourelle demandée ce tick : améliorer/réparer une tourelle.
@@ -68,6 +75,17 @@ export type TowerUpgradeCard = Readonly<{
   rarity: UpgradeRarity;
   label: string;
   description: string;
+  /** Arme visée par une carte conditionnelle ; absent pour une carte générique. */
+  weaponId?: TowerWeaponId;
+}>;
+
+/** Progression et statistiques courantes propres à une arme d'un joueur. */
+export type TowerWeaponState = Readonly<{
+  id: TowerWeaponId;
+  level: number;
+  fireRate: number;
+  bulletDamage: number;
+  projectileCount: number;
 }>;
 
 /** Stats d'arme/joueur exposées au HUD (le strict utile à l'affichage). */
@@ -83,6 +101,10 @@ export type TowerPlayerState = Readonly<{
   experienceToNext: number;
   /** Or PERSONNEL (progression/forge à venir). */
   gold: number;
+  /** Arme tenue, visible par le joueur local comme par ses alliés. */
+  activeWeaponId: TowerWeaponId;
+  /** Arsenal et progression PERSONNELS de cet avatar. */
+  weapons: readonly TowerWeaponState[];
   /** Cadence courante (s entre tirs) et dégâts — pour un éventuel affichage. */
   fireRate: number;
   bulletDamage: number;
@@ -102,6 +124,8 @@ export type TowerProjectileState = Readonly<{
   source: ProjectileSource;
   /** true = tir allié (joueur/tourelle) ; réservé pour un futur tir ennemi. */
   friendly: boolean;
+  /** Arme d'origine d'un tir joueur ; absent pour les projectiles de tourelle. */
+  weaponId?: TowerWeaponId;
 }>;
 
 export type TurretState = Readonly<{
