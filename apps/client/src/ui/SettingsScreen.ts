@@ -94,7 +94,7 @@ export class SettingsScreen {
         <header class="settings-header">
           <div>
             <p class="settings-kicker">Atelier du survivant</p>
-            <h2 id="settings-title" tabindex="-1">Paramètres visuels</h2>
+            <h2 id="settings-title" tabindex="-1">Paramètres de couleur</h2>
             <p class="settings-intro">Choisissez vos couleurs : les aperçus et le jeu se mettent à jour immédiatement sur cet appareil.</p>
           </div>
           <button type="button" class="settings-close" id="settings-close">Fermer</button>

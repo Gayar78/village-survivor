@@ -473,6 +473,167 @@
   color: #e3cfa9;
 }
 
+/* Les surfaces Tower reprennent les réglages du joueur ; les PV et les raretés
+ * conservent leurs couleurs sémantiques propres. */
+#hud .tower-hud {
+  --tower-hud-color: var(--visual-hud-color);
+  --tower-accent-color: var(--visual-accent-color);
+  --tower-secondary-color: var(--visual-accent-secondary-color);
+
+  border-color: color-mix(in srgb, var(--tower-hud-color) 46%, transparent);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--visual-surface-raised-color) 94%, var(--tower-secondary-color)),
+    var(--visual-surface-color) 68%
+  );
+  box-shadow:
+    0 16px 38px rgb(0 0 0 / 42%),
+    inset 0 1px 0 color-mix(in srgb, var(--visual-text-color) 10%, transparent);
+  color: var(--visual-text-color);
+}
+
+#hud .tower-hud__head {
+  background: color-mix(in srgb, var(--visual-surface-color) 74%, var(--tower-accent-color));
+}
+
+#hud .tower-hud__eyebrow,
+#hud .tower-hud__bar-label,
+#hud .tower-hud-resource span,
+#hud .tower-hud-wave span {
+  color: var(--visual-muted-text-color);
+}
+
+#hud .tower-hud__bar-label strong,
+#hud .tower-hud-weapon--active,
+#hud .tower-hud__head strong {
+  color: var(--visual-text-color);
+}
+
+#hud .tower-hud-weapon,
+#hud .tower-hud-resource {
+  border-color: color-mix(in srgb, var(--tower-accent-color) 24%, transparent);
+  color: var(--visual-muted-text-color);
+  background: color-mix(in srgb, var(--visual-surface-color) 84%, var(--tower-accent-color));
+}
+
+#hud .tower-hud-weapon--active {
+  border-color: color-mix(in srgb, var(--tower-hud-color) 62%, transparent);
+  background: color-mix(in srgb, var(--visual-surface-raised-color) 76%, var(--tower-hud-color));
+}
+
+#hud .tower-hud .bar {
+  border-color: color-mix(in srgb, var(--tower-accent-color) 30%, transparent);
+  background: color-mix(in srgb, var(--visual-surface-color) 80%, black);
+}
+
+#hud .tower-hud .bar--xp > i {
+  background: linear-gradient(90deg, var(--tower-accent-color), var(--tower-secondary-color));
+  box-shadow: 0 0 7px color-mix(in srgb, var(--tower-accent-color) 38%, transparent);
+}
+
+#hud .tower-hud-wave {
+  border-color: color-mix(in srgb, var(--tower-hud-color) 42%, transparent);
+  background: color-mix(in srgb, var(--visual-surface-raised-color) 72%, var(--tower-hud-color));
+}
+
+#turret-shop .turret-shop,
+#levelup .tower-levelup {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 46%, transparent);
+  background:
+    radial-gradient(
+      circle at 0 0,
+      color-mix(in srgb, var(--visual-accent-secondary-color) 18%, transparent),
+      transparent 43%
+    ),
+    var(--visual-surface-color);
+  color: var(--visual-text-color);
+}
+
+#turret-shop .turret-shop h2,
+#levelup .tower-levelup h2,
+#turret-shop .turret-shop-item strong,
+#levelup .tower-levelup-card strong {
+  color: var(--visual-text-color);
+}
+
+#turret-shop .eyebrow,
+#levelup .eyebrow,
+#turret-shop .turret-shop-item span,
+#levelup .tower-levelup-card__weapon {
+  color: var(--visual-accent-secondary-color);
+}
+
+#turret-shop .turret-shop__title-row span,
+#turret-shop .turret-shop > p:not(.eyebrow),
+#turret-shop .turret-shop-item small,
+#levelup .tower-levelup-card small {
+  color: var(--visual-muted-text-color);
+}
+
+#turret-shop .turret-shop-item,
+#levelup .tower-levelup-card {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 30%, transparent);
+  background: linear-gradient(
+    160deg,
+    color-mix(
+      in srgb,
+      var(--visual-surface-raised-color) 94%,
+      var(--visual-accent-secondary-color)
+    ),
+    var(--visual-surface-color)
+  );
+  color: var(--visual-text-color);
+}
+
+#turret-shop .turret-shop-item::before {
+  background: var(--visual-hud-color);
+}
+
+#turret-shop .turret-shop-item:hover:not(:disabled),
+#turret-shop .turret-shop-item:focus-visible,
+#levelup .tower-levelup-card:hover,
+#levelup .tower-levelup-card:focus-visible {
+  border-color: var(--visual-accent-color);
+  background: color-mix(
+    in srgb,
+    var(--visual-surface-raised-color) 76%,
+    var(--visual-accent-secondary-color)
+  );
+}
+
+#turret-shop .turret-shop-item--repair::before {
+  background: #e85d75;
+}
+
+.tower-sync-status {
+  border-color: color-mix(in srgb, var(--visual-hud-color) 38%, transparent);
+  color: var(--visual-text-color);
+  background: color-mix(in srgb, var(--visual-surface-color) 90%, var(--visual-hud-color));
+}
+
+.tower-sync-status__indicator {
+  background: var(--visual-hud-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--visual-hud-color) 13%, transparent);
+}
+
+.tower-sync-status[data-tone='issue'] {
+  border-color: rgb(232 93 117 / 55%);
+  color: #ffd7df;
+}
+
+.tower-sync-status[data-tone='issue'] .tower-sync-status__indicator {
+  background: #e85d75;
+  box-shadow: 0 0 0 3px rgb(232 93 117 / 14%);
+}
+
+.tower-sync-status__title {
+  color: var(--visual-text-color);
+}
+
+.tower-sync-status__detail {
+  color: var(--visual-muted-text-color);
+}
+
 @media (width <= 640px) {
   #hud .tower-hud {
     top: 10px;

@@ -49,7 +49,7 @@ export class MainMenu {
           <span class="main-menu-link__glyph" aria-hidden="true">⚙</span>
           <span>
             <span class="main-menu-link__eyebrow">Personnalisation</span>
-            <span class="main-menu-link__title">Paramètres</span>
+            <span class="main-menu-link__title">Paramètres de couleur</span>
           </span>
           <span class="main-menu-link__arrow" aria-hidden="true">→</span>
         </button>

@@ -3029,3 +3029,80 @@ kbd {
   border-color: color-mix(in srgb, var(--visual-accent-color) 64%, transparent);
   box-shadow: 0 0 28px color-mix(in srgb, var(--visual-accent-color) 24%, transparent);
 }
+
+/* Hub et amis : les éléments de navigation suivent immédiatement la palette choisie. */
+.hub-screen {
+  background:
+    radial-gradient(
+      circle at 22% 18%,
+      color-mix(in srgb, var(--visual-accent-color) 20%, transparent),
+      transparent 42%
+    ),
+    color-mix(in srgb, var(--visual-surface-color) 92%, black);
+}
+
+.hub-panel,
+.friends-request,
+.toast--invite {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 36%, transparent);
+  background: color-mix(in srgb, var(--visual-surface-color) 92%, var(--visual-accent-color));
+}
+
+.hub-avatar,
+.hub-btn--primary,
+.hub-btn--primary:hover:not(:disabled),
+.friends-add-btn,
+.friends-btn--join,
+.friends-btn--accept,
+.toast-btn--accept {
+  color: #11142a;
+  background: var(--visual-accent-color);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--visual-accent-color) 30%, transparent);
+}
+
+.hub-code,
+.hub-badge-chief,
+.toast-icon--invite {
+  color: var(--visual-accent-secondary-color);
+}
+
+.hub-badge-chief {
+  background: color-mix(in srgb, var(--visual-accent-secondary-color) 18%, transparent);
+}
+
+.hub-code,
+.hub-copy:hover:not(:disabled),
+.hub-btn:hover:not(:disabled),
+.hub-join-input:focus,
+.friends-input:focus,
+.friends-btn:hover,
+.friends-request,
+.toast-icon--invite {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 56%, transparent);
+  background: color-mix(in srgb, var(--visual-accent-color) 12%, transparent);
+}
+
+.hub-copy:focus-visible,
+.hub-btn:focus-visible,
+.hub-join-input:focus-visible,
+.friends-input:focus-visible,
+.friends-add-btn:focus-visible,
+.friends-btn:focus-visible,
+.toast-btn:focus-visible,
+.toast-close:focus-visible {
+  outline: 2px solid var(--visual-accent-secondary-color);
+  outline-offset: 2px;
+}
+
+.hub-member-dot,
+.friends-dot--online {
+  background: var(--visual-hud-color);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--visual-hud-color) 55%, transparent);
+}
+
+.friends-btn--invite,
+.friends-btn--invite:hover {
+  border-color: color-mix(in srgb, var(--visual-hud-color) 62%, transparent);
+  color: var(--visual-hud-color);
+  background: color-mix(in srgb, var(--visual-hud-color) 12%, transparent);
+}

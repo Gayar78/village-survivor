@@ -621,6 +621,71 @@
   background: color-mix(in srgb, var(--visual-surface-color) 86%, var(--visual-accent-color));
 }
 
+.main-menu-link:hover,
+.main-menu-link:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--visual-surface-raised-color) 72%,
+    var(--visual-accent-color)
+  );
+}
+
+.main-menu::after {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 26%, transparent);
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      transparent 0 16%,
+      color-mix(in srgb, var(--visual-accent-color) 8%, transparent) 16.5% 17%,
+      transparent 17.5% 28%,
+      color-mix(in srgb, var(--visual-accent-color) 8%, transparent) 28.5% 29%,
+      transparent 29.5% 40%,
+      color-mix(in srgb, var(--visual-accent-color) 8%, transparent) 40.5% 41%,
+      transparent 41.5%
+    ),
+    repeating-conic-gradient(
+      from 8deg,
+      transparent 0 13deg,
+      color-mix(in srgb, var(--visual-accent-color) 8%, transparent) 14deg 15deg,
+      transparent 16deg 29deg
+    );
+  box-shadow: 0 0 120px color-mix(in srgb, var(--visual-accent-secondary-color) 22%, transparent);
+}
+
+.main-menu-play::before,
+.main-menu-play__crest {
+  border-color: color-mix(in srgb, var(--visual-accent-secondary-color) 52%, transparent);
+}
+
+.main-menu-play::before {
+  box-shadow:
+    0 0 0 32px color-mix(in srgb, var(--visual-accent-secondary-color) 5%, transparent),
+    0 0 0 64px color-mix(in srgb, var(--visual-accent-secondary-color) 5%, transparent);
+}
+
+.main-menu-play__crest {
+  box-shadow: inset 0 0 0 5px
+    color-mix(in srgb, var(--visual-accent-secondary-color) 9%, transparent);
+}
+
+.main-menu-play::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--visual-surface-color) 84%, var(--visual-accent-color)) 32% 69%,
+    transparent
+  );
+}
+
+.main-menu__intro,
+.compendium__header p:not(.main-menu__kicker),
+.main-menu-play__description,
+.compendium__section p,
+.compendium__controls dd,
+.main-menu__footer p {
+  color: var(--visual-muted-text-color);
+}
+
 @keyframes main-menu-compass {
   to {
     transform: rotate(1turn);

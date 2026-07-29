@@ -32,19 +32,23 @@ export interface TowerRenderSession {
 }
 
 const COLORS = {
-  ground: 0x10181b,
-  groundShade: 0x0b1210,
-  moss: 0x263827,
-  mossLight: 0x3f5635,
-  soil: 0x2c291d,
+  ground: 0x050814,
+  groundShade: 0x02040d,
+  terrainPatch: 0x0b1633,
+  terrainPatchLight: 0x1b2855,
+  terrainShadow: 0x171238,
+  grid: 0x31416f,
+  worldLine: 0x485b9e,
+  minimapGround: 0x091126,
+  minimapBorder: 0x6d78e5,
   root: 0x59432a,
-  distanceNear: 0x25402d,
-  distanceFar: 0x5a3722,
+  distanceNear: 0x123a66,
+  distanceFar: 0x34205f,
   heart: 0xd45e3f,
   heartOutline: 0xf6b866,
   turret: 0xb98243,
   turretDead: 0x4b4033,
-  turretRange: 0x708b5b,
+  turretRange: 0x596fe3,
   turretEnergy: 0xf4c76f,
   local: 0x5be3ff,
   ally: 0xdcc99a,
@@ -248,26 +252,41 @@ export class TowerScene extends Phaser.Scene {
     const graphics = this.graphics;
     graphics.fillStyle(COLORS.ground, 1);
     graphics.fillRect(0, 0, state.world.width, state.world.height);
+
+    // Relief abstrait bleu nuit : les taches restent assez sombres pour ne pas
+    // concurrencer les silhouettes et projectiles, quelle que soit leur couleur.
     for (let index = 0; index < 72; index += 1) {
       const seed = index * 91.73;
       const x = (Math.sin(seed) * 0.5 + 0.5) * state.world.width;
       const y = (Math.sin(seed * 1.71 + 2.4) * 0.5 + 0.5) * state.world.height;
       const radius = 26 + (Math.sin(seed * 0.37) + 1) * 22;
       graphics.fillStyle(
-        index % 3 === 0 ? COLORS.soil : COLORS.moss,
-        index % 3 === 0 ? 0.16 : 0.18,
+        index % 3 === 0 ? COLORS.terrainShadow : COLORS.terrainPatch,
+        index % 3 === 0 ? 0.2 : 0.24,
       );
       graphics.fillEllipse(x, y, radius * 2.5, radius);
-      graphics.fillStyle(COLORS.mossLight, 0.08);
+      graphics.fillStyle(COLORS.terrainPatchLight, 0.1);
       graphics.fillCircle(x + radius * 0.4, y - radius * 0.1, radius * 0.34);
     }
+
+    // Repère spatial discret, commun au monde et à la mini-carte.
+    const gridStep = 160;
+    graphics.lineStyle(1, COLORS.grid, 0.075);
+    for (let x = 0; x <= state.world.width; x += gridStep) {
+      graphics.lineBetween(x, 0, x, state.world.height);
+    }
+    for (let y = 0; y <= state.world.height; y += gridStep) {
+      graphics.lineBetween(0, y, state.world.width, y);
+    }
     // Teinte de distance : bandes concentriques subtiles autour de l'origine
-    // (centre du monde), du calme (bleuté) au danger (rougeâtre) en s'éloignant.
+    // (centre du monde), du bleu profond au violet en s'éloignant.
     const centerX = this.offsetX;
     const centerY = this.offsetY;
     const maxRadius = Math.max(state.world.width, state.world.height) / 2;
     const bandCount = 5;
-    for (let band = 1; band <= bandCount; band += 1) {
+    // Les grands disques sont peints d'abord pour préserver la teinte bleue des
+    // anneaux intérieurs, au lieu que le disque extérieur recouvre tout le monde.
+    for (let band = bandCount; band >= 1; band -= 1) {
       const t = band / bandCount;
       const radius = maxRadius * t;
       const color = Phaser.Display.Color.Interpolate.ColorWithColor(
@@ -278,11 +297,11 @@ export class TowerScene extends Phaser.Scene {
       );
       graphics.fillStyle(color.color, 0.035 + 0.018 * t);
       graphics.fillCircle(centerX, centerY, radius);
-      graphics.lineStyle(2, COLORS.root, 0.05 + 0.025 * t);
+      graphics.lineStyle(2, COLORS.worldLine, 0.06 + 0.03 * t);
       graphics.strokeCircle(centerX, centerY, radius);
     }
 
-    graphics.lineStyle(4, COLORS.root, 0.12);
+    graphics.lineStyle(4, COLORS.worldLine, 0.14);
     for (let branch = 0; branch < 8; branch += 1) {
       const angle = (Math.PI * 2 * branch) / 8 + 0.16;
       const start = 180 + (branch % 2) * 35;
@@ -592,11 +611,20 @@ export class TowerScene extends Phaser.Scene {
     graphics.clear();
     graphics.fillStyle(COLORS.groundShade, 0.92);
     graphics.fillRoundedRect(boxX - 6, boxY - 6, width + 12, height + 12, 10);
-    graphics.fillStyle(COLORS.moss, 0.45);
+    graphics.fillStyle(COLORS.minimapGround, 0.96);
     graphics.fillRoundedRect(boxX, boxY, width, height, 6);
-    graphics.lineStyle(1, COLORS.heartOutline, 0.38);
+
+    graphics.lineStyle(1, COLORS.grid, 0.2);
+    for (let index = 1; index < 4; index += 1) {
+      const gridX = boxX + (width * index) / 4;
+      const gridY = boxY + (height * index) / 4;
+      graphics.lineBetween(gridX, boxY, gridX, boxY + height);
+      graphics.lineBetween(boxX, gridY, boxX + width, gridY);
+    }
+
+    graphics.lineStyle(1, COLORS.minimapBorder, 0.48);
     graphics.strokeRoundedRect(boxX, boxY, width, height, 6);
-    graphics.lineStyle(1, COLORS.root, 0.5);
+    graphics.lineStyle(1, COLORS.minimapBorder, 0.56);
     graphics.lineBetween(centerX - 7, boxY + 8, centerX + 7, boxY + 8);
 
     const heartPoint = point(state.heart.position);
