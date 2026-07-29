@@ -42,6 +42,12 @@ export type TowerInput = Readonly<{
   aimY: number;
   /** Bouton de tir maintenu. */
   fire?: boolean;
+  /**
+   * Identifiant idempotent d'une action ponctuelle. Les sessions réseau peuvent
+   * l'ajouter automatiquement afin de retransmettre l'action sans la rejouer.
+   * Les anciennes commandes sans identifiant restent valides.
+   */
+  discreteActionId?: string;
   /** Id de la carte d'amélioration choisie ce tick (montée de niveau). */
   selectUpgradeId?: string;
   /**

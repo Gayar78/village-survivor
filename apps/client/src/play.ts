@@ -8,6 +8,7 @@ import {
   type TowerRenderableSession,
 } from './net/towerSession.js';
 import { TowerScene } from './scenes/TowerScene.js';
+import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
 import { TowerHud } from './ui/tower/TowerHud.js';
 import { TowerLevelUp } from './ui/tower/TowerLevelUp.js';
@@ -22,12 +23,14 @@ const gameElement = document.querySelector<HTMLElement>('#game');
 const hudElement = document.querySelector<HTMLElement>('#hud');
 const shopElement = document.querySelector<HTMLElement>('#turret-shop');
 const levelupElement = document.querySelector<HTMLElement>('#levelup');
+const escapeMenuElement = document.querySelector<HTMLElement>('#escape-menu');
 const gameOverElement = document.querySelector<HTMLElement>('#game-over');
 if (
   gameElement === null ||
   hudElement === null ||
   shopElement === null ||
   levelupElement === null ||
+  escapeMenuElement === null ||
   gameOverElement === null
 ) {
   throw new Error('La page de jeu ne contient pas les points de montage attendus.');
@@ -79,14 +82,10 @@ const session: TowerRenderableSession =
 
 const connectionIssue = document.createElement('section');
 connectionIssue.className = 'tower-connection-issue';
-connectionIssue.setAttribute('role', 'alert');
+connectionIssue.setAttribute('role', 'status');
 connectionIssue.hidden = true;
 const connectionIssueText = document.createElement('p');
-const connectionIssueBack = document.createElement('button');
-connectionIssueBack.type = 'button';
-connectionIssueBack.textContent = 'Retour au menu';
-connectionIssueBack.addEventListener('click', goToLobby);
-connectionIssue.append(connectionIssueText, connectionIssueBack);
+connectionIssue.append(connectionIssueText);
 document.body.append(connectionIssue);
 const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
   connectionIssueText.textContent = message;
@@ -105,6 +104,14 @@ const turretShop = new TurretShop(shopElement, (turret, action) => {
 });
 const levelUp = new TowerLevelUp(levelupElement, (offerId) => {
   pendingSelect = offerId;
+});
+const escapeMenu = new EscapeMenu(escapeMenuElement, {
+  onContinue: () => undefined,
+  onQuit: () => {
+    if (window.confirm('Quitter la partie et revenir au menu principal ?')) {
+      goToLobby();
+    }
+  },
 });
 const gameOver = new GameOverScreen(gameOverElement, {
   onBackToMenu: () => goToLobby(),
@@ -132,11 +139,9 @@ let mouseOnUi = false;
 
 window.addEventListener('keydown', (event) => {
   if (event.code === 'Escape') {
-    if (turretShop.isOpen()) {
-      turretShop.close();
-    } else if (window.confirm('Quitter la partie et revenir au menu principal ?')) {
-      goToLobby();
-    }
+    event.preventDefault();
+    turretShop.close();
+    escapeMenu.toggle();
     return;
   }
   if (event.repeat) {
@@ -145,7 +150,7 @@ window.addEventListener('keydown', (event) => {
   }
   pressed.add(event.code);
   if (event.code === 'KeyE') {
-    if (latestState?.player.nearTurret !== undefined) {
+    if (!escapeMenu.isOpen() && latestState?.player.nearTurret !== undefined) {
       turretShop.toggle();
     }
     return;
@@ -171,7 +176,8 @@ window.addEventListener('mousedown', (event) => {
   }
   const target = event.target;
   mouseOnUi =
-    target instanceof Element && target.closest('#turret-shop, #levelup, #game-over') !== null;
+    target instanceof Element &&
+    target.closest('#turret-shop, #levelup, #escape-menu, #game-over') !== null;
   mouseDown = true;
 });
 window.addEventListener('mouseup', (event) => {

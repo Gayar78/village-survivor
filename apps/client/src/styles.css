@@ -824,7 +824,7 @@ kbd {
 #escape-menu {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 45;
   display: none;
   align-items: center;
   justify-content: center;

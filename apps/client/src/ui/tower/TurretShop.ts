@@ -25,10 +25,14 @@ export class TurretShop {
   private readonly onAction: (turret: TurretDir, action: string) => void;
   private opened = false;
   private signature = '';
+  private actionPending = false;
+  private currentTurret: TurretDir | undefined;
 
   public constructor(root: HTMLElement, onAction: (turret: TurretDir, action: string) => void) {
     this.element = root;
     this.onAction = onAction;
+    this.element.addEventListener('pointerdown', this.handleAction);
+    this.element.addEventListener('click', this.handleAction);
   }
 
   public open(): void {
@@ -37,6 +41,7 @@ export class TurretShop {
 
   public close(): void {
     this.opened = false;
+    this.actionPending = false;
   }
 
   public toggle(): void {
@@ -60,16 +65,21 @@ export class TurretShop {
       // Le joueur n'est plus à portée d'une tourelle : le panneau se referme de
       // lui-même, quelle que soit l'intention d'ouverture précédente.
       this.opened = false;
+      this.actionPending = false;
+      this.currentTurret = undefined;
       this.clear();
       return;
     }
     if (!this.opened) {
+      this.actionPending = false;
       this.clear();
       return;
     }
 
     const turret = state.turrets.find((candidate) => candidate.dir === nearTurret);
     if (turret === undefined) {
+      this.actionPending = false;
+      this.currentTurret = undefined;
       this.clear();
       return;
     }
@@ -77,10 +87,15 @@ export class TurretShop {
     const repairMissing = Math.max(0, turret.maxHp - turret.hp);
     const repairCost = Math.ceil(repairMissing * TOWER_TURRET_REPAIR_COST_PER_HP);
     const signature = [nearTurret, state.scrapFund, Math.ceil(turret.hp), turret.maxHp].join('|');
+    if (this.currentTurret !== nearTurret) {
+      this.currentTurret = nearTurret;
+      this.actionPending = false;
+    }
     if (signature === this.signature) {
       return;
     }
     this.signature = signature;
+    this.actionPending = false;
 
     const shopButtons = TOWER_TURRET_SHOP.map((entry) => {
       const disabled = state.scrapFund < entry.cost ? 'disabled' : '';
@@ -109,13 +124,30 @@ export class TurretShop {
       </section>
     `;
 
-    for (const button of this.element.querySelectorAll<HTMLButtonElement>('[data-action]')) {
-      button.addEventListener('click', () => {
-        const action = button.dataset.action;
-        if (action !== undefined) {
-          this.onAction(nearTurret, action);
-        }
-      });
-    }
   }
+
+  private readonly handleAction = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>('[data-action]');
+    const action = button?.dataset.action;
+    if (
+      button === null ||
+      button === undefined ||
+      button.disabled ||
+      action === undefined ||
+      this.currentTurret === undefined ||
+      this.actionPending
+    ) {
+      return;
+    }
+
+    this.actionPending = true;
+    for (const choice of this.element.querySelectorAll<HTMLButtonElement>('[data-action]')) {
+      choice.disabled = true;
+    }
+    this.onAction(this.currentTurret, action);
+  };
 }

@@ -9,9 +9,6 @@ const RARITY_COLORS: Readonly<Record<UpgradeRarity, string>> = {
   divin: '#5900ff',
 };
 
-/** Verrou anti-missclick : ignore les clics survenant juste après l'apparition. */
-const MISCLICK_LOCK_MS = 200;
-
 const HTML_ENTITIES: Readonly<Record<string, string>> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -28,18 +25,21 @@ function escapeHtml(value: string): string {
  * Écran de montée de niveau (Tower) : lit `state.player.upgradeChoices` et
  * n'affiche les cartes que si l'offre n'est pas vide (masqué sinon). La couleur
  * de bordure de chaque carte reflète sa rareté. Un clic sur une carte appelle
- * `onSelect(card.offerId)` — sauf pendant les 200 ms suivant l'apparition, pour
- * absorber un clic resté « collé » d'une action précédente.
+ * `onSelect(card.offerId)`. Le premier appui est pris immédiatement ; la carte
+ * choisie verrouille ensuite le panneau jusqu'à la prochaine offre afin d'éviter
+ * les doubles activations.
  */
 export class TowerLevelUp {
   private readonly element: HTMLElement;
   private readonly onSelect: (offerId: string) => void;
   private signature = '';
-  private shownAtMs = 0;
+  private selectionPending = false;
 
   public constructor(root: HTMLElement, onSelect: (offerId: string) => void) {
     this.element = root;
     this.onSelect = onSelect;
+    this.element.addEventListener('pointerdown', this.handleSelection);
+    this.element.addEventListener('click', this.handleSelection);
   }
 
   public render(state: TowerGameState): void {
@@ -47,6 +47,7 @@ export class TowerLevelUp {
     if (choices.length === 0) {
       if (this.signature !== '') {
         this.signature = '';
+        this.selectionPending = false;
         this.element.innerHTML = '';
       }
       return;
@@ -57,7 +58,7 @@ export class TowerLevelUp {
       return;
     }
     this.signature = signature;
-    this.shownAtMs = Date.now();
+    this.selectionPending = false;
 
     this.element.innerHTML = `
       <section class="tower-levelup" data-testid="tower-levelup">
@@ -82,16 +83,23 @@ export class TowerLevelUp {
       </section>
     `;
 
-    for (const button of this.element.querySelectorAll<HTMLButtonElement>('[data-offer-id]')) {
-      button.addEventListener('click', () => {
-        if (Date.now() - this.shownAtMs < MISCLICK_LOCK_MS) {
-          return;
-        }
-        const offerId = button.dataset.offerId;
-        if (offerId !== undefined) {
-          this.onSelect(offerId);
-        }
-      });
-    }
   }
+
+  private readonly handleSelection = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLButtonElement>('[data-offer-id]');
+    const offerId = button?.dataset.offerId;
+    if (button === null || button === undefined || offerId === undefined || this.selectionPending) {
+      return;
+    }
+
+    this.selectionPending = true;
+    for (const choice of this.element.querySelectorAll<HTMLButtonElement>('[data-offer-id]')) {
+      choice.disabled = true;
+    }
+    this.onSelect(offerId);
+  };
 }

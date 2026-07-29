@@ -228,7 +228,7 @@
 
 #turret-shop .turret-shop-item {
   position: relative;
-  min-height: 92px;
+  min-height: 104px;
   gap: 4px;
   padding: 11px 12px;
   overflow: hidden;
@@ -240,6 +240,7 @@
     transform 130ms ease,
     border-color 130ms ease,
     background 130ms ease;
+  touch-action: manipulation;
 }
 
 #turret-shop .turret-shop-item::before {
@@ -329,6 +330,7 @@
     transform 140ms ease,
     box-shadow 140ms ease,
     background 140ms ease;
+  touch-action: manipulation;
 }
 
 #levelup .tower-levelup-card:hover,
@@ -362,36 +364,24 @@
 .tower-connection-issue {
   position: fixed;
   z-index: 80;
-  top: 18px;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: min(620px, calc(100vw - 32px));
-  padding: 13px 16px;
-  transform: translateX(-50%);
-  border: 1px solid rgb(230 135 100 / 72%);
-  border-radius: 12px;
-  color: #ffe8d8;
-  background: rgb(48 19 13 / 96%);
-  box-shadow: 0 16px 42px rgb(0 0 0 / 44%);
+  top: 12px;
+  right: 14px;
+  max-width: min(340px, calc(100vw - 28px));
+  padding: 6px 9px;
+  border: 1px solid rgb(230 182 100 / 30%);
+  border-radius: 999px;
+  color: #eed9ac;
+  background: rgb(15 23 19 / 88%);
+  font-size: 11px;
+  pointer-events: none;
 }
 
 .tower-connection-issue p {
-  flex: 1;
   margin: 0;
-  line-height: 1.35;
-}
-
-.tower-connection-issue button {
-  flex: 0 0 auto;
-  padding: 8px 10px;
-  border: 1px solid rgb(255 220 184 / 58%);
-  border-radius: 7px;
-  color: #fff4e9;
-  font: inherit;
-  cursor: pointer;
-  background: rgb(78 32 21 / 94%);
+  overflow: hidden;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (width <= 640px) {
@@ -424,7 +414,7 @@
 
   #turret-shop .turret-shop-item,
   #levelup .tower-levelup-card {
-    min-height: 0;
+    min-height: 72px;
   }
 
   #levelup {
