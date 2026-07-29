@@ -77,6 +77,22 @@ const session: TowerRenderableSession =
     ? createTowerCoopSession(coopConfig)
     : new TowerLocalSession({ seed });
 
+const connectionIssue = document.createElement('section');
+connectionIssue.className = 'tower-connection-issue';
+connectionIssue.setAttribute('role', 'alert');
+connectionIssue.hidden = true;
+const connectionIssueText = document.createElement('p');
+const connectionIssueBack = document.createElement('button');
+connectionIssueBack.type = 'button';
+connectionIssueBack.textContent = 'Retour au menu';
+connectionIssueBack.addEventListener('click', goToLobby);
+connectionIssue.append(connectionIssueText, connectionIssueBack);
+document.body.append(connectionIssue);
+const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
+  connectionIssueText.textContent = message;
+  connectionIssue.hidden = false;
+});
+
 const scene = new TowerScene(session);
 const hud = new TowerHud(hudElement);
 
@@ -210,7 +226,14 @@ new Phaser.Game({
   scene: [scene],
 });
 
-window.addEventListener('beforeunload', () => void session.stop(), { once: true });
+window.addEventListener(
+  'beforeunload',
+  () => {
+    unsubscribeConnectionIssue();
+    void session.stop();
+  },
+  { once: true },
+);
 
 void session.start();
 requestAnimationFrame(inputLoop);

@@ -70,5 +70,12 @@ export interface LaunchPayload {
   roster?: readonly LaunchRosterEntry[];
 }
 
-/** Capacité maximale d'un hub / partie co-op à cette étape. */
+/**
+ * Capacité maximale d'un hub / partie co-op à cette étape.
+ *
+ * La présence et les broadcasts Supabase étant pilotés uniquement par les clients,
+ * cette limite est défendue au mieux avant l'entrée et avant le lancement, mais ne
+ * constitue pas une garantie de sécurité face à un client modifié ou à deux arrivées
+ * strictement concurrentes. Une admission atomique côté serveur serait nécessaire.
+ */
 export const HUB_CAPACITY = 10;

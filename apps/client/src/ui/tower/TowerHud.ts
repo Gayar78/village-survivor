@@ -1,5 +1,7 @@
 import type { TowerGameState } from '@village-survivor/protocol';
 
+import './tower-ui.css';
+
 function percentage(value: number, maximum: number): number {
   return maximum <= 0 ? 0 : Math.max(0, Math.min(100, (value / maximum) * 100));
 }
@@ -40,23 +42,29 @@ export class TowerHud {
 
     this.element.innerHTML = `
       <div class="tower-hud" data-testid="tower-hud">
-        <div class="bar" data-testid="tower-hud-hp">
-          <i style="width:${hpPercent}%"></i>
-          <span>${Math.ceil(player.hp)} / ${player.maxHp} PV</span>
+        <div class="tower-hud__head">
+          <span class="tower-hud__sigil" aria-hidden="true">✦</span>
+          <div><span class="tower-hud__eyebrow">Gardien de la clairière</span><strong>Survivant</strong></div>
         </div>
-        <div class="tower-hud-level" data-testid="tower-hud-level">
-          <span>Niveau ${player.level}</span>
-          <div class="bar bar--xp"><i style="width:${xpPercent}%"></i></div>
-        </div>
-        <div class="tower-hud-resources" data-testid="tower-hud-resources">
-          <div class="tower-hud-resource" data-testid="tower-hud-scrap">
-            <span>Ferraille</span><strong>${state.scrapFund}</strong>
+        <div class="tower-hud__body">
+          <div class="tower-hud__vitality">
+            <div class="tower-hud__bar-label"><span>Vitalité</span><strong>${Math.ceil(player.hp)} / ${player.maxHp}</strong></div>
+            <div class="bar" data-testid="tower-hud-hp"><i style="width:${hpPercent}%"></i></div>
           </div>
-          <div class="tower-hud-resource" data-testid="tower-hud-gold">
-            <span>Or</span><strong>${player.gold}</strong>
+          <div class="tower-hud-level" data-testid="tower-hud-level">
+            <div class="tower-hud__bar-label"><span>Niveau ${player.level}</span><span>Essence</span></div>
+            <div class="bar bar--xp"><i style="width:${xpPercent}%"></i></div>
           </div>
+          <div class="tower-hud-resources" data-testid="tower-hud-resources">
+            <div class="tower-hud-resource" data-testid="tower-hud-scrap">
+              <span>Ferraille commune</span><strong>${state.scrapFund}</strong>
+            </div>
+            <div class="tower-hud-resource" data-testid="tower-hud-gold">
+              <span>Or personnel</span><strong>${player.gold}</strong>
+            </div>
+          </div>
+          <div class="tower-hud-wave" data-testid="tower-hud-wave"><span>Veille</span> Vague ${state.wave}</div>
         </div>
-        <div class="tower-hud-wave" data-testid="tower-hud-wave">Vague ${state.wave}</div>
       </div>
     `;
   }

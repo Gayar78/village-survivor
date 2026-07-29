@@ -96,6 +96,7 @@ export class Hub {
   private hubState: HubState | null = null;
   private presence: Map<string, PresenceSnapshot> = new Map();
   private error: string | null = null;
+  private launchInFlight = false;
 
   private readonly unsubscribers: Array<() => void> = [];
 
@@ -205,6 +206,7 @@ export class Hub {
     const members = this.members();
     const capacity = this.hubState ? this.hubState.capacity : HUB_CAPACITY;
     const chief = this.isChief();
+    const launchBlocked = members.length < 1 || members.length > HUB_CAPACITY;
 
     body.innerHTML = `
       <header class="hub-head">
@@ -238,9 +240,10 @@ export class Hub {
       <div class="hub-actions">
         ${
           chief
-            ? `<button type="button" class="hub-btn hub-btn--primary" id="hub-launch">Lancer la partie</button>`
+            ? `<button type="button" class="hub-btn hub-btn--primary" id="hub-launch" ${launchBlocked || this.launchInFlight ? 'disabled' : ''}>${this.launchInFlight ? 'Lancement…' : 'Lancer la partie'}</button>`
             : `<p class="hub-hint">Seul le chef peut lancer la partie.</p>`
         }
+        ${launchBlocked ? `<p class="hub-error">Le hub dépasse la limite de ${HUB_CAPACITY} joueurs. Le lancement est bloqué.</p>` : ''}
         <button type="button" class="hub-btn" id="hub-join-toggle">Rejoindre une équipe</button>
         ${
           this.hubState && this.session.userId !== this.hubState.chiefUserId
@@ -353,12 +356,17 @@ export class Hub {
   }
 
   private handleLaunch(): void {
-    if (!this.isChief()) {
+    if (!this.isChief() || this.launchInFlight) {
       return;
     }
     // Roster ordonné (chef en premier) : chaque membre du hub devient un avatar. Les
     // identifiants d'avatar sont les userId, l'hôte est le chef (= le joueur local ici).
     const members = this.members();
+    if (members.length < 1 || members.length > HUB_CAPACITY) {
+      this.error = `Impossible de lancer au-delà de ${HUB_CAPACITY} joueurs.`;
+      this.renderHub();
+      return;
+    }
     const roster = [...members]
       .sort((a, b) => (a.isChief === b.isChief ? 0 : a.isChief ? -1 : 1))
       .map((member) => ({ id: member.userId, name: member.displayName }));
@@ -370,11 +378,20 @@ export class Hub {
         ? { code, hostId: this.session.userId, roster }
         : {}),
     };
+    this.launchInFlight = true;
+    this.error = null;
+    this.renderHub();
     void (async () => {
       try {
-        await realtimeService.launch(payload);
-      } catch {
-        // Diffusion réseau impossible : on démarre tout de même en local.
+        // Le solo reste entièrement local et ne dépend pas de Supabase Realtime.
+        if (members.length > 1) {
+          await realtimeService.launch(payload);
+        }
+      } catch (error) {
+        this.launchInFlight = false;
+        this.error = this.describe(error);
+        this.renderHub();
+        return;
       }
       // Démarrage local du chef. Les membres non-chef sont démarrés par main.ts
       // via l'abonnement réseau au lancement (hors périmètre de ce lot).

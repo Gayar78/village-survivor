@@ -25,31 +25,35 @@ export interface TowerRenderSession {
 }
 
 const COLORS = {
-  ground: 0x0b0f12,
-  grid: 0x18232a,
-  distanceNear: 0x1a2a33,
-  distanceFar: 0x3a1620,
-  heart: 0xe23b3b,
-  heartOutline: 0xff8f8f,
-  turret: 0x8fa3c9,
-  turretDead: 0x4a4f57,
-  turretRange: 0x8fa3c9,
-  turretEnergy: 0xf4c22f,
+  ground: 0x10181b,
+  groundShade: 0x0b1210,
+  moss: 0x263827,
+  mossLight: 0x3f5635,
+  soil: 0x2c291d,
+  root: 0x59432a,
+  distanceNear: 0x25402d,
+  distanceFar: 0x5a3722,
+  heart: 0xd45e3f,
+  heartOutline: 0xf6b866,
+  turret: 0xb98243,
+  turretDead: 0x4b4033,
+  turretRange: 0x708b5b,
+  turretEnergy: 0xf4c76f,
   local: 0x5be3ff,
-  ally: 0xff8fd9,
-  downed: 0x6a7079,
-  barrel: 0xeafcff,
-  projectilePlayer: 0xffffff,
-  projectileTurret: 0x6bd66b,
-  scrap: 0x8a8f96,
-  hpBack: 0x070b0c,
+  ally: 0xdcc99a,
+  downed: 0x6f7467,
+  barrel: 0xd9d1b5,
+  projectilePlayer: 0x8df0ff,
+  projectileTurret: 0xc5db74,
+  scrap: 0xc5a860,
+  hpBack: 0x07100c,
 } as const;
 
 const MONSTER_COLORS: Readonly<Record<TowerMonsterKind, number>> = {
-  chaser: 0x9c6b6b,
-  runner: 0xe8d24c,
-  brute: 0x8a5cd6,
-  kamikaze: 0xff8c3c,
+  chaser: 0x8f6254,
+  runner: 0xd0a749,
+  brute: 0x765a82,
+  kamikaze: 0xd66a3f,
 };
 
 /** Demi-largeur (radians) de l'arc de portée d'une tourelle (110° au total). */
@@ -208,12 +212,18 @@ export class TowerScene extends Phaser.Scene {
     const graphics = this.graphics;
     graphics.fillStyle(COLORS.ground, 1);
     graphics.fillRect(0, 0, state.world.width, state.world.height);
-    graphics.lineStyle(1, COLORS.grid, 0.35);
-    for (let x = 0; x <= state.world.width; x += 100) {
-      graphics.lineBetween(x, 0, x, state.world.height);
-    }
-    for (let y = 0; y <= state.world.height; y += 100) {
-      graphics.lineBetween(0, y, state.world.width, y);
+    for (let index = 0; index < 72; index += 1) {
+      const seed = index * 91.73;
+      const x = (Math.sin(seed) * 0.5 + 0.5) * state.world.width;
+      const y = (Math.sin(seed * 1.71 + 2.4) * 0.5 + 0.5) * state.world.height;
+      const radius = 26 + (Math.sin(seed * 0.37) + 1) * 22;
+      graphics.fillStyle(
+        index % 3 === 0 ? COLORS.soil : COLORS.moss,
+        index % 3 === 0 ? 0.16 : 0.18,
+      );
+      graphics.fillEllipse(x, y, radius * 2.5, radius);
+      graphics.fillStyle(COLORS.mossLight, 0.08);
+      graphics.fillCircle(x + radius * 0.4, y - radius * 0.1, radius * 0.34);
     }
     // Teinte de distance : bandes concentriques subtiles autour de l'origine
     // (centre du monde), du calme (bleuté) au danger (rougeâtre) en s'éloignant.
@@ -230,8 +240,23 @@ export class TowerScene extends Phaser.Scene {
         bandCount,
         band,
       );
-      graphics.lineStyle(2, color.color, 0.06 + 0.04 * t);
+      graphics.fillStyle(color.color, 0.035 + 0.018 * t);
+      graphics.fillCircle(centerX, centerY, radius);
+      graphics.lineStyle(2, COLORS.root, 0.05 + 0.025 * t);
       graphics.strokeCircle(centerX, centerY, radius);
+    }
+
+    graphics.lineStyle(4, COLORS.root, 0.12);
+    for (let branch = 0; branch < 8; branch += 1) {
+      const angle = (Math.PI * 2 * branch) / 8 + 0.16;
+      const start = 180 + (branch % 2) * 35;
+      const end = Math.min(maxRadius * 0.72, 780 + (branch % 3) * 90);
+      graphics.lineBetween(
+        centerX + Math.cos(angle) * start,
+        centerY + Math.sin(angle) * start,
+        centerX + Math.cos(angle + 0.12) * end,
+        centerY + Math.sin(angle + 0.12) * end,
+      );
     }
   }
 
@@ -244,16 +269,26 @@ export class TowerScene extends Phaser.Scene {
   private drawScrap(scrap: ScrapPickupState): void {
     const graphics = this.graphics;
     const { x, y } = this.toScreen(scrap.position);
-    graphics.fillStyle(COLORS.scrap, 0.9);
-    graphics.fillRect(x - 4, y - 4, 8, 8);
+    graphics.fillStyle(COLORS.root, 0.8);
+    graphics.fillCircle(x, y + 2, 7);
+    graphics.fillStyle(COLORS.scrap, 0.95);
+    graphics.fillTriangle(x, y - 6, x + 5, y + 3, x - 5, y + 3);
+    graphics.lineStyle(1, COLORS.heartOutline, 0.65);
+    graphics.strokeTriangle(x, y - 6, x + 5, y + 3, x - 5, y + 3);
   }
 
   private drawHeart(heart: HeartState): void {
     const graphics = this.graphics;
     const { x, y } = this.toScreen(heart.position);
+    graphics.fillStyle(COLORS.heartOutline, 0.08);
+    graphics.fillCircle(x, y, heart.radius + 24);
+    graphics.fillStyle(COLORS.root, 0.9);
+    graphics.fillCircle(x, y, heart.radius + 7);
     graphics.fillStyle(COLORS.heart, 1);
     graphics.fillCircle(x, y, heart.radius);
-    graphics.lineStyle(3, COLORS.heartOutline, 0.85);
+    graphics.fillStyle(COLORS.heartOutline, 0.9);
+    graphics.fillCircle(x, y - heart.radius * 0.22, heart.radius * 0.34);
+    graphics.lineStyle(3, COLORS.heartOutline, 0.9);
     graphics.strokeCircle(x, y, heart.radius);
     this.drawBar(x - 55, y - heart.radius - 18, 110, 7, heart.hp / heart.maxHp, COLORS.heart);
   }
@@ -273,7 +308,7 @@ export class TowerScene extends Phaser.Scene {
     if (turret.alive) {
       // Arc de portée (secteur de 110° dans la direction de visée fixe).
       const angleRad = Phaser.Math.DegToRad(turret.angle);
-      graphics.fillStyle(COLORS.turretRange, 0.07);
+      graphics.fillStyle(COLORS.turretRange, 0.09);
       graphics.slice(
         x,
         y,
@@ -283,7 +318,7 @@ export class TowerScene extends Phaser.Scene {
         false,
       );
       graphics.fillPath();
-      graphics.lineStyle(1, COLORS.turretRange, 0.18);
+      graphics.lineStyle(2, COLORS.turretRange, 0.16);
       graphics.slice(
         x,
         y,
@@ -295,9 +330,21 @@ export class TowerScene extends Phaser.Scene {
       graphics.strokePath();
     }
 
+    const angleRad = Phaser.Math.DegToRad(turret.angle);
+    graphics.fillStyle(COLORS.root, bodyAlpha);
+    graphics.fillCircle(x, y, TURRET_RADIUS + 4);
     graphics.fillStyle(bodyColor, bodyAlpha);
     graphics.fillCircle(x, y, TURRET_RADIUS);
-    graphics.lineStyle(2, 0x0c1216, bodyAlpha);
+    graphics.lineStyle(5, COLORS.barrel, bodyAlpha);
+    graphics.lineBetween(
+      x + Math.cos(angleRad) * 5,
+      y + Math.sin(angleRad) * 5,
+      x + Math.cos(angleRad) * (TURRET_RADIUS + 13),
+      y + Math.sin(angleRad) * (TURRET_RADIUS + 13),
+    );
+    graphics.fillStyle(COLORS.heartOutline, bodyAlpha);
+    graphics.fillCircle(x, y, 6);
+    graphics.lineStyle(2, 0x15130d, bodyAlpha);
     graphics.strokeCircle(x, y, TURRET_RADIUS);
 
     this.drawBar(x - 20, y - TURRET_RADIUS - 14, 40, 5, turret.hp / turret.maxHp, COLORS.turret);
@@ -317,6 +364,8 @@ export class TowerScene extends Phaser.Scene {
       const { x, y } = this.toScreen(this.projectileRenderPos(projectile));
       const color =
         projectile.source === 'player' ? COLORS.projectilePlayer : COLORS.projectileTurret;
+      graphics.fillStyle(color, projectile.source === 'player' ? 0.2 : 0.16);
+      graphics.fillCircle(x, y, projectile.radius + 4);
       graphics.fillStyle(color, 1);
       graphics.fillCircle(x, y, projectile.radius);
     }
@@ -328,8 +377,23 @@ export class TowerScene extends Phaser.Scene {
       const { x, y } = this.toScreen(this.monsterRenderPos(monster));
       const color = MONSTER_COLORS[monster.kind];
       graphics.fillStyle(color, 1);
-      graphics.fillCircle(x, y, monster.radius);
-      graphics.lineStyle(1, 0x0c1216, 0.7);
+      if (monster.kind === 'runner' || monster.kind === 'kamikaze') {
+        graphics.fillTriangle(
+          x,
+          y - monster.radius,
+          x + monster.radius,
+          y + monster.radius * 0.8,
+          x - monster.radius,
+          y + monster.radius * 0.8,
+        );
+      } else {
+        graphics.fillCircle(x, y, monster.radius);
+      }
+      if (monster.kind === 'brute') {
+        graphics.lineStyle(3, COLORS.root, 0.7);
+        graphics.strokeCircle(x, y, monster.radius * 0.65);
+      }
+      graphics.lineStyle(1, 0x15130d, 0.8);
       graphics.strokeCircle(x, y, monster.radius);
       this.drawBar(
         x - monster.radius,
@@ -401,11 +465,11 @@ export class TowerScene extends Phaser.Scene {
     if (existing === undefined) {
       const label = this.add
         .text(x, labelY, labelText, {
-          color: '#ffe1f5',
-          fontFamily: 'system-ui, sans-serif',
+          color: '#e7dbb8',
+          fontFamily: 'Georgia, serif',
           fontSize: '12px',
           fontStyle: 'bold',
-          stroke: '#11181b',
+          stroke: '#10181b',
           strokeThickness: 3,
         })
         .setOrigin(0.5)
@@ -480,10 +544,14 @@ export class TowerScene extends Phaser.Scene {
     };
 
     graphics.clear();
-    graphics.fillStyle(0x091013, 0.82);
+    graphics.fillStyle(COLORS.groundShade, 0.92);
     graphics.fillRoundedRect(boxX - 6, boxY - 6, width + 12, height + 12, 10);
-    graphics.lineStyle(1, 0xffffff, 0.18);
-    graphics.strokeRect(boxX, boxY, width, height);
+    graphics.fillStyle(COLORS.moss, 0.45);
+    graphics.fillRoundedRect(boxX, boxY, width, height, 6);
+    graphics.lineStyle(1, COLORS.heartOutline, 0.38);
+    graphics.strokeRoundedRect(boxX, boxY, width, height, 6);
+    graphics.lineStyle(1, COLORS.root, 0.5);
+    graphics.lineBetween(centerX - 7, boxY + 8, centerX + 7, boxY + 8);
 
     const heartPoint = point(state.heart.position);
     graphics.fillStyle(COLORS.heart, 1);

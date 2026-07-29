@@ -86,6 +86,8 @@ type HubPresencePayload = {
   displayName: string;
   /** true uniquement pour le propriétaire du code = chef du hub. */
   isOwner: boolean;
+  /** Sert à stabiliser l'ordre d'admission côté client (anciens clients : absent). */
+  joinedAt?: number;
 };
 
 /** Payload broadcast d'exclusion (event `kick`). */
@@ -106,6 +108,7 @@ let personalChannel: RealtimeChannel | null = null;
 let hubChannel: RealtimeChannel | null = null;
 /** Code du hub rejoint (celui d'un autre) ; null quand on est dans son propre hub. */
 let joinedHubCode: string | null = null;
+let hubJoinedAt = 0;
 
 const presenceCbs = new Set<(entries: Map<string, PresenceEntry>) => void>();
 const hubStateCbs = new Set<(state: HubState | null) => void>();
@@ -194,7 +197,7 @@ function computePresenceEntries(channel: RealtimeChannel): Map<string, PresenceE
 
 function computeHubState(channel: RealtimeChannel, code: string): HubState {
   const state = channel.presenceState<HubPresencePayload>();
-  const members: HubMember[] = [];
+  const found: Array<HubMember & { joinedAt: number }> = [];
   let chiefUserId = '';
   for (const presences of Object.values(state)) {
     const p = presences[0];
@@ -205,8 +208,23 @@ function computeHubState(channel: RealtimeChannel, code: string): HubState {
     if (isChief) {
       chiefUserId = p.userId;
     }
-    members.push({ userId: p.userId, displayName: p.displayName, isChief });
+    found.push({
+      userId: p.userId,
+      displayName: p.displayName,
+      isChief,
+      joinedAt: typeof p.joinedAt === 'number' ? p.joinedAt : 0,
+    });
   }
+  found.sort((a, b) => {
+    if (a.isChief !== b.isChief) return a.isChief ? -1 : 1;
+    if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+    return a.userId.localeCompare(b.userId);
+  });
+  const members: HubMember[] = found.map(({ userId, displayName, isChief }) => ({
+    userId,
+    displayName,
+    isChief,
+  }));
   return { code, chiefUserId, members, capacity: HUB_CAPACITY };
 }
 
@@ -295,6 +313,7 @@ async function trackHubPresence(isOwner: boolean): Promise<void> {
     userId: sessionRef.userId,
     displayName: sessionRef.displayName,
     isOwner,
+    joinedAt: hubJoinedAt,
   };
   const res = await hubChannel.track(payload);
   if (res !== 'ok') {
@@ -344,7 +363,15 @@ async function openHubChannel(code: string, isOwner: boolean): Promise<void> {
   const channel = supabase.channel(`hub:${code}`, {
     config: { presence: { key: sessionRef.userId } },
   });
-  channel.on('presence', { event: 'sync' }, () => emitHubState());
+  let resolveFirstSync: (() => void) | undefined;
+  const firstSync = new Promise<void>((resolve) => {
+    resolveFirstSync = resolve;
+  });
+  channel.on('presence', { event: 'sync' }, () => {
+    resolveFirstSync?.();
+    resolveFirstSync = undefined;
+    emitHubState();
+  });
   channel.on('presence', { event: 'join' }, () => emitHubState());
   channel.on('presence', { event: 'leave' }, () => emitHubState());
 
@@ -356,7 +383,12 @@ async function openHubChannel(code: string, isOwner: boolean): Promise<void> {
   });
   channel.on<LaunchPayload>('broadcast', { event: 'launch' }, (message) => {
     const p = message.payload;
-    if (typeof p?.seed === 'string' && typeof p.playerCount === 'number') {
+    if (
+      typeof p?.seed === 'string' &&
+      Number.isSafeInteger(p.playerCount) &&
+      p.playerCount >= 1 &&
+      p.playerCount <= HUB_CAPACITY
+    ) {
       // On transmet aussi les champs co-op (code/hostId/roster) quand ils sont présents
       // et bien formés, sans jamais laisser un payload malformé casser le lancement.
       const coop =
@@ -370,12 +402,48 @@ async function openHubChannel(code: string, isOwner: boolean): Promise<void> {
               ),
             }
           : {};
+      if ('roster' in coop) {
+        const ids = coop.roster.map((entry) => entry.id);
+        const hubState = computeHubState(channel, code);
+        const currentIds = new Set(hubState.members.map((member) => member.userId));
+        if (
+          coop.roster.length !== p.playerCount ||
+          coop.roster.length > HUB_CAPACITY ||
+          new Set(ids).size !== ids.length ||
+          typeof coop.hostId !== 'string' ||
+          !ids.includes(coop.hostId) ||
+          coop.code !== code ||
+          coop.hostId !== hubState.chiefUserId ||
+          ids.some((id) => !currentIds.has(id)) ||
+          currentIds.size !== ids.length
+        ) {
+          console.warn('[realtimeService] lancement malformé ou au-delà de la capacité ignoré');
+          return;
+        }
+      }
       emitLaunch({ seed: p.seed, playerCount: p.playerCount, ...coop });
     }
   });
 
-  hubChannel = channel;
   await subscribeChannel(channel);
+  if (!isOwner) {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      firstSync,
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(resolve, 1_500);
+      }),
+    ]);
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+    if (computeHubState(channel, code).members.length >= HUB_CAPACITY) {
+      await disposeChannel(channel, false);
+      throw new Error(`Ce hub est complet (${HUB_CAPACITY}/${HUB_CAPACITY}).`);
+    }
+  }
+  hubChannel = channel;
+  hubJoinedAt = Date.now();
   await trackHubPresence(isOwner);
 }
 
@@ -462,7 +530,18 @@ async function doJoinHub(code: string): Promise<void> {
   await disposeChannel(hubChannel, true);
   hubChannel = null;
   joinedHubCode = code;
-  await openHubChannel(code, false);
+  try {
+    await openHubChannel(code, false);
+  } catch (error) {
+    // Une admission refusée ne laisse jamais le joueur sans canal : retour à son hub.
+    joinedHubCode = null;
+    if (myHubCodeRef !== null) {
+      await openHubChannel(myHubCodeRef, true);
+      await setStatusInternal('online', undefined);
+    }
+    emitHubState();
+    throw error;
+  }
   await setStatusInternal('in-hub', code);
   emitHubState();
 }
@@ -491,17 +570,36 @@ async function doKick(userId: string): Promise<void> {
 
 async function doLaunch(payload: LaunchPayload): Promise<void> {
   if (hubChannel === null) {
-    console.warn('[realtimeService] launch sans hub actif');
-    return;
+    throw new Error('Impossible de lancer : aucun hub actif.');
+  }
+  const code = joinedHubCode ?? myHubCodeRef ?? '';
+  const state = computeHubState(hubChannel, code);
+  const ids = payload.roster?.map((entry) => entry.id) ?? [];
+  const currentIds = new Set(state.members.map((member) => member.userId));
+  if (
+    state.members.length === 0 ||
+    state.members.length > HUB_CAPACITY ||
+    payload.playerCount !== state.members.length ||
+    payload.playerCount < 1 ||
+    payload.playerCount > HUB_CAPACITY ||
+    payload.roster === undefined ||
+    payload.roster.length !== payload.playerCount ||
+    new Set(ids).size !== ids.length ||
+    ids.some((id) => !currentIds.has(id)) ||
+    sessionRef?.userId !== state.chiefUserId ||
+    payload.hostId !== state.chiefUserId ||
+    payload.code !== code
+  ) {
+    throw new Error(
+      `Lancement refusé : le roster doit correspondre aux 1 à ${HUB_CAPACITY} membres du hub.`,
+    );
   }
   const res = await hubChannel.send({ type: 'broadcast', event: 'launch', payload });
   if (res !== 'ok') {
-    console.warn(`[realtimeService] envoi launch : « ${res} »`);
+    throw new Error(`Lancement non diffusé par Supabase (${String(res)}). Réessayez.`);
   }
-  // NOTE live-test : par défaut un broadcast n'est pas renvoyé à son émetteur
-  // (config.broadcast.self=false). Le chef déclenche donc son propre lancement
-  // localement pour démarrer sa partie en même temps que les autres membres.
-  emitLaunch(payload);
+  // Le broadcast n'est pas renvoyé à son émetteur. `Hub` déclenche exactement une
+  // fois le lancement local du chef après cette confirmation d'envoi.
 }
 
 async function doInvite(

@@ -14,8 +14,25 @@
   <body>
     <div id="app">
       <div id="auth" aria-label="Connexion au compte"></div>
+      <div id="main-menu" aria-label="Menu principal"></div>
+      <div id="compendium" aria-label="Annuaire du jeu"></div>
       <div id="profile" aria-label="Profil du joueur"></div>
       <div id="hub" aria-label="Hub multijoueur"></div>
+      <nav class="main-menu-account-bar" id="multiplayer-nav" aria-label="Navigation multijoueur">
+        <button type="button" class="main-menu-account-bar__button" id="multiplayer-back">
+          Retour au menu
+        </button>
+        <button type="button" class="main-menu-account-bar__button" id="multiplayer-profile">
+          Mon profil
+        </button>
+        <button
+          type="button"
+          class="main-menu-account-bar__button main-menu-account-bar__button--danger"
+          id="multiplayer-logout"
+        >
+          Se déconnecter
+        </button>
+      </nav>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

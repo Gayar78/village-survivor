@@ -96,7 +96,7 @@ export class TurretShop {
     this.element.innerHTML = `
       <section class="turret-shop" data-testid="turret-shop">
         <p class="eyebrow">TOURELLE ${escapeHtml(nearTurret)}</p>
-        <h2>Boutique de tourelle</h2>
+        <div class="turret-shop__title-row"><h2>Atelier de la tourelle</h2><span>E · fermer</span></div>
         <p>Ferraille commune disponible : <strong>${state.scrapFund}</strong></p>
         <div class="turret-shop-grid">
           ${shopButtons}

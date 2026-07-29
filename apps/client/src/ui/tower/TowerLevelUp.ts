@@ -72,6 +72,7 @@ export class TowerLevelUp {
                 data-offer-id="${escapeHtml(card.offerId)}"
                 style="border-color:${RARITY_COLORS[card.rarity]}"
               >
+                <span class="tower-levelup-card__rarity">${escapeHtml(card.rarity)}</span>
                 <strong>${escapeHtml(card.label)}</strong>
                 <small>${escapeHtml(card.description)}</small>
               </button>`,

@@ -3,6 +3,7 @@ import type { TowerGameState, TowerInput, TowerSession } from '@village-survivor
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '../account/supabaseClient.js';
+import { HUB_CAPACITY } from '../hub/types.js';
 
 // Netcode du NOUVEAU jeu (« Tower / arme à feu »), host-autoritaire — même principe
 // que le co-op de l'ancien jeu (voir net/coopSession.ts), adapté au contrat Tower.
@@ -15,10 +16,14 @@ const STATE_BROADCAST_HZ = 20;
 const INPUT_SEND_HZ = 30;
 const STATE_INTERVAL_MS = 1_000 / STATE_BROADCAST_HZ;
 const INPUT_INTERVAL_MS = 1_000 / INPUT_SEND_HZ;
+const SYNC_REQUEST_INTERVAL_MS = 1_000;
+const INITIAL_STATE_TIMEOUT_MS = 8_000;
 
 /** Session Tower + fraction d'interpolation pour le rendu (voir TowerScene). */
 export interface TowerRenderableSession extends TowerSession {
   getRenderAlpha(): number;
+  /** Rend les incidents de connexion exploitables sans coupler le netcode au DOM. */
+  onConnectionIssue(listener: (message: string) => void): () => void;
 }
 
 export interface TowerCoopConfig {
@@ -58,9 +63,114 @@ function isTowerGameState(value: unknown): value is TowerGameState {
   );
 }
 
-interface InputMessage {
+export interface TowerInputMessage {
   id: string;
   input: TowerInput;
+}
+
+interface SyncRequestMessage {
+  id: string;
+}
+
+interface TargetedStateMessage {
+  recipientId: string;
+  state: TowerGameState;
+}
+
+const TURRET_DIRECTIONS = new Set(['N', 'E', 'S', 'W']);
+
+/** Valide une commande distante et réserve sa séquence si elle est acceptée. */
+export function acceptTowerInputMessage(
+  value: unknown,
+  rosterIds: ReadonlySet<string>,
+  lastSequenceById: Map<string, number>,
+  hostId: string,
+): TowerInputMessage | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const candidate = value as { id?: unknown; input?: unknown };
+  if (
+    typeof candidate.id !== 'string' ||
+    candidate.id === hostId ||
+    !rosterIds.has(candidate.id) ||
+    typeof candidate.input !== 'object' ||
+    candidate.input === null
+  ) {
+    return null;
+  }
+  const input = candidate.input as Record<string, unknown>;
+  const sequence = input.sequence;
+  if (
+    !Number.isSafeInteger(sequence) ||
+    (sequence as number) < 0 ||
+    (lastSequenceById.get(candidate.id) ?? -1) >= (sequence as number) ||
+    typeof input.moveX !== 'number' ||
+    !Number.isFinite(input.moveX) ||
+    input.moveX < -1 ||
+    input.moveX > 1 ||
+    typeof input.moveY !== 'number' ||
+    !Number.isFinite(input.moveY) ||
+    input.moveY < -1 ||
+    input.moveY > 1 ||
+    typeof input.aimX !== 'number' ||
+    !Number.isFinite(input.aimX) ||
+    typeof input.aimY !== 'number' ||
+    !Number.isFinite(input.aimY) ||
+    (input.fire !== undefined && typeof input.fire !== 'boolean') ||
+    (input.selectUpgradeId !== undefined &&
+      (typeof input.selectUpgradeId !== 'string' || input.selectUpgradeId.length === 0)) ||
+    (input.turretShop !== undefined && !isTurretShopAction(input.turretShop))
+  ) {
+    return null;
+  }
+  const accepted = candidate as TowerInputMessage;
+  lastSequenceById.set(accepted.id, accepted.input.sequence);
+  return accepted;
+}
+
+function isTurretShopAction(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const action = value as { turret?: unknown; action?: unknown };
+  return (
+    typeof action.turret === 'string' &&
+    TURRET_DIRECTIONS.has(action.turret) &&
+    typeof action.action === 'string' &&
+    action.action.length > 0
+  );
+}
+
+function validateCoopConfig(config: TowerCoopConfig): void {
+  const ids = config.roster.map((entry) => entry.id);
+  if (
+    ids.length === 0 ||
+    ids.length > HUB_CAPACITY ||
+    new Set(ids).size !== ids.length ||
+    !ids.includes(config.hostId) ||
+    !ids.includes(config.me)
+  ) {
+    throw new Error(
+      `Configuration Tower invalide (roster unique de 1 à ${HUB_CAPACITY} joueurs requis).`,
+    );
+  }
+}
+
+function personalizeState(state: TowerGameState, me: string): TowerGameState {
+  const mine = state.players.find((player) => player.id === me);
+  return mine === undefined ? state : { ...state, player: mine };
+}
+
+function parseStateMessage(value: unknown, me: string): TowerGameState | null {
+  if (isTowerGameState(value)) {
+    return value;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const targeted = value as { recipientId?: unknown; state?: unknown };
+  return targeted.recipientId === me && isTowerGameState(targeted.state) ? targeted.state : null;
 }
 
 // ─── Solo ─────────────────────────────────────────────────────────────────────
@@ -105,6 +215,10 @@ export class TowerLocalSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
   }
 
+  public onConnectionIssue(_listener: (message: string) => void): () => void {
+    return () => undefined;
+  }
+
   public subscribe(listener: (state: TowerGameState) => void): () => void {
     this.listeners.add(listener);
     listener(this.simulation.createSnapshot());
@@ -145,6 +259,8 @@ class TowerHostSession implements TowerRenderableSession {
   private readonly me: string;
   private readonly listeners = new Set<(state: TowerGameState) => void>();
   private readonly inputsById: Record<string, TowerInput> = {};
+  private readonly rosterIds: ReadonlySet<string>;
+  private readonly lastSequenceById = new Map<string, number>();
   private running = false;
   private channelReady = false;
   private frameHandle: number | undefined;
@@ -154,21 +270,38 @@ class TowerHostSession implements TowerRenderableSession {
 
   public constructor(config: TowerCoopConfig) {
     this.me = config.me;
+    this.rosterIds = new Set(config.roster.map((entry) => entry.id));
     this.simulation = new TowerSimulation(config.seed, {
       playerIds: config.roster.map((entry) => entry.id),
     });
     this.channel = supabase.channel(`tower:${config.code}`, {
       config: { broadcast: { self: false } },
     });
-    this.channel.on<InputMessage>('broadcast', { event: 'input' }, (message) => {
-      const payload = message.payload;
-      if (
-        typeof payload?.id === 'string' &&
-        payload.input !== undefined &&
-        payload.id !== this.me
-      ) {
-        this.inputsById[payload.id] = payload.input;
+    this.channel.on<TowerInputMessage>('broadcast', { event: 'input' }, (message) => {
+      const accepted = acceptTowerInputMessage(
+        message.payload,
+        this.rosterIds,
+        this.lastSequenceById,
+        this.me,
+      );
+      if (accepted !== null) {
+        this.inputsById[accepted.id] = accepted.input;
       }
+    });
+    this.channel.on<SyncRequestMessage>('broadcast', { event: 'sync-request' }, (message) => {
+      const requesterId = message.payload?.id;
+      if (
+        !this.channelReady ||
+        typeof requesterId !== 'string' ||
+        !this.rosterIds.has(requesterId)
+      ) {
+        return;
+      }
+      const payload: TargetedStateMessage = {
+        recipientId: requesterId,
+        state: this.simulation.createSnapshot(),
+      };
+      void this.channel.send({ type: 'broadcast', event: 'state', payload });
     });
   }
 
@@ -207,6 +340,10 @@ class TowerHostSession implements TowerRenderableSession {
 
   public getRenderAlpha(): number {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
+  }
+
+  public onConnectionIssue(_listener: (message: string) => void): () => void {
+    return () => undefined;
   }
 
   public subscribe(listener: (state: TowerGameState) => void): () => void {
@@ -256,31 +393,49 @@ class TowerGuestSession implements TowerRenderableSession {
   private readonly channel: RealtimeChannel;
   private readonly me: string;
   private readonly listeners = new Set<(state: TowerGameState) => void>();
+  private readonly issueListeners = new Set<(message: string) => void>();
   private latestInput: TowerInput = idleInput();
   private lastState: TowerGameState | undefined;
   private lastStateAt = 0;
   private running = false;
   private sendHandle: number | undefined;
+  private syncHandle: number | undefined;
+  private timeoutHandle: number | undefined;
+  private receivedAuthoritativeState = false;
+  private connectionIssue: string | undefined;
 
   public constructor(config: TowerCoopConfig) {
     this.me = config.me;
+    // Instantané visuel non autoritaire, jamais simulé côté invité : le rendu n'est
+    // pas vide pendant que l'état courant est demandé à l'hôte.
+    const bootstrap = new TowerSimulation(config.seed, {
+      playerIds: config.roster.map((entry) => entry.id),
+    });
+    bootstrap.start();
+    this.lastState = personalizeState(bootstrap.createSnapshot(), this.me);
     this.channel = supabase.channel(`tower:${config.code}`, {
       config: { broadcast: { self: false } },
     });
-    this.channel.on<TowerGameState>('broadcast', { event: 'state' }, (message) => {
-      const payload = message.payload;
-      if (!isTowerGameState(payload)) {
-        return;
-      }
-      // Réexpose l'avatar local du point de vue de cet invité.
-      const mine = payload.players.find((player) => player.id === this.me);
-      const state: TowerGameState = mine === undefined ? payload : { ...payload, player: mine };
-      this.lastState = state;
-      this.lastStateAt = performance.now();
-      for (const listener of this.listeners) {
-        listener(state);
-      }
-    });
+    this.channel.on<TowerGameState | TargetedStateMessage>(
+      'broadcast',
+      { event: 'state' },
+      (message) => {
+        const payload = parseStateMessage(message.payload, this.me);
+        if (payload === null) {
+          return;
+        }
+        const state = personalizeState(payload, this.me);
+        this.lastState = state;
+        this.lastStateAt = performance.now();
+        if (!this.receivedAuthoritativeState) {
+          this.receivedAuthoritativeState = true;
+          this.clearSyncTimers();
+        }
+        for (const listener of this.listeners) {
+          listener(state);
+        }
+      },
+    );
   }
 
   public async start(): Promise<void> {
@@ -291,6 +446,17 @@ class TowerGuestSession implements TowerRenderableSession {
     this.channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
         this.sendHandle = window.setInterval(() => this.flushInput(), INPUT_INTERVAL_MS);
+        this.requestSync();
+        this.syncHandle = window.setInterval(() => this.requestSync(), SYNC_REQUEST_INTERVAL_MS);
+        this.timeoutHandle = window.setTimeout(() => {
+          if (!this.receivedAuthoritativeState) {
+            this.reportIssue(
+              `Synchronisation Tower impossible après ${INITIAL_STATE_TIMEOUT_MS / 1_000} s. Vérifiez que l'hôte est connecté et relancez la partie depuis le hub.`,
+            );
+          }
+        }, INITIAL_STATE_TIMEOUT_MS);
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        this.reportIssue(`Canal Tower indisponible (${status}). Revenez au hub puis réessayez.`);
       }
     });
   }
@@ -301,6 +467,7 @@ class TowerGuestSession implements TowerRenderableSession {
       clearInterval(this.sendHandle);
       this.sendHandle = undefined;
     }
+    this.clearSyncTimers();
     this.listeners.clear();
     try {
       await supabase.removeChannel(this.channel);
@@ -324,6 +491,14 @@ class TowerGuestSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, (performance.now() - this.lastStateAt) / STATE_INTERVAL_MS));
   }
 
+  public onConnectionIssue(listener: (message: string) => void): () => void {
+    this.issueListeners.add(listener);
+    if (this.connectionIssue !== undefined) {
+      listener(this.connectionIssue);
+    }
+    return () => this.issueListeners.delete(listener);
+  }
+
   public subscribe(listener: (state: TowerGameState) => void): () => void {
     this.listeners.add(listener);
     if (this.lastState !== undefined) {
@@ -335,13 +510,41 @@ class TowerGuestSession implements TowerRenderableSession {
   }
 
   private flushInput(): void {
-    const message: InputMessage = { id: this.me, input: this.latestInput };
+    const message: TowerInputMessage = { id: this.me, input: this.latestInput };
     void this.channel.send({ type: 'broadcast', event: 'input', payload: message });
+  }
+
+  private requestSync(): void {
+    if (!this.running || this.receivedAuthoritativeState) {
+      return;
+    }
+    const payload: SyncRequestMessage = { id: this.me };
+    void this.channel.send({ type: 'broadcast', event: 'sync-request', payload });
+  }
+
+  private clearSyncTimers(): void {
+    if (this.syncHandle !== undefined) {
+      clearInterval(this.syncHandle);
+      this.syncHandle = undefined;
+    }
+    if (this.timeoutHandle !== undefined) {
+      clearTimeout(this.timeoutHandle);
+      this.timeoutHandle = undefined;
+    }
+  }
+
+  private reportIssue(message: string): void {
+    this.connectionIssue = message;
+    console.error(`[tower:guest] ${message}`);
+    for (const listener of this.issueListeners) {
+      listener(message);
+    }
   }
 }
 
 /** Crée la session co-op Tower adaptée au rôle (hôte si `me === hostId`, sinon invité). */
 export function createTowerCoopSession(config: TowerCoopConfig): TowerRenderableSession {
+  validateCoopConfig(config);
   const isHost = config.me === config.hostId;
   console.info(
     `[tower] rôle=${isHost ? 'HÔTE' : 'INVITÉ'} · canal=tower:${config.code} · moi=${config.me}`,
