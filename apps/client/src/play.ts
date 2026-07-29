@@ -28,16 +28,27 @@ const shopElement = document.querySelector<HTMLElement>('#turret-shop');
 const levelupElement = document.querySelector<HTMLElement>('#levelup');
 const escapeMenuElement = document.querySelector<HTMLElement>('#escape-menu');
 const gameOverElement = document.querySelector<HTMLElement>('#game-over');
+const syncStatusElement = document.querySelector<HTMLElement>('#tower-sync-status');
+const syncStatusTitleElement = document.querySelector<HTMLElement>('#tower-sync-status-title');
+const syncStatusDetailElement = document.querySelector<HTMLElement>('#tower-sync-status-detail');
 if (
   gameElement === null ||
   hudElement === null ||
   shopElement === null ||
   levelupElement === null ||
   escapeMenuElement === null ||
-  gameOverElement === null
+  gameOverElement === null ||
+  syncStatusElement === null ||
+  syncStatusTitleElement === null ||
+  syncStatusDetailElement === null
 ) {
   throw new Error('La page de jeu ne contient pas les points de montage attendus.');
 }
+const syncStatus = {
+  element: syncStatusElement,
+  title: syncStatusTitleElement,
+  detail: syncStatusDetailElement,
+};
 
 // Config co-op posée par le lobby (même clé/forme que l'ancien jeu). Consommée une fois.
 const NETCODE_KEY = 'vs-coop-netcode';
@@ -78,21 +89,40 @@ function restartGame(): void {
 }
 
 const coopConfig = readCoopConfig();
+const activeCoopConfig = coopConfig !== null && coopConfig.roster.length > 1 ? coopConfig : null;
+const isCoopSession = activeCoopConfig !== null;
 const session: TowerRenderableSession =
-  coopConfig !== null && coopConfig.roster.length > 1
-    ? createTowerCoopSession(coopConfig)
+  activeCoopConfig !== null
+    ? createTowerCoopSession(activeCoopConfig)
     : new TowerLocalSession({ seed });
 
-const connectionIssue = document.createElement('section');
-connectionIssue.className = 'tower-connection-issue';
-connectionIssue.setAttribute('role', 'status');
-connectionIssue.hidden = true;
-const connectionIssueText = document.createElement('p');
-connectionIssue.append(connectionIssueText);
-document.body.append(connectionIssue);
+type CoopStatusTone = 'pending' | 'issue';
+
+function showCoopStatus(tone: CoopStatusTone, title: string, detail: string): void {
+  if (!isCoopSession) {
+    return;
+  }
+  syncStatus.element.dataset.tone = tone;
+  syncStatus.title.textContent = title;
+  syncStatus.detail.textContent = detail;
+  syncStatus.element.hidden = false;
+}
+
+if (activeCoopConfig !== null) {
+  const role = activeCoopConfig.me === activeCoopConfig.hostId ? 'hôte' : 'invité';
+  showCoopStatus(
+    'pending',
+    `Co-op P2P · ${role}`,
+    'Synchronisation au lancement : gardez cet onglet actif.',
+  );
+}
+
 const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
-  connectionIssueText.textContent = message;
-  connectionIssue.hidden = false;
+  showCoopStatus(
+    'issue',
+    'Synchronisation P2P en attente',
+    `${message} Gardez cet onglet au premier plan.`,
+  );
 });
 
 const scene = new TowerScene(session);

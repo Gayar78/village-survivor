@@ -1,28 +1,33 @@
-import { TowerSimulation } from '@village-survivor/game-core';
+import { createTowerStateFingerprint, TowerSimulation } from '@village-survivor/game-core';
 import type { TowerGameState, TowerInput, TowerSession } from '@village-survivor/protocol';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '../account/supabaseClient.js';
 import { HUB_CAPACITY } from '../hub/types.js';
 
-// Netcode du NOUVEAU jeu (« Tower / arme à feu »), host-autoritaire — même principe
-// que le co-op de l'ancien jeu (voir net/coopSession.ts), adapté au contrat Tower.
-// L'état Tower ne contient aucune case de tableau vide (contrairement aux inventaires
-// de l'ancien jeu), donc aucune normalisation `null → undefined` n'est nécessaire.
-
-/** Doit correspondre au tickMs interne de TowerSimulation (tuning). */
-const TOWER_TICK_MS = 50;
-const STATE_BROADCAST_HZ = 20;
-const INPUT_SEND_HZ = 30;
-const STATE_INTERVAL_MS = 1_000 / STATE_BROADCAST_HZ;
-const INPUT_INTERVAL_MS = 1_000 / INPUT_SEND_HZ;
-const ACTION_RETRY_INTERVAL_MS = 250;
-const SYNC_REQUEST_INTERVAL_MS = 1_000;
-const INITIAL_STATE_TIMEOUT_MS = 8_000;
-export const MAX_PENDING_TOWER_ACTIONS = 32;
-export const MAX_REMEMBERED_TOWER_ACTION_IDS = 256;
+/** Doit correspondre au tick fixe interne de TowerSimulation. */
+export const TOWER_LOCKSTEP_TICK_MS = 50;
+export const TOWER_INPUT_DELAY_TICKS = 4;
+export const TOWER_INPUT_BATCH_TICKS = 12;
+export const TOWER_MAX_INPUT_BATCH_TICKS = 16;
+const MAX_FUTURE_INPUT_TICKS = 240;
+const MAX_INPUT_PACKET_BYTES = 16_384;
+const READY_HEARTBEAT_MS = 500;
+const START_BARRIER_TIMEOUT_MS = 8_000;
+const FINGERPRINT_INTERVAL_TICKS = 20;
+const MAX_FINGERPRINT_LENGTH = 256;
 const MAX_ACTION_ID_LENGTH = 128;
 const MAX_ACTION_VALUE_LENGTH = 256;
+const MAX_PENDING_ACTIONS = 32;
+const MAX_REMEMBERED_ACTION_IDS = 256;
+const MAX_AIM_COMPONENT = 1_000_000;
+const MAX_STEPS_PER_FRAME = 240;
+
+export const TOWER_LOCKSTEP_EVENTS = {
+  ready: 'ready',
+  inputBatch: 'input-batch',
+  fingerprint: 'fingerprint',
+} as const;
 
 /** Session Tower + fraction d'interpolation pour le rendu (voir TowerScene). */
 export interface TowerRenderableSession extends TowerSession {
@@ -34,17 +39,51 @@ export interface TowerRenderableSession extends TowerSession {
 export interface TowerCoopConfig {
   seed: string;
   code: string;
+  /** Conservé pour le contrat lobby ; aucun pair n'est autoritaire pendant la partie. */
   hostId: string;
   me: string;
   roster: readonly { id: string; name: string }[];
 }
 
+export interface TowerReadyMessage {
+  senderId: string;
+}
+
+export interface TowerInputFrame {
+  tick: number;
+  input: TowerInput;
+}
+
+export interface TowerInputBatchMessage {
+  senderId: string;
+  frames: readonly TowerInputFrame[];
+}
+
+export interface TowerFingerprintMessage {
+  senderId: string;
+  tick: number;
+  fingerprint: string;
+}
+
+type TowerBroadcast = Readonly<{
+  type: 'broadcast';
+  event: (typeof TOWER_LOCKSTEP_EVENTS)[keyof typeof TOWER_LOCKSTEP_EVENTS];
+  payload: TowerReadyMessage | TowerInputBatchMessage | TowerFingerprintMessage;
+}>;
+
+type DiscreteTowerAction = Readonly<{
+  discreteActionId?: string;
+  selectUpgradeId?: string;
+  turretShop?: NonNullable<TowerInput['turretShop']>;
+}>;
+
+const TURRET_DIRECTIONS = new Set(['N', 'E', 'S', 'W']);
+
 function idleInput(): TowerInput {
   return { sequence: 0, moveX: 0, moveY: 0, aimX: 1, aimY: 0 };
 }
 
-/** Part PERSISTANTE d'une commande (déplacement/visée/tir maintenu) — sans les actions
- * ponctuelles (choix d'amélioration, achat de tourelle) qui ne doivent pas se rejouer. */
+/** Retire les actions ponctuelles qui ne doivent appartenir qu'à une seule frame. */
 function persistentInput(input: TowerInput): TowerInput {
   return {
     sequence: input.sequence,
@@ -58,113 +97,6 @@ function persistentInput(input: TowerInput): TowerInput {
 
 function hasDiscreteAction(input: TowerInput): boolean {
   return input.selectUpgradeId !== undefined || input.turretShop !== undefined;
-}
-
-function isTowerGameState(value: unknown): value is TowerGameState {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Number.isSafeInteger((value as { tick?: unknown }).tick) &&
-    (value as { tick: number }).tick >= 0 &&
-    Array.isArray((value as { players?: unknown }).players)
-  );
-}
-
-export interface TowerInputMessage {
-  id: string;
-  input: TowerInput;
-}
-
-interface SyncRequestMessage {
-  id: string;
-}
-
-interface TargetedStateMessage {
-  recipientId: string;
-  state: TowerGameState;
-}
-
-export interface TowerActionAckMessage {
-  senderId: string;
-  recipientId: string;
-  actionId: string;
-}
-
-type DiscreteTowerAction = Readonly<{
-  discreteActionId?: string;
-  selectUpgradeId?: string;
-  turretShop?: NonNullable<TowerInput['turretShop']>;
-}>;
-
-const TURRET_DIRECTIONS = new Set(['N', 'E', 'S', 'W']);
-
-function isBoundedNonEmptyString(value: unknown, maxLength: number): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
-}
-
-/** Valide une commande distante et réserve sa séquence si elle est acceptée. */
-export function acceptTowerInputMessage(
-  value: unknown,
-  rosterIds: ReadonlySet<string>,
-  lastSequenceById: Map<string, number>,
-  hostId: string,
-): TowerInputMessage | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  const candidate = value as { id?: unknown; input?: unknown };
-  if (
-    typeof candidate.id !== 'string' ||
-    candidate.id === hostId ||
-    !rosterIds.has(candidate.id) ||
-    typeof candidate.input !== 'object' ||
-    candidate.input === null
-  ) {
-    return null;
-  }
-  const input = candidate.input as Record<string, unknown>;
-  const sequence = input.sequence;
-  if (
-    !Number.isSafeInteger(sequence) ||
-    (sequence as number) < 0 ||
-    (lastSequenceById.get(candidate.id) ?? -1) >= (sequence as number) ||
-    typeof input.moveX !== 'number' ||
-    !Number.isFinite(input.moveX) ||
-    input.moveX < -1 ||
-    input.moveX > 1 ||
-    typeof input.moveY !== 'number' ||
-    !Number.isFinite(input.moveY) ||
-    input.moveY < -1 ||
-    input.moveY > 1 ||
-    typeof input.aimX !== 'number' ||
-    !Number.isFinite(input.aimX) ||
-    typeof input.aimY !== 'number' ||
-    !Number.isFinite(input.aimY) ||
-    (input.fire !== undefined && typeof input.fire !== 'boolean') ||
-    (input.selectUpgradeId !== undefined &&
-      !isBoundedNonEmptyString(input.selectUpgradeId, MAX_ACTION_VALUE_LENGTH)) ||
-    (input.turretShop !== undefined && !isTurretShopAction(input.turretShop)) ||
-    (input.discreteActionId !== undefined &&
-      (!hasDiscreteAction(input as TowerInput) ||
-        !isBoundedNonEmptyString(input.discreteActionId, MAX_ACTION_ID_LENGTH)))
-  ) {
-    return null;
-  }
-  const accepted = candidate as TowerInputMessage;
-  lastSequenceById.set(accepted.id, accepted.input.sequence);
-  return accepted;
-}
-
-function isTurretShopAction(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const action = value as { turret?: unknown; action?: unknown };
-  return (
-    typeof action.turret === 'string' &&
-    TURRET_DIRECTIONS.has(action.turret) &&
-    isBoundedNonEmptyString(action.action, MAX_ACTION_VALUE_LENGTH)
-  );
 }
 
 function discreteAction(input: TowerInput): DiscreteTowerAction | null {
@@ -182,158 +114,319 @@ function withDiscreteAction(input: TowerInput, action: DiscreteTowerAction): Tow
   return { ...persistentInput(input), ...action };
 }
 
-/** File invitée bornée, avec retransmission round-robin temporisée. */
-export class TowerGuestActionQueue {
-  private readonly actions: Array<DiscreteTowerAction & { discreteActionId: string }> = [];
-  private readonly lastSentAtById = new Map<string, number>();
-  private cursor = 0;
+function isBoundedNonEmptyString(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength;
+}
 
-  public get size(): number {
-    return this.actions.length;
+function isTurretShopAction(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const action = value as { turret?: unknown; action?: unknown };
+  return (
+    typeof action.turret === 'string' &&
+    TURRET_DIRECTIONS.has(action.turret) &&
+    isBoundedNonEmptyString(action.action, MAX_ACTION_VALUE_LENGTH)
+  );
+}
+
+function isValidTowerInput(value: unknown): value is TowerInput {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const input = value as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(input.sequence) &&
+    (input.sequence as number) >= 0 &&
+    typeof input.moveX === 'number' &&
+    Number.isFinite(input.moveX) &&
+    input.moveX >= -1 &&
+    input.moveX <= 1 &&
+    typeof input.moveY === 'number' &&
+    Number.isFinite(input.moveY) &&
+    input.moveY >= -1 &&
+    input.moveY <= 1 &&
+    typeof input.aimX === 'number' &&
+    Number.isFinite(input.aimX) &&
+    Math.abs(input.aimX) <= MAX_AIM_COMPONENT &&
+    typeof input.aimY === 'number' &&
+    Number.isFinite(input.aimY) &&
+    Math.abs(input.aimY) <= MAX_AIM_COMPONENT &&
+    (input.fire === undefined || typeof input.fire === 'boolean') &&
+    (input.selectUpgradeId === undefined ||
+      isBoundedNonEmptyString(input.selectUpgradeId, MAX_ACTION_VALUE_LENGTH)) &&
+    (input.turretShop === undefined || isTurretShopAction(input.turretShop)) &&
+    (input.discreteActionId === undefined ||
+      (hasDiscreteAction(input as TowerInput) &&
+        isBoundedNonEmptyString(input.discreteActionId, MAX_ACTION_ID_LENGTH)))
+  );
+}
+
+function serializedSize(value: unknown): number {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+export function towerReadyBroadcast(senderId: string): TowerBroadcast {
+  return {
+    type: 'broadcast',
+    event: TOWER_LOCKSTEP_EVENTS.ready,
+    payload: { senderId },
+  };
+}
+
+export function towerInputBatchBroadcast(payload: TowerInputBatchMessage): TowerBroadcast {
+  return { type: 'broadcast', event: TOWER_LOCKSTEP_EVENTS.inputBatch, payload };
+}
+
+export function towerFingerprintBroadcast(payload: TowerFingerprintMessage): TowerBroadcast {
+  return { type: 'broadcast', event: TOWER_LOCKSTEP_EVENTS.fingerprint, payload };
+}
+
+/** Barrière pure : chaque id du roster doit s'être annoncé abonné et prêt. */
+export class TowerReadyBarrier {
+  private readonly rosterIds: ReadonlySet<string>;
+  private readonly readyIds = new Set<string>();
+
+  public constructor(rosterIds: ReadonlySet<string>) {
+    this.rosterIds = rosterIds;
   }
 
-  public enqueue(input: TowerInput, createId: () => string): string | null {
-    const action = discreteAction(input);
-    if (action === null) {
-      return null;
-    }
-    const suppliedId = action.discreteActionId;
-    const actionId =
-      suppliedId !== undefined && isBoundedNonEmptyString(suppliedId, MAX_ACTION_ID_LENGTH)
-        ? suppliedId
-        : createId();
-    if (!isBoundedNonEmptyString(actionId, MAX_ACTION_ID_LENGTH)) {
-      return null;
-    }
-    if (this.actions.some((pending) => pending.discreteActionId === actionId)) {
-      return actionId;
-    }
-    if (this.actions.length >= MAX_PENDING_TOWER_ACTIONS) {
-      return null;
-    }
-    this.actions.push({ ...action, discreteActionId: actionId });
-    return actionId;
-  }
-
-  public acknowledge(actionId: string): boolean {
-    const index = this.actions.findIndex((action) => action.discreteActionId === actionId);
-    if (index < 0) {
+  public markLocalReady(id: string): boolean {
+    if (!this.rosterIds.has(id)) {
       return false;
     }
-    this.actions.splice(index, 1);
-    this.lastSentAtById.delete(actionId);
-    if (this.actions.length === 0) {
-      this.cursor = 0;
-    } else if (index < this.cursor || this.cursor >= this.actions.length) {
-      this.cursor %= this.actions.length;
-    }
+    this.readyIds.add(id);
     return true;
   }
 
-  public nextForSend(now: number, preferredId?: string): DiscreteTowerAction | null {
-    if (this.actions.length === 0) {
+  public accept(value: unknown): boolean {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+    const senderId = (value as { senderId?: unknown }).senderId;
+    if (typeof senderId !== 'string' || !this.rosterIds.has(senderId)) {
+      return false;
+    }
+    this.readyIds.add(senderId);
+    return true;
+  }
+
+  public get complete(): boolean {
+    return this.readyIds.size === this.rosterIds.size;
+  }
+
+  public get missingIds(): readonly string[] {
+    return [...this.rosterIds].filter((id) => !this.readyIds.has(id));
+  }
+}
+
+/** Valide entièrement un batch avant de rendre ses frames admissibles. */
+export function parseTowerInputBatch(
+  value: unknown,
+  rosterIds: ReadonlySet<string>,
+  minimumTick: number,
+  maximumTick: number,
+): TowerInputBatchMessage | null {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    serializedSize(value) > MAX_INPUT_PACKET_BYTES
+  ) {
+    return null;
+  }
+  const candidate = value as { senderId?: unknown; frames?: unknown };
+  if (
+    typeof candidate.senderId !== 'string' ||
+    !rosterIds.has(candidate.senderId) ||
+    !Array.isArray(candidate.frames) ||
+    candidate.frames.length === 0 ||
+    candidate.frames.length > TOWER_MAX_INPUT_BATCH_TICKS
+  ) {
+    return null;
+  }
+  const ticks = new Set<number>();
+  for (const valueFrame of candidate.frames) {
+    if (typeof valueFrame !== 'object' || valueFrame === null) {
       return null;
     }
-    const preferredIndex =
-      preferredId === undefined
-        ? -1
-        : this.actions.findIndex((action) => action.discreteActionId === preferredId);
-    for (let offset = 0; offset < this.actions.length; offset += 1) {
-      const index =
-        preferredIndex >= 0 ? preferredIndex : (this.cursor + offset) % this.actions.length;
-      const action = this.actions[index];
-      if (action === undefined) {
-        return null;
+    const frame = valueFrame as { tick?: unknown; input?: unknown };
+    if (
+      !Number.isSafeInteger(frame.tick) ||
+      (frame.tick as number) < minimumTick ||
+      (frame.tick as number) > maximumTick ||
+      ticks.has(frame.tick as number) ||
+      !isValidTowerInput(frame.input)
+    ) {
+      return null;
+    }
+    ticks.add(frame.tick as number);
+  }
+  return candidate as TowerInputBatchMessage;
+}
+
+/** Buffer P2P : premier exemplaire d'une frame joueur/tick gagne, puis consommation unique. */
+export class TowerLockstepInputBuffer {
+  private readonly rosterIds: ReadonlySet<string>;
+  private readonly framesByTick = new Map<number, Map<string, TowerInput>>();
+  private simulationTick = 0;
+
+  public constructor(rosterIds: ReadonlySet<string>) {
+    this.rosterIds = rosterIds;
+  }
+
+  public get nextTick(): number {
+    return this.simulationTick;
+  }
+
+  public acceptBatch(value: unknown): number {
+    const batch = parseTowerInputBatch(
+      value,
+      this.rosterIds,
+      Math.max(0, this.simulationTick - TOWER_MAX_INPUT_BATCH_TICKS),
+      this.simulationTick + MAX_FUTURE_INPUT_TICKS,
+    );
+    if (batch === null) {
+      return 0;
+    }
+    let accepted = 0;
+    for (const frame of batch.frames) {
+      // Une fenêtre de retransmission contient normalement quelques ticks déjà joués.
+      if (frame.tick < this.simulationTick) {
+        continue;
       }
-      const lastSentAt = this.lastSentAtById.get(action.discreteActionId);
-      if (lastSentAt === undefined || now - lastSentAt >= ACTION_RETRY_INTERVAL_MS) {
-        this.lastSentAtById.set(action.discreteActionId, now);
-        this.cursor = (index + 1) % this.actions.length;
-        return action;
+      let tickFrames = this.framesByTick.get(frame.tick);
+      if (tickFrames === undefined) {
+        tickFrames = new Map<string, TowerInput>();
+        this.framesByTick.set(frame.tick, tickFrames);
       }
-      if (preferredIndex >= 0) {
-        return null;
+      if (!tickFrames.has(batch.senderId)) {
+        tickFrames.set(batch.senderId, frame.input);
+        accepted += 1;
       }
     }
-    return null;
+    return accepted;
+  }
+
+  public takeNextTick(): Readonly<Record<string, TowerInput>> | null {
+    const tickFrames = this.framesByTick.get(this.simulationTick);
+    if (tickFrames === undefined || tickFrames.size !== this.rosterIds.size) {
+      return null;
+    }
+    const result: Record<string, TowerInput> = {};
+    for (const id of this.rosterIds) {
+      const input = tickFrames.get(id);
+      if (input === undefined) {
+        return null;
+      }
+      result[id] = input;
+    }
+    this.framesByTick.delete(this.simulationTick);
+    this.simulationTick += 1;
+    return result;
   }
 }
 
-export type TowerHostActionResult = Readonly<{
-  ackActionId?: string;
-  queued: boolean;
-}>;
+type FingerprintResult =
+  | Readonly<{ status: 'ignored' | 'pending' | 'match' }>
+  | Readonly<{ status: 'mismatch'; playerId: string; tick: number }>;
 
-/** Registre hôte borné : une action identifiée est mise en file au plus une fois. */
-export class TowerHostActionLedger {
-  private readonly pendingByPlayer = new Map<string, DiscreteTowerAction[]>();
-  private readonly rememberedByPlayer = new Map<string, Set<string>>();
+/** Compare les empreintes au même tick, même si le paquet distant arrive en avance. */
+export class TowerFingerprintMonitor {
+  private readonly rosterIds: ReadonlySet<string>;
+  private readonly me: string;
+  private readonly localByTick = new Map<number, string>();
+  private readonly remoteByTick = new Map<number, Map<string, string>>();
+  private latestLocalTick = 0;
 
-  public receive(playerId: string, input: TowerInput): TowerHostActionResult {
-    const action = discreteAction(input);
-    if (action === null) {
-      return { queued: false };
+  public constructor(rosterIds: ReadonlySet<string>, me: string) {
+    this.rosterIds = rosterIds;
+    this.me = me;
+  }
+
+  public recordLocal(tick: number, fingerprint: string): readonly FingerprintResult[] {
+    if (!this.validFingerprint(tick, fingerprint)) {
+      return [{ status: 'ignored' }];
     }
-    const actionId = action.discreteActionId;
-    if (actionId !== undefined) {
-      const remembered = this.rememberedByPlayer.get(playerId);
-      if (remembered?.has(actionId) === true) {
-        return { ackActionId: actionId, queued: false };
+    this.latestLocalTick = Math.max(this.latestLocalTick, tick);
+    this.localByTick.set(tick, fingerprint);
+    const results = [...(this.remoteByTick.get(tick)?.entries() ?? [])].map(
+      ([playerId, remoteFingerprint]): FingerprintResult =>
+        remoteFingerprint === fingerprint
+          ? { status: 'match' }
+          : { status: 'mismatch', playerId, tick },
+    );
+    this.prune(tick);
+    return results;
+  }
+
+  public accept(value: unknown): FingerprintResult {
+    if (typeof value !== 'object' || value === null) {
+      return { status: 'ignored' };
+    }
+    const message = value as {
+      senderId?: unknown;
+      tick?: unknown;
+      fingerprint?: unknown;
+    };
+    if (
+      typeof message.senderId !== 'string' ||
+      message.senderId === this.me ||
+      !this.rosterIds.has(message.senderId) ||
+      typeof message.fingerprint !== 'string' ||
+      !this.validFingerprint(message.tick, message.fingerprint) ||
+      message.tick < this.latestLocalTick - FINGERPRINT_INTERVAL_TICKS * 4 ||
+      message.tick > this.latestLocalTick + MAX_FUTURE_INPUT_TICKS
+    ) {
+      return { status: 'ignored' };
+    }
+    let remote = this.remoteByTick.get(message.tick);
+    if (remote === undefined) {
+      remote = new Map<string, string>();
+      this.remoteByTick.set(message.tick, remote);
+    }
+    const prior = remote.get(message.senderId);
+    if (prior !== undefined) {
+      if (prior !== message.fingerprint) {
+        return { status: 'mismatch', playerId: message.senderId, tick: message.tick };
+      }
+      return { status: 'ignored' };
+    }
+    remote.set(message.senderId, message.fingerprint);
+    const local = this.localByTick.get(message.tick);
+    if (local === undefined) {
+      return { status: 'pending' };
+    }
+    return local === message.fingerprint
+      ? { status: 'match' }
+      : { status: 'mismatch', playerId: message.senderId, tick: message.tick };
+  }
+
+  private validFingerprint(tick: unknown, fingerprint: string): tick is number {
+    return (
+      Number.isSafeInteger(tick) &&
+      (tick as number) >= 0 &&
+      isBoundedNonEmptyString(fingerprint, MAX_FINGERPRINT_LENGTH)
+    );
+  }
+
+  private prune(currentTick: number): void {
+    const oldest = currentTick - FINGERPRINT_INTERVAL_TICKS * 4;
+    for (const tick of this.localByTick.keys()) {
+      if (tick < oldest) {
+        this.localByTick.delete(tick);
+        this.remoteByTick.delete(tick);
       }
     }
-    const pending = this.pendingByPlayer.get(playerId) ?? [];
-    if (pending.length >= MAX_PENDING_TOWER_ACTIONS) {
-      return { queued: false };
-    }
-    pending.push(action);
-    this.pendingByPlayer.set(playerId, pending);
-    if (actionId === undefined) {
-      return { queued: true };
-    }
-    let remembered = this.rememberedByPlayer.get(playerId);
-    if (remembered === undefined) {
-      remembered = new Set<string>();
-      this.rememberedByPlayer.set(playerId, remembered);
-    }
-    remembered.add(actionId);
-    while (remembered.size > MAX_REMEMBERED_TOWER_ACTION_IDS) {
-      const oldest = remembered.values().next().value as string | undefined;
-      if (oldest === undefined) {
-        break;
+    for (const tick of this.remoteByTick.keys()) {
+      if (tick < oldest || tick > currentTick + MAX_FUTURE_INPUT_TICKS) {
+        this.remoteByTick.delete(tick);
       }
-      remembered.delete(oldest);
     }
-    return { ackActionId: actionId, queued: true };
   }
-
-  public take(playerId: string): DiscreteTowerAction | null {
-    const pending = this.pendingByPlayer.get(playerId);
-    const action = pending?.shift() ?? null;
-    if (pending?.length === 0) {
-      this.pendingByPlayer.delete(playerId);
-    }
-    return action;
-  }
-
-  public pendingCount(playerId: string): number {
-    return this.pendingByPlayer.get(playerId)?.length ?? 0;
-  }
-
-  public rememberedCount(playerId: string): number {
-    return this.rememberedByPlayer.get(playerId)?.size ?? 0;
-  }
-}
-
-export function parseTowerActionAck(value: unknown, me: string, hostId: string): string | null {
-  if (typeof value !== 'object' || value === null) {
-    return null;
-  }
-  const ack = value as { senderId?: unknown; recipientId?: unknown; actionId?: unknown };
-  return ack.senderId === hostId &&
-    ack.recipientId === me &&
-    isBoundedNonEmptyString(ack.actionId, MAX_ACTION_ID_LENGTH)
-    ? ack.actionId
-    : null;
 }
 
 function validateCoopConfig(config: TowerCoopConfig): void {
@@ -356,24 +449,7 @@ function personalizeState(state: TowerGameState, me: string): TowerGameState {
   return mine === undefined ? state : { ...state, player: mine };
 }
 
-export function parseTowerStateMessage(
-  value: unknown,
-  me: string,
-  lastAcceptedTick: number,
-): TowerGameState | null {
-  let state: TowerGameState | null = null;
-  if (isTowerGameState(value)) {
-    state = value;
-  } else if (typeof value === 'object' && value !== null) {
-    const targeted = value as { recipientId?: unknown; state?: unknown };
-    if (targeted.recipientId === me && isTowerGameState(targeted.state)) {
-      state = targeted.state;
-    }
-  }
-  return state !== null && state.tick >= lastAcceptedTick ? state : null;
-}
-
-// ─── Solo ─────────────────────────────────────────────────────────────────────
+// ─── Solo (comportement inchangé) ────────────────────────────────────────────
 
 export class TowerLocalSession implements TowerRenderableSession {
   private readonly simulation: TowerSimulation;
@@ -412,7 +488,7 @@ export class TowerLocalSession implements TowerRenderableSession {
   }
 
   public getRenderAlpha(): number {
-    return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
+    return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_LOCKSTEP_TICK_MS));
   }
 
   public onConnectionIssue(listener: (message: string) => void): () => void {
@@ -436,10 +512,10 @@ export class TowerLocalSession implements TowerRenderableSession {
     this.lastTimestamp = timestamp;
     this.accumulatorMs += rawDeltaMs;
     let processed = 0;
-    while (this.accumulatorMs >= TOWER_TICK_MS && processed < 240) {
+    while (this.accumulatorMs >= TOWER_LOCKSTEP_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
       this.simulation.step({ 'player-1': this.currentInput });
       this.currentInput = persistentInput(this.currentInput);
-      this.accumulatorMs -= TOWER_TICK_MS;
+      this.accumulatorMs -= TOWER_LOCKSTEP_TICK_MS;
       processed += 1;
     }
     if (processed > 0) {
@@ -452,223 +528,71 @@ export class TowerLocalSession implements TowerRenderableSession {
   };
 }
 
-// ─── Hôte ───────────────────────────────────────────────────────────────────
+// ─── Co-op lockstep P2P ──────────────────────────────────────────────────────
 
-class TowerHostSession implements TowerRenderableSession {
+class TowerLockstepSession implements TowerRenderableSession {
   private readonly simulation: TowerSimulation;
   private readonly channel: RealtimeChannel;
   private readonly me: string;
-  private readonly listeners = new Set<(state: TowerGameState) => void>();
-  private readonly inputsById: Record<string, TowerInput> = {};
+  private readonly roster: TowerCoopConfig['roster'];
   private readonly rosterIds: ReadonlySet<string>;
-  private readonly lastSequenceById = new Map<string, number>();
-  private readonly actionLedger = new TowerHostActionLedger();
+  private readonly barrier: TowerReadyBarrier;
+  private readonly inputBuffer: TowerLockstepInputBuffer;
+  private readonly fingerprintMonitor: TowerFingerprintMonitor;
+  private readonly listeners = new Set<(state: TowerGameState) => void>();
+  private readonly issueListeners = new Set<(message: string) => void>();
+  private readonly localFrames = new Map<number, TowerInput>();
+  private readonly pendingActions: DiscreteTowerAction[] = [];
+  private readonly rememberedActionIds = new Set<string>();
+  private latestInput: TowerInput = idleInput();
   private running = false;
   private channelReady = false;
+  private simulationStarted = false;
   private frameHandle: number | undefined;
+  private readyHandle: number | undefined;
+  private inputHandle: number | undefined;
+  private barrierTimeoutHandle: number | undefined;
   private lastTimestamp = 0;
   private accumulatorMs = 0;
-  private lastBroadcastMs = 0;
+  private nextLocalTick = 0;
+  private connectionIssue: string | undefined;
 
   public constructor(config: TowerCoopConfig) {
     this.me = config.me;
+    this.roster = config.roster;
     this.rosterIds = new Set(config.roster.map((entry) => entry.id));
+    this.barrier = new TowerReadyBarrier(this.rosterIds);
+    this.inputBuffer = new TowerLockstepInputBuffer(this.rosterIds);
+    this.fingerprintMonitor = new TowerFingerprintMonitor(this.rosterIds, this.me);
     this.simulation = new TowerSimulation(config.seed, {
       playerIds: config.roster.map((entry) => entry.id),
     });
     this.channel = supabase.channel(`tower:${config.code}`, {
       config: { broadcast: { self: false } },
     });
-    this.channel.on<TowerInputMessage>('broadcast', { event: 'input' }, (message) => {
-      const accepted = acceptTowerInputMessage(
-        message.payload,
-        this.rosterIds,
-        this.lastSequenceById,
-        this.me,
-      );
-      if (accepted !== null) {
-        this.inputsById[accepted.id] = persistentInput(accepted.input);
-        const actionResult = this.actionLedger.receive(accepted.id, accepted.input);
-        if (actionResult.ackActionId !== undefined) {
-          const payload: TowerActionAckMessage = {
-            senderId: this.me,
-            recipientId: accepted.id,
-            actionId: actionResult.ackActionId,
-          };
-          void this.channel.send({ type: 'broadcast', event: 'input-ack', payload });
-        }
-      }
-    });
-    this.channel.on<SyncRequestMessage>('broadcast', { event: 'sync-request' }, (message) => {
-      const requesterId = message.payload?.id;
-      if (
-        !this.channelReady ||
-        typeof requesterId !== 'string' ||
-        !this.rosterIds.has(requesterId)
-      ) {
-        return;
-      }
-      const payload: TargetedStateMessage = {
-        recipientId: requesterId,
-        state: this.simulation.createSnapshot(),
-      };
-      void this.channel.send({ type: 'broadcast', event: 'state', payload });
-    });
-  }
-
-  public async start(): Promise<void> {
-    if (this.running) {
-      return;
-    }
-    this.running = true;
-    this.simulation.start();
-    this.channel.subscribe((status: string) => {
-      if (status === 'SUBSCRIBED') {
-        this.channelReady = true;
-      }
-    });
-    this.lastTimestamp = performance.now();
-    this.frameHandle = requestAnimationFrame(this.onFrame);
-  }
-
-  public async stop(): Promise<void> {
-    this.running = false;
-    if (this.frameHandle !== undefined) {
-      cancelAnimationFrame(this.frameHandle);
-      this.frameHandle = undefined;
-    }
-    this.listeners.clear();
-    try {
-      await supabase.removeChannel(this.channel);
-    } catch (error) {
-      console.warn('[tower:host] removeChannel', error);
-    }
-  }
-
-  public sendInput(input: TowerInput): void {
-    this.inputsById[this.me] = input;
-  }
-
-  public getRenderAlpha(): number {
-    return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
-  }
-
-  public onConnectionIssue(listener: (message: string) => void): () => void {
-    void listener;
-    return () => undefined;
-  }
-
-  public subscribe(listener: (state: TowerGameState) => void): () => void {
-    this.listeners.add(listener);
-    listener(this.simulation.createSnapshot());
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  private readonly onFrame = (timestamp: number): void => {
-    if (!this.running) {
-      return;
-    }
-    const rawDeltaMs = Math.max(0, Math.min(250, timestamp - this.lastTimestamp));
-    this.lastTimestamp = timestamp;
-    this.accumulatorMs += rawDeltaMs;
-    let processed = 0;
-    while (this.accumulatorMs >= TOWER_TICK_MS && processed < 240) {
-      const stepInputs: Record<string, TowerInput> = {};
-      for (const id of Object.keys(this.inputsById)) {
-        const current = this.inputsById[id];
-        if (current !== undefined) {
-          const action = this.actionLedger.take(id);
-          stepInputs[id] = action === null ? current : withDiscreteAction(current, action);
-          this.inputsById[id] = persistentInput(current);
-        }
-      }
-      this.simulation.step(stepInputs);
-      this.accumulatorMs -= TOWER_TICK_MS;
-      processed += 1;
-    }
-    if (processed > 0) {
-      const snapshot = this.simulation.createSnapshot();
-      for (const listener of this.listeners) {
-        listener(snapshot);
-      }
-      if (this.channelReady && timestamp - this.lastBroadcastMs >= STATE_INTERVAL_MS) {
-        this.lastBroadcastMs = timestamp;
-        void this.channel.send({ type: 'broadcast', event: 'state', payload: snapshot });
-      }
-    }
-    this.frameHandle = requestAnimationFrame(this.onFrame);
-  };
-}
-
-// ─── Invité ─────────────────────────────────────────────────────────────────
-
-class TowerGuestSession implements TowerRenderableSession {
-  private readonly channel: RealtimeChannel;
-  private readonly me: string;
-  private readonly hostId: string;
-  private readonly listeners = new Set<(state: TowerGameState) => void>();
-  private readonly issueListeners = new Set<(message: string) => void>();
-  private readonly actionQueue = new TowerGuestActionQueue();
-  private latestInput: TowerInput = idleInput();
-  private lastState: TowerGameState | undefined;
-  private lastStateAt = 0;
-  private lastAcceptedStateTick = -1;
-  private nextTransportSequence = Date.now();
-  private actionIdCounter = 0;
-  private running = false;
-  private channelReady = false;
-  private sendHandle: number | undefined;
-  private syncHandle: number | undefined;
-  private timeoutHandle: number | undefined;
-  private receivedAuthoritativeState = false;
-  private connectionIssue: string | undefined;
-
-  public constructor(config: TowerCoopConfig) {
-    this.me = config.me;
-    this.hostId = config.hostId;
-    // Instantané visuel non autoritaire, jamais simulé côté invité : le rendu n'est
-    // pas vide pendant que l'état courant est demandé à l'hôte.
-    const bootstrap = new TowerSimulation(config.seed, {
-      playerIds: config.roster.map((entry) => entry.id),
-    });
-    bootstrap.start();
-    this.lastState = personalizeState(bootstrap.createSnapshot(), this.me);
-    this.channel = supabase.channel(`tower:${config.code}`, {
-      config: { broadcast: { self: false } },
-    });
-    this.channel.on<TowerGameState | TargetedStateMessage>(
+    this.channel.on<TowerReadyMessage>(
       'broadcast',
-      { event: 'state' },
+      { event: TOWER_LOCKSTEP_EVENTS.ready },
       (message) => {
-        const payload = parseTowerStateMessage(
-          message.payload,
-          this.me,
-          this.lastAcceptedStateTick,
-        );
-        if (payload === null) {
-          return;
-        }
-        const state = personalizeState(payload, this.me);
-        this.lastAcceptedStateTick = state.tick;
-        this.lastState = state;
-        this.lastStateAt = performance.now();
-        if (!this.receivedAuthoritativeState) {
-          this.receivedAuthoritativeState = true;
-          this.clearSyncTimers();
-        }
-        for (const listener of this.listeners) {
-          listener(state);
+        if (this.barrier.accept(message.payload)) {
+          this.tryStartSimulation();
         }
       },
     );
-    this.channel.on<TowerActionAckMessage>('broadcast', { event: 'input-ack' }, (message) => {
-      const actionId = parseTowerActionAck(message.payload, this.me, this.hostId);
-      if (actionId !== null) {
-        this.actionQueue.acknowledge(actionId);
-      }
-    });
+    this.channel.on<TowerInputBatchMessage>(
+      'broadcast',
+      { event: TOWER_LOCKSTEP_EVENTS.inputBatch },
+      (message) => {
+        this.inputBuffer.acceptBatch(message.payload);
+      },
+    );
+    this.channel.on<TowerFingerprintMessage>(
+      'broadcast',
+      { event: TOWER_LOCKSTEP_EVENTS.fingerprint },
+      (message) => {
+        this.handleFingerprintResult(this.fingerprintMonitor.accept(message.payload));
+      },
+    );
   }
 
   public async start(): Promise<void> {
@@ -677,19 +601,19 @@ class TowerGuestSession implements TowerRenderableSession {
     }
     this.running = true;
     this.channel.subscribe((status: string) => {
+      if (!this.running) {
+        return;
+      }
       if (status === 'SUBSCRIBED') {
         this.channelReady = true;
-        this.sendHandle = window.setInterval(() => this.flushInput(), INPUT_INTERVAL_MS);
-        this.flushInput();
-        this.requestSync();
-        this.syncHandle = window.setInterval(() => this.requestSync(), SYNC_REQUEST_INTERVAL_MS);
-        this.timeoutHandle = window.setTimeout(() => {
-          if (!this.receivedAuthoritativeState) {
-            this.reportIssue(
-              `Synchronisation Tower impossible après ${INITIAL_STATE_TIMEOUT_MS / 1_000} s. Vérifiez que l'hôte est connecté et relancez la partie depuis le hub.`,
-            );
-          }
-        }, INITIAL_STATE_TIMEOUT_MS);
+        this.barrier.markLocalReady(this.me);
+        this.broadcastReady();
+        this.readyHandle = window.setInterval(() => this.broadcastReady(), READY_HEARTBEAT_MS);
+        this.barrierTimeoutHandle = window.setTimeout(
+          () => this.reportMissingReadyPlayers(),
+          START_BARRIER_TIMEOUT_MS,
+        );
+        this.tryStartSimulation();
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         this.channelReady = false;
         this.reportIssue(`Canal Tower indisponible (${status}). Revenez au hub puis réessayez.`);
@@ -700,35 +624,62 @@ class TowerGuestSession implements TowerRenderableSession {
   public async stop(): Promise<void> {
     this.running = false;
     this.channelReady = false;
-    if (this.sendHandle !== undefined) {
-      clearInterval(this.sendHandle);
-      this.sendHandle = undefined;
+    if (this.frameHandle !== undefined) {
+      cancelAnimationFrame(this.frameHandle);
+      this.frameHandle = undefined;
     }
-    this.clearSyncTimers();
+    if (this.readyHandle !== undefined) {
+      clearInterval(this.readyHandle);
+      this.readyHandle = undefined;
+    }
+    if (this.inputHandle !== undefined) {
+      clearInterval(this.inputHandle);
+      this.inputHandle = undefined;
+    }
+    if (this.barrierTimeoutHandle !== undefined) {
+      clearTimeout(this.barrierTimeoutHandle);
+      this.barrierTimeoutHandle = undefined;
+    }
     this.listeners.clear();
+    this.issueListeners.clear();
     try {
       await supabase.removeChannel(this.channel);
     } catch (error) {
-      console.warn('[tower:guest] removeChannel', error);
+      console.warn('[tower:lockstep] removeChannel', error);
     }
   }
 
   public sendInput(input: TowerInput): void {
+    if (!isValidTowerInput(input)) {
+      return;
+    }
     this.latestInput = persistentInput(input);
-    // Les actions ponctuelles partent immédiatement puis restent en file jusqu'à l'ACK.
-    if (hasDiscreteAction(input)) {
-      const actionId = this.actionQueue.enqueue(input, () => this.createActionId());
-      if (actionId !== null) {
-        this.flushInput(actionId);
+    const action = discreteAction(input);
+    if (action === null || this.pendingActions.length >= MAX_PENDING_ACTIONS) {
+      return;
+    }
+    const actionId = action.discreteActionId;
+    if (actionId !== undefined && this.rememberedActionIds.has(actionId)) {
+      return;
+    }
+    this.pendingActions.push(action);
+    if (actionId !== undefined) {
+      this.rememberedActionIds.add(actionId);
+      while (this.rememberedActionIds.size > MAX_REMEMBERED_ACTION_IDS) {
+        const oldest = this.rememberedActionIds.values().next().value as string | undefined;
+        if (oldest === undefined) {
+          break;
+        }
+        this.rememberedActionIds.delete(oldest);
       }
     }
   }
 
   public getRenderAlpha(): number {
-    if (this.lastStateAt === 0) {
+    if (!this.simulationStarted) {
       return 0;
     }
-    return Math.max(0, Math.min(1, (performance.now() - this.lastStateAt) / STATE_INTERVAL_MS));
+    return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_LOCKSTEP_TICK_MS));
   }
 
   public onConnectionIssue(listener: (message: string) => void): () => void {
@@ -741,71 +692,161 @@ class TowerGuestSession implements TowerRenderableSession {
 
   public subscribe(listener: (state: TowerGameState) => void): () => void {
     this.listeners.add(listener);
-    if (this.lastState !== undefined) {
-      listener(this.lastState);
-    }
+    listener(personalizeState(this.simulation.createSnapshot(), this.me));
     return () => {
       this.listeners.delete(listener);
     };
   }
 
-  private flushInput(preferredActionId?: string): void {
-    if (!this.running || !this.channelReady || !Number.isSafeInteger(this.nextTransportSequence)) {
+  private tryStartSimulation(): void {
+    if (!this.running || this.simulationStarted || !this.barrier.complete) {
       return;
     }
-    const action = this.actionQueue.nextForSend(performance.now(), preferredActionId);
+    this.simulationStarted = true;
+    if (this.barrierTimeoutHandle !== undefined) {
+      clearTimeout(this.barrierTimeoutHandle);
+      this.barrierTimeoutHandle = undefined;
+    }
+    this.simulation.start();
+    for (let tick = 0; tick < TOWER_INPUT_DELAY_TICKS; tick += 1) {
+      this.addLocalFrame(tick, idleInput());
+    }
+    this.nextLocalTick = TOWER_INPUT_DELAY_TICKS;
+    this.captureNextLocalFrame();
+    this.inputHandle = window.setInterval(
+      () => this.captureNextLocalFrame(),
+      TOWER_LOCKSTEP_TICK_MS,
+    );
+    this.lastTimestamp = performance.now();
+    this.frameHandle = requestAnimationFrame(this.onFrame);
+  }
+
+  private captureNextLocalFrame(): void {
+    if (!this.running || !this.simulationStarted) {
+      return;
+    }
+    if (this.nextLocalTick > this.inputBuffer.nextTick + MAX_FUTURE_INPUT_TICKS) {
+      return;
+    }
+    const action = this.pendingActions.shift();
     const input =
-      action === null
-        ? persistentInput(this.latestInput)
-        : withDiscreteAction(this.latestInput, action);
-    const message: TowerInputMessage = {
-      id: this.me,
-      input: { ...input, sequence: this.nextTransportSequence },
+      action === undefined ? this.latestInput : withDiscreteAction(this.latestInput, action);
+    this.addLocalFrame(this.nextLocalTick, input);
+    this.nextLocalTick += 1;
+    this.broadcastRecentInputs();
+  }
+
+  private addLocalFrame(tick: number, input: TowerInput): void {
+    this.localFrames.set(tick, input);
+    const payload: TowerInputBatchMessage = {
+      senderId: this.me,
+      frames: [{ tick, input }],
     };
-    this.nextTransportSequence += 1;
-    void this.channel.send({ type: 'broadcast', event: 'input', payload: message });
+    this.inputBuffer.acceptBatch(payload);
   }
 
-  private createActionId(): string {
-    this.actionIdCounter += 1;
-    const randomId = globalThis.crypto?.randomUUID?.();
-    return randomId ?? `tower-${Date.now().toString(36)}-${this.actionIdCounter.toString(36)}`;
-  }
-
-  private requestSync(): void {
-    if (!this.running || this.receivedAuthoritativeState) {
+  private broadcastRecentInputs(): void {
+    if (!this.channelReady || this.localFrames.size === 0) {
       return;
     }
-    const payload: SyncRequestMessage = { id: this.me };
-    void this.channel.send({ type: 'broadcast', event: 'sync-request', payload });
+    const oldestTick = Math.max(0, this.nextLocalTick - TOWER_INPUT_BATCH_TICKS);
+    const frames: TowerInputFrame[] = [];
+    for (const [tick, input] of this.localFrames) {
+      if (tick >= oldestTick) {
+        frames.push({ tick, input });
+      } else if (tick < this.inputBuffer.nextTick) {
+        this.localFrames.delete(tick);
+      }
+    }
+    frames.sort((a, b) => a.tick - b.tick);
+    if (frames.length > 0) {
+      const payload: TowerInputBatchMessage = { senderId: this.me, frames };
+      void this.channel.send(towerInputBatchBroadcast(payload));
+    }
   }
 
-  private clearSyncTimers(): void {
-    if (this.syncHandle !== undefined) {
-      clearInterval(this.syncHandle);
-      this.syncHandle = undefined;
+  private broadcastReady(): void {
+    if (this.running && this.channelReady) {
+      void this.channel.send(towerReadyBroadcast(this.me));
     }
-    if (this.timeoutHandle !== undefined) {
-      clearTimeout(this.timeoutHandle);
-      this.timeoutHandle = undefined;
+  }
+
+  private readonly onFrame = (timestamp: number): void => {
+    if (!this.running || !this.simulationStarted) {
+      return;
     }
+    const rawDeltaMs = Math.max(0, Math.min(250, timestamp - this.lastTimestamp));
+    this.lastTimestamp = timestamp;
+    this.accumulatorMs += rawDeltaMs;
+    let processed = 0;
+    while (this.accumulatorMs >= TOWER_LOCKSTEP_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
+      const inputs = this.inputBuffer.takeNextTick();
+      if (inputs === null) {
+        break;
+      }
+      this.simulation.step(inputs);
+      this.accumulatorMs -= TOWER_LOCKSTEP_TICK_MS;
+      processed += 1;
+      const canonicalSnapshot = this.simulation.createSnapshot();
+      if (canonicalSnapshot.tick % FINGERPRINT_INTERVAL_TICKS === 0) {
+        this.publishFingerprint(canonicalSnapshot);
+      }
+      const snapshot = personalizeState(canonicalSnapshot, this.me);
+      for (const listener of this.listeners) {
+        listener(snapshot);
+      }
+    }
+    this.frameHandle = requestAnimationFrame(this.onFrame);
+  };
+
+  private publishFingerprint(state: TowerGameState): void {
+    const fingerprint = createTowerStateFingerprint(state);
+    for (const result of this.fingerprintMonitor.recordLocal(state.tick, fingerprint)) {
+      this.handleFingerprintResult(result);
+    }
+    if (this.channelReady) {
+      const payload: TowerFingerprintMessage = { senderId: this.me, tick: state.tick, fingerprint };
+      void this.channel.send(towerFingerprintBroadcast(payload));
+    }
+  }
+
+  private handleFingerprintResult(result: FingerprintResult): void {
+    if (result.status === 'mismatch') {
+      this.reportIssue(
+        `Désynchronisation Tower détectée au tick ${result.tick} avec ${result.playerId}. La partie ne peut pas être resynchronisée automatiquement.`,
+      );
+    }
+  }
+
+  private reportMissingReadyPlayers(): void {
+    if (!this.running || this.simulationStarted) {
+      return;
+    }
+    const names = this.barrier.missingIds.map(
+      (id) => this.roster.find((entry) => entry.id === id)?.name ?? id,
+    );
+    this.reportIssue(
+      `Démarrage Tower en attente après ${START_BARRIER_TIMEOUT_MS / 1_000} s : ${names.join(', ')} n'est pas prêt ou abonné.`,
+    );
   }
 
   private reportIssue(message: string): void {
+    if (this.connectionIssue === message) {
+      return;
+    }
     this.connectionIssue = message;
-    console.error(`[tower:guest] ${message}`);
+    console.error(`[tower:lockstep] ${message}`);
     for (const listener of this.issueListeners) {
       listener(message);
     }
   }
 }
 
-/** Crée la session co-op Tower adaptée au rôle (hôte si `me === hostId`, sinon invité). */
+/** Crée une simulation locale identique sur chaque pair du roster. */
 export function createTowerCoopSession(config: TowerCoopConfig): TowerRenderableSession {
   validateCoopConfig(config);
-  const isHost = config.me === config.hostId;
   console.info(
-    `[tower] rôle=${isHost ? 'HÔTE' : 'INVITÉ'} · canal=tower:${config.code} · moi=${config.me}`,
+    `[tower] lockstep P2P · canal=tower:${config.code} · moi=${config.me} · hôte lobby=${config.hostId}`,
   );
-  return isHost ? new TowerHostSession(config) : new TowerGuestSession(config);
+  return new TowerLockstepSession(config);
 }

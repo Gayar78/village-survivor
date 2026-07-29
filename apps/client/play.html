@@ -15,6 +15,20 @@
       <div id="levelup" aria-label="Montée de niveau"></div>
       <div id="escape-menu" aria-label="Menu de partie"></div>
       <div id="game-over" aria-label="Fin de partie"></div>
+      <section
+        id="tower-sync-status"
+        class="tower-sync-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        hidden
+      >
+        <span class="tower-sync-status__indicator" aria-hidden="true"></span>
+        <div>
+          <p id="tower-sync-status-title" class="tower-sync-status__title"></p>
+          <p id="tower-sync-status-detail" class="tower-sync-status__detail"></p>
+        </div>
+      </section>
     </div>
     <script type="module" src="/src/play.ts"></script>
   </body>
