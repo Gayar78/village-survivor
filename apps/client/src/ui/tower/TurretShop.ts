@@ -123,7 +123,6 @@ export class TurretShop {
         </div>
       </section>
     `;
-
   }
 
   private readonly handleAction = (event: Event): void => {
