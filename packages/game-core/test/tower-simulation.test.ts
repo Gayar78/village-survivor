@@ -48,6 +48,15 @@ describe('TowerSimulation', () => {
     simulation.step({ 'player-1': input({ selectUpgradeId: 'weapon:invalid' }) });
     expect(simulation.createSnapshot().player.activeWeaponId).toBe('shotgun');
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
+
+    simulation.step({
+      'player-1': input({ fire: true, aimX: 1 }),
+      'player-2': input({ fire: true, aimX: -1 }),
+    });
+    const projectileOwners = new Set(
+      simulation.createSnapshot().projectiles.map((projectile) => projectile.ownerId),
+    );
+    expect(projectileOwners).toEqual(new Set(['player-1', 'player-2']));
   });
 
   it('produit des tirs distincts pour fusil, tromblon et arme de précision', () => {
@@ -65,6 +74,8 @@ describe('TowerSimulation', () => {
     expect(rifle.projectiles.filter((shot) => shot.weaponId === 'rifle')).toHaveLength(1);
     expect(shotgun.projectiles.filter((shot) => shot.weaponId === 'shotgun')).toHaveLength(5);
     expect(marksman.projectiles.filter((shot) => shot.weaponId === 'marksman')).toHaveLength(1);
+    expect(rifle.projectiles.every((shot) => shot.ownerId === 'player-1')).toBe(true);
+    expect(JSON.parse(JSON.stringify(rifle))).toEqual(rifle);
     expect(marksman.player.bulletDamage).toBeGreaterThan(rifle.player.bulletDamage);
     expect(marksman.player.fireRate).toBeGreaterThan(shotgun.player.fireRate);
   });

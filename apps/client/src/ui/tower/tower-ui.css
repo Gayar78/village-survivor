@@ -1,5 +1,7 @@
 /* Surcouche isolée du mode Tower : forêt nocturne, bois et métal ancien. */
 #hud .tower-hud {
+  --tower-hud-color: var(--visual-hud-color, #f6b866);
+
   position: fixed;
   top: 18px;
   left: 18px;
@@ -7,7 +9,7 @@
   flex-direction: column;
   width: min(292px, calc(100vw - 156px));
   overflow: hidden;
-  border: 1px solid rgb(246 184 102 / 38%);
+  border: 1px solid color-mix(in srgb, var(--tower-hud-color) 38%, transparent);
   border-radius: 15px;
   background: linear-gradient(145deg, rgb(39 56 39 / 96%), rgb(12 21 19 / 96%) 68%), #10181b;
   box-shadow:
@@ -28,7 +30,7 @@
   align-items: center;
   gap: 9px;
   padding: 10px 13px;
-  border-bottom: 1px solid rgb(246 184 102 / 18%);
+  border-bottom: 1px solid color-mix(in srgb, var(--tower-hud-color) 18%, transparent);
   background: rgb(10 18 15 / 36%);
 }
 
@@ -38,11 +40,11 @@
   width: 25px;
   height: 25px;
   place-items: center;
-  border: 1px solid rgb(246 184 102 / 48%);
+  border: 1px solid color-mix(in srgb, var(--tower-hud-color) 48%, transparent);
   border-radius: 50% 50% 46% 46%;
-  color: #f6b866;
+  color: var(--tower-hud-color);
   font-size: 15px;
-  box-shadow: inset 0 0 12px rgb(246 184 102 / 16%);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--tower-hud-color) 16%, transparent);
 }
 
 #hud .tower-hud__head div {
@@ -100,13 +102,13 @@
 }
 
 #hud .tower-hud-weapon--active {
-  border-color: rgb(246 184 102 / 55%);
+  border-color: color-mix(in srgb, var(--tower-hud-color) 55%, transparent);
   color: #f5e7c6;
   background: rgb(89 67 42 / 38%);
 }
 
 #hud .tower-hud-weapon kbd {
-  color: #f6c873;
+  color: var(--tower-hud-color);
   font:
     700 10px/1 ui-monospace,
     monospace;
@@ -178,7 +180,7 @@
 }
 
 #hud .tower-hud-resource strong {
-  color: #f6c873;
+  color: var(--tower-hud-color);
   font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
@@ -186,10 +188,10 @@
 #hud .tower-hud-wave {
   align-self: start;
   padding: 5px 9px;
-  border: 1px solid rgb(246 184 102 / 24%);
+  border: 1px solid color-mix(in srgb, var(--tower-hud-color) 24%, transparent);
   border-radius: 999px;
   background: rgb(89 67 42 / 30%);
-  color: #f1dbab;
+  color: var(--tower-hud-color);
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 13px;
   font-weight: 600;

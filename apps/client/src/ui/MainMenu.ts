@@ -5,6 +5,7 @@ export interface MainMenuCallbacks {
   onMultiplayer: () => void;
   onCompendium: () => void;
   onProfile: () => void;
+  onSettings?: () => void;
   onSandbox?: () => void;
   onSignOut: () => void;
 }
@@ -39,6 +40,18 @@ export class MainMenu {
             <span class="main-menu-link__eyebrow">Développement</span>
             <span class="main-menu-link__title">Sandbox</span>
           </span>
+        </button>
+      `
+      : '';
+    const settings = this.callbacks.onSettings
+      ? `
+        <button type="button" class="main-menu-link" id="main-menu-settings">
+          <span class="main-menu-link__glyph" aria-hidden="true">⚙</span>
+          <span>
+            <span class="main-menu-link__eyebrow">Personnalisation</span>
+            <span class="main-menu-link__title">Paramètres</span>
+          </span>
+          <span class="main-menu-link__arrow" aria-hidden="true">→</span>
         </button>
       `
       : '';
@@ -92,6 +105,7 @@ export class MainMenu {
               </span>
               <span class="main-menu-link__arrow" aria-hidden="true">→</span>
             </button>
+            ${settings}
             ${sandbox}
           </div>
         </section>
@@ -107,6 +121,7 @@ export class MainMenu {
     this.bind('#main-menu-multiplayer', this.callbacks.onMultiplayer);
     this.bind('#main-menu-compendium', this.callbacks.onCompendium);
     this.bind('#main-menu-profile', this.callbacks.onProfile);
+    this.bind('#main-menu-settings', this.callbacks.onSettings);
     this.bind('#main-menu-sandbox', this.callbacks.onSandbox);
     this.bind('#main-menu-signout', this.callbacks.onSignOut);
   }

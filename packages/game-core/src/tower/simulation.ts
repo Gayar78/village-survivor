@@ -1403,6 +1403,7 @@ export class TowerSimulation {
       position: { ...bullet.position },
       radius: bullet.radius,
       source,
+      ...(bullet.ownerId === undefined ? {} : { ownerId: bullet.ownerId }),
       friendly: true,
       ...(bullet.weaponId === undefined ? {} : { weaponId: bullet.weaponId }),
     };

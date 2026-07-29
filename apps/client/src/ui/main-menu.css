@@ -514,6 +514,113 @@
   color: #f2b7a2;
 }
 
+/* Les deux écrans de navigation consomment la palette du store de préférences. */
+.main-menu,
+.compendium {
+  color: var(--visual-text-color);
+  background:
+    radial-gradient(
+      ellipse 90% 58% at 49% 116%,
+      color-mix(in srgb, var(--visual-accent-secondary-color) 24%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 60% 43% at 6% 8%,
+      color-mix(in srgb, var(--visual-accent-color) 20%, transparent),
+      transparent 72%
+    ),
+    linear-gradient(145deg, #090b20 0%, var(--visual-surface-raised-color) 44%, #090a1a 100%);
+}
+
+.main-menu::before,
+.compendium::before {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--visual-accent-color) 8%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--visual-accent-color) 8%, transparent) 1px,
+      transparent 1px
+    );
+}
+
+.main-menu__sigil,
+.main-menu-play,
+.main-menu-link:hover,
+.main-menu-link:focus-visible,
+.main-menu__signout:hover,
+.main-menu__signout:focus-visible,
+.compendium__back:hover,
+.compendium__back:focus-visible,
+.main-menu-account-bar__button:hover,
+.main-menu-account-bar__button:focus-visible {
+  border-color: var(--visual-accent-color);
+}
+
+.main-menu__sigil,
+.main-menu__kicker,
+.main-menu-card__eyebrow,
+.main-menu-link__eyebrow,
+.main-menu-play__cta,
+.main-menu-link__glyph,
+.main-menu-link__arrow,
+.compendium__section h2 {
+  color: var(--visual-accent-secondary-color);
+}
+
+.main-menu h1,
+.compendium h1,
+.main-menu-play__title,
+.main-menu-link__title,
+.main-menu__signout,
+.compendium__back,
+.main-menu-account-bar__button {
+  color: var(--visual-text-color);
+}
+
+.main-menu h1 span,
+.main-menu-play__crest i {
+  color: var(--visual-accent-color);
+  background: linear-gradient(
+    135deg,
+    var(--visual-player-projectile-color),
+    var(--visual-accent-color)
+  );
+}
+
+.main-menu-play {
+  background: linear-gradient(
+    132deg,
+    color-mix(
+      in srgb,
+      var(--visual-accent-secondary-color) 36%,
+      var(--visual-surface-raised-color)
+    ),
+    var(--visual-surface-color) 68%
+  );
+  box-shadow:
+    inset 0 1px color-mix(in srgb, var(--visual-text-color) 10%, transparent),
+    0 24px 60px rgb(0 0 0 / 34%),
+    0 0 44px color-mix(in srgb, var(--visual-accent-color) 22%, transparent);
+}
+
+.main-menu-play:hover,
+.main-menu-play:focus-visible {
+  border-color: var(--visual-player-projectile-color);
+  box-shadow: 0 0 54px color-mix(in srgb, var(--visual-accent-color) 40%, transparent);
+}
+
+.main-menu-link,
+.main-menu__signout,
+.compendium__back,
+.main-menu-account-bar__button,
+.compendium__section {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 34%, transparent);
+  background: color-mix(in srgb, var(--visual-surface-color) 86%, var(--visual-accent-color));
+}
+
 @keyframes main-menu-compass {
   to {
     transform: rotate(1turn);

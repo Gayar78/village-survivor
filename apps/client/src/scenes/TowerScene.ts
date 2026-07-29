@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
 
+import {
+  getVisualPreferences,
+  subscribeVisualPreferences,
+  type VisualPreferences,
+} from '../preferences/visualPreferences.js';
+
 import type {
   HeartState,
   ScrapPickupState,
@@ -77,6 +83,15 @@ const PLAYER_RADIUS = 16;
 /** Fraction du reste à rattraper par frame de 60 Hz, corrigée du delta réel. */
 const CAMERA_SMOOTHING = 0.18;
 
+/** Convertit un #RRGGBB validé en entier Phaser, avec repli défensif. */
+function hexToPhaserColor(value: string, fallback: number): number {
+  if (!/^#[0-9a-f]{6}$/i.test(value)) {
+    return fallback;
+  }
+  const color = Number.parseInt(value.slice(1), 16);
+  return Number.isSafeInteger(color) ? color : fallback;
+}
+
 /** Interpolation linéaire scalaire, utilisée pour le lissage des positions. */
 function lerp(from: number, to: number, alpha: number): number {
   return from + (to - from) * alpha;
@@ -110,6 +125,8 @@ export class TowerScene extends Phaser.Scene {
    */
   private readonly allyLabels = new Map<string, Phaser.GameObjects.Text>();
   private unsubscribe: (() => void) | undefined;
+  private unsubscribeVisualPreferences: (() => void) | undefined;
+  private visualPreferences: VisualPreferences = getVisualPreferences();
   private cameraReady = false;
   private offsetX = 0;
   private offsetY = 0;
@@ -129,8 +146,14 @@ export class TowerScene extends Phaser.Scene {
       this.previousState = this.state;
       this.state = state;
     });
+    this.unsubscribeVisualPreferences = subscribeVisualPreferences((preferences) => {
+      this.visualPreferences = preferences;
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.unsubscribe?.();
+      this.unsubscribe = undefined;
+      this.unsubscribeVisualPreferences?.();
+      this.unsubscribeVisualPreferences = undefined;
       for (const label of this.allyLabels.values()) {
         label.destroy();
       }
@@ -315,7 +338,8 @@ export class TowerScene extends Phaser.Scene {
   private drawTurret(turret: TurretState): void {
     const graphics = this.graphics;
     const { x, y } = this.toScreen(turret.position);
-    const bodyColor = turret.alive ? COLORS.turret : COLORS.turretDead;
+    const turretColor = hexToPhaserColor(this.visualPreferences.turretColor, COLORS.turret);
+    const bodyColor = turret.alive ? turretColor : COLORS.turretDead;
     const bodyAlpha = turret.alive ? 1 : 0.5;
 
     if (turret.alive) {
@@ -360,7 +384,7 @@ export class TowerScene extends Phaser.Scene {
     graphics.lineStyle(2, 0x15130d, bodyAlpha);
     graphics.strokeCircle(x, y, TURRET_RADIUS);
 
-    this.drawBar(x - 20, y - TURRET_RADIUS - 14, 40, 5, turret.hp / turret.maxHp, COLORS.turret);
+    this.drawBar(x - 20, y - TURRET_RADIUS - 14, 40, 5, turret.hp / turret.maxHp, turretColor);
     this.drawBar(
       x - 20,
       y - TURRET_RADIUS - 8,
@@ -376,11 +400,13 @@ export class TowerScene extends Phaser.Scene {
     for (const projectile of state.projectiles) {
       const { x, y } = this.toScreen(this.projectileRenderPos(projectile));
       const color =
-        projectile.source === 'player'
-          ? projectile.weaponId === undefined
-            ? COLORS.projectilePlayer
-            : WEAPON_COLORS[projectile.weaponId]
-          : COLORS.projectileTurret;
+        projectile.source === 'player' && projectile.ownerId === state.player.id
+          ? hexToPhaserColor(this.visualPreferences.playerProjectileColor, COLORS.projectilePlayer)
+          : projectile.source === 'player'
+            ? projectile.weaponId === undefined
+              ? COLORS.projectilePlayer
+              : WEAPON_COLORS[projectile.weaponId]
+            : COLORS.projectileTurret;
       graphics.fillStyle(color, projectile.source === 'player' ? 0.2 : 0.16);
       graphics.fillCircle(x, y, projectile.radius + 4);
       graphics.fillStyle(color, 1);
@@ -452,7 +478,9 @@ export class TowerScene extends Phaser.Scene {
       graphics.strokeCircle(x, y, PLAYER_RADIUS);
       return;
     }
-    const bodyColor = isLocal ? COLORS.local : COLORS.ally;
+    const bodyColor = isLocal
+      ? hexToPhaserColor(this.visualPreferences.playerColor, COLORS.local)
+      : COLORS.ally;
     const aimAngle = Math.atan2(player.aim.y, player.aim.x);
     const barrel = WEAPON_BARRELS[player.activeWeaponId];
     // Canon : petit trait orienté vers la direction de visée, dessiné avant le
@@ -577,7 +605,8 @@ export class TowerScene extends Phaser.Scene {
 
     for (const turret of state.turrets) {
       const turretPoint = point(turret.position);
-      graphics.fillStyle(turret.alive ? COLORS.turret : COLORS.turretDead, 1);
+      const turretColor = hexToPhaserColor(this.visualPreferences.turretColor, COLORS.turret);
+      graphics.fillStyle(turret.alive ? turretColor : COLORS.turretDead, 1);
       graphics.fillRect(turretPoint.x - 2, turretPoint.y - 2, 4, 4);
     }
 
@@ -597,7 +626,7 @@ export class TowerScene extends Phaser.Scene {
     }
 
     const localPoint = point(localPos);
-    graphics.fillStyle(COLORS.local, 1);
+    graphics.fillStyle(hexToPhaserColor(this.visualPreferences.playerColor, COLORS.local), 1);
     graphics.fillCircle(localPoint.x, localPoint.y, 3);
   }
 }

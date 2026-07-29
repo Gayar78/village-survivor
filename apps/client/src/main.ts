@@ -9,12 +9,14 @@ import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
 import { MainMenu } from './ui/MainMenu.js';
 import { ProfileScreen } from './ui/ProfileScreen.js';
+import { SettingsScreen } from './ui/SettingsScreen.js';
 import './styles.css';
 
 const authElement = document.querySelector<HTMLElement>('#auth');
 const menuElement = document.querySelector<HTMLElement>('#main-menu');
 const compendiumElement = document.querySelector<HTMLElement>('#compendium');
 const profileElement = document.querySelector<HTMLElement>('#profile');
+const settingsElement = document.querySelector<HTMLElement>('#settings');
 const hubElement = document.querySelector<HTMLElement>('#hub');
 const multiplayerNav = document.querySelector<HTMLElement>('#multiplayer-nav');
 if (
@@ -22,6 +24,7 @@ if (
   menuElement === null ||
   compendiumElement === null ||
   profileElement === null ||
+  settingsElement === null ||
   hubElement === null ||
   multiplayerNav === null
 ) {
@@ -45,6 +48,7 @@ function hideMultiplayer(): void {
 
 function showMenu(): void {
   profileScreen.hide();
+  settingsScreen.hide();
   compendium.hide();
   hideMultiplayer();
   mainMenu.show();
@@ -55,13 +59,25 @@ function openProfile(): void {
     return;
   }
   mainMenu.hide();
+  settingsScreen.hide();
   compendium.hide();
   hideMultiplayer();
   void profileScreen.open(accountSession);
 }
 
+function openSettings(): void {
+  mainMenu.hide();
+  profileScreen.hide();
+  compendium.hide();
+  hideMultiplayer();
+  settingsScreen.show();
+}
+
 const profileScreen = new ProfileScreen(profileElement, showMenu, () => location.reload());
 profileScreen.hide();
+
+const settingsScreen = new SettingsScreen(settingsElement, showMenu);
+settingsScreen.hide();
 
 const compendium = new Compendium(compendiumElement, showMenu);
 compendium.hide();
@@ -113,6 +129,7 @@ async function openMultiplayer(): Promise<void> {
   mainMenu.hide();
   compendium.hide();
   profileScreen.hide();
+  settingsScreen.hide();
   try {
     if (!multiplayerStarted) {
       multiplayerStarted = true;
@@ -137,6 +154,7 @@ async function openMultiplayer(): Promise<void> {
 
 function openCompendium(): void {
   mainMenu.hide();
+  settingsScreen.hide();
   hideMultiplayer();
   compendium.show();
 }
@@ -152,6 +170,7 @@ const mainMenu = new MainMenu(menuElement, {
   onMultiplayer: () => void openMultiplayer(),
   onCompendium: openCompendium,
   onProfile: openProfile,
+  onSettings: openSettings,
   ...(import.meta.env.DEV ? { onSandbox: openSandbox } : {}),
   onSignOut: () => {
     if (window.confirm('Se déconnecter de ton compte ?')) {

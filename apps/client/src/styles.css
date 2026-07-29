@@ -1,6 +1,16 @@
 :root {
+  --visual-accent-color: #7c83ff;
+  --visual-accent-secondary-color: #b794f4;
+  --visual-player-color: #63b3ed;
+  --visual-player-projectile-color: #a5f3fc;
+  --visual-turret-color: #a78bfa;
+  --visual-hud-color: #c4b5fd;
+  --visual-surface-color: #101427;
+  --visual-surface-raised-color: #171b36;
+  --visual-text-color: #f3f4ff;
+  --visual-muted-text-color: #b6bddb;
   color: #f5f1e8;
-  background: #10181b;
+  background: var(--visual-surface-color);
   font-family:
     Inter,
     ui-sans-serif,
@@ -243,7 +253,13 @@ body,
 body {
   min-width: 960px;
   min-height: 620px;
-  background: radial-gradient(circle at 20% 20%, rgb(65 105 91 / 30%), transparent 36%), #10181b;
+  background:
+    radial-gradient(
+      circle at 20% 20%,
+      color-mix(in srgb, var(--visual-accent-color) 28%, transparent),
+      transparent 36%
+    ),
+    var(--visual-surface-color);
 }
 
 canvas {
@@ -2914,4 +2930,102 @@ kbd {
   .profile-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Palette partagée : les valeurs sont écrites instantanément par le store de
+ * préférences visuelles. Les styles de danger restent volontairement rouges. */
+.auth-screen,
+.profile-screen {
+  background:
+    radial-gradient(
+      circle at 22% 20%,
+      color-mix(in srgb, var(--visual-accent-color) 24%, transparent),
+      transparent 46%
+    ),
+    var(--visual-surface-color);
+}
+
+.auth-panel,
+.profile-panel {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 42%, transparent);
+  background: linear-gradient(
+    140deg,
+    color-mix(
+      in srgb,
+      var(--visual-surface-raised-color) 96%,
+      var(--visual-accent-secondary-color)
+    ),
+    var(--visual-surface-color) 72%
+  );
+}
+
+.auth-brand span,
+.profile-avatar {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 62%, transparent);
+  color: var(--visual-text-color);
+  background: linear-gradient(
+    145deg,
+    var(--visual-accent-secondary-color),
+    var(--visual-accent-color)
+  );
+}
+
+.auth-field input:focus-visible,
+.auth-btn:hover:not(:disabled),
+.auth-btn:focus-visible:not(:disabled),
+.profile-close:hover,
+.profile-close:focus-visible {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 68%, transparent);
+  background: color-mix(in srgb, var(--visual-accent-color) 12%, transparent);
+}
+
+.auth-btn--primary,
+.auth-btn--primary:hover:not(:disabled),
+.auth-btn--primary:focus-visible:not(:disabled) {
+  color: #11142a;
+  background: var(--visual-accent-color);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--visual-accent-color) 34%, transparent);
+}
+
+.auth-switch:hover,
+.auth-switch:focus-visible,
+.profile-kicker,
+.profile-subtitle {
+  color: var(--visual-accent-secondary-color);
+}
+
+.profile-wallet {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 62%, transparent);
+  background:
+    radial-gradient(
+      circle at 88% 18%,
+      color-mix(in srgb, var(--visual-accent-secondary-color) 30%, transparent),
+      transparent 24%
+    ),
+    linear-gradient(
+      132deg,
+      color-mix(
+        in srgb,
+        var(--visual-accent-secondary-color) 40%,
+        var(--visual-surface-raised-color)
+      ),
+      var(--visual-surface-color) 72%
+    );
+}
+
+.profile-wallet__eyebrow,
+.profile-wallet__value span,
+.profile-wallet__coin {
+  color: var(--visual-accent-secondary-color);
+}
+
+.profile-wallet__value,
+.profile-name,
+.profile-stat strong {
+  color: var(--visual-text-color);
+}
+
+.profile-wallet__coin {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 64%, transparent);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--visual-accent-color) 24%, transparent);
 }

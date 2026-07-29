@@ -122,6 +122,8 @@ export type TowerProjectileState = Readonly<{
   position: Vector2;
   radius: number;
   source: ProjectileSource;
+  /** Joueur ayant tiré le projectile ; absent pour une tourelle. */
+  ownerId?: string;
   /** true = tir allié (joueur/tourelle) ; réservé pour un futur tir ennemi. */
   friendly: boolean;
   /** Arme d'origine d'un tir joueur ; absent pour les projectiles de tourelle. */
