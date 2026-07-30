@@ -18,6 +18,11 @@ import { GameOverScreen } from './ui/GameOverScreen.js';
 import { TowerHud } from './ui/tower/TowerHud.js';
 import { TowerLevelUp } from './ui/tower/TowerLevelUp.js';
 import { TurretShop } from './ui/tower/TurretShop.js';
+import {
+  canQueueTowerLevelSelection,
+  getTowerLevelShortcutIndex,
+  isTowerLevelSelectionAcknowledged,
+} from './towerLevelShortcuts.js';
 import './styles.css';
 
 // Page de JEU (« Tower / arme à feu », Phase 1). Assemble : session (solo ou co-op
@@ -152,15 +157,34 @@ const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
 const scene = new TowerScene(session);
 const hud = new TowerHud(hudElement);
 
-// Actions ponctuelles en attente d'envoi (une seule frame) : choix d'amélioration + achat.
+// Actions ponctuelles en attente d'envoi (une seule frame) : changement d'arme + achat.
 let pendingSelect: string | undefined;
 let pendingShop: TowerInput['turretShop'];
+
+/**
+ * Un choix de niveau reste présent jusqu'au prochain état autoritaire qui ne
+ * contient plus son offre. Cela évite qu'une frame rAF sans action remplace
+ * l'input local avant le prochain tick de simulation.
+ */
+let pendingLevelSelection: Readonly<{ offerId: string; actionId: string }> | undefined;
+let nextLevelSelectionId = 0;
+
+function selectLevelOffer(offerId: string): void {
+  if (pendingLevelSelection !== undefined) {
+    return;
+  }
+  nextLevelSelectionId += 1;
+  pendingLevelSelection = {
+    offerId,
+    actionId: `level-select-${nextLevelSelectionId}`,
+  };
+}
 
 const turretShop = new TurretShop(shopElement, (turret, action) => {
   pendingShop = { turret, action };
 });
 const levelUp = new TowerLevelUp(levelupElement, (offerId) => {
-  pendingSelect = offerId;
+  selectLevelOffer(offerId);
 });
 const escapeMenu = new EscapeMenu(escapeMenuElement, {
   onContinue: () => undefined,
@@ -232,6 +256,15 @@ async function publishActiveCoopGame(): Promise<void> {
 
 session.subscribe((state) => {
   latestState = state;
+  if (
+    pendingLevelSelection !== undefined &&
+    isTowerLevelSelectionAcknowledged(
+      pendingLevelSelection.offerId,
+      state.player.upgradeChoices.map((choice) => choice.offerId),
+    )
+  ) {
+    pendingLevelSelection = undefined;
+  }
   hud.render(state);
   turretShop.render(state);
   levelUp.render(state);
@@ -256,25 +289,31 @@ window.addEventListener('keydown', (event) => {
     escapeMenu.toggle();
     return;
   }
-  if (event.repeat) {
-    pressed.add(event.code);
+  pressed.add(event.code);
+  const levelShortcut = getTowerLevelShortcutIndex(event);
+  if (levelShortcut !== undefined && (latestState?.player.upgradeChoices.length ?? 0) > 0) {
+    // La montée de niveau est prioritaire sur l'arsenal et ne doit jamais laisser
+    // le navigateur interpréter la touche (notamment les symboles AZERTY).
+    event.preventDefault();
+    if (canQueueTowerLevelSelection(event.repeat, pendingLevelSelection !== undefined)) {
+      const card = latestState?.player.upgradeChoices[levelShortcut];
+      if (card !== undefined) {
+        selectLevelOffer(card.offerId);
+      }
+    }
     return;
   }
-  pressed.add(event.code);
+  if (event.repeat) {
+    return;
+  }
   if (event.code === 'KeyE') {
     if (!escapeMenu.isOpen() && latestState?.player.nearTurret !== undefined) {
       turretShop.toggle();
     }
     return;
   }
-  const digit = ['Digit1', 'Digit2', 'Digit3'].indexOf(event.code);
-  if (digit >= 0 && latestState !== undefined) {
-    const card = latestState.player.upgradeChoices[digit];
-    if (card !== undefined) {
-      pendingSelect = card.offerId;
-      return;
-    }
-    const weapon = TOWER_WEAPONS[digit];
+  if (levelShortcut !== undefined && latestState !== undefined) {
+    const weapon = TOWER_WEAPONS[levelShortcut];
     if (latestState.player.upgradeChoices.length === 0 && weapon !== undefined) {
       pendingSelect = `weapon:${weapon.id}`;
     }
@@ -318,6 +357,7 @@ function buildInput(): TowerInput {
   // La caméra est centrée sur le joueur local : le centre de l'écran = le joueur, donc
   // la visée est la position de la souris relative au centre.
   const fire = mouseDown && !mouseOnUi;
+  const levelSelection = pendingLevelSelection;
   const input: TowerInput = {
     sequence,
     moveX: axis(left, right),
@@ -325,7 +365,17 @@ function buildInput(): TowerInput {
     aimX: mouseX - window.innerWidth / 2,
     aimY: mouseY - window.innerHeight / 2,
     ...(fire ? { fire: true } : {}),
-    ...(pendingSelect === undefined ? {} : { selectUpgradeId: pendingSelect }),
+    // L'intention est répétée à chaque frame tant que l'atelier est réellement
+    // ouvert. Le moteur vérifie ensuite portée, vie du joueur et tourelle active.
+    ...(turretShop.isOpen() && !escapeMenu.isOpen() ? { turretWorkshopOpen: true } : {}),
+    ...(levelSelection !== undefined
+      ? {
+          selectUpgradeId: levelSelection.offerId,
+          discreteActionId: levelSelection.actionId,
+        }
+      : pendingSelect === undefined
+        ? {}
+        : { selectUpgradeId: pendingSelect }),
     ...(pendingShop === undefined ? {} : { turretShop: pendingShop }),
   };
   pendingSelect = undefined;

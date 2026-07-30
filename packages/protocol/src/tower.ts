@@ -102,6 +102,12 @@ export type TowerInput = Readonly<{
   /** Bouton de tir maintenu. */
   fire?: boolean;
   /**
+   * Intention persistante d'utiliser l'atelier de la tourelle proche. Le moteur ne
+   * l'accepte que pour un joueur vivant et effectivement à portée d'une tourelle
+   * vivante ; cette intention n'est donc pas, à elle seule, une invulnérabilité.
+   */
+  turretWorkshopOpen?: boolean;
+  /**
    * Identifiant idempotent d'une action ponctuelle. Les sessions réseau peuvent
    * l'ajouter automatiquement afin de retransmettre l'action sans la rejouer.
    * Les anciennes commandes sans identifiant restent valides.
@@ -174,6 +180,8 @@ export type TowerPlayerState = Readonly<{
   downedRemainingMs: number;
   /** Le joueur est-il à portée d'une tourelle (ouverture possible de la boutique) ? */
   nearTurret?: TurretDir;
+  /** true lorsque l'intention atelier est validée par la simulation pour ce tick. */
+  turretWorkshopProtected?: boolean;
 }>;
 
 export type TowerProjectileState = Readonly<{

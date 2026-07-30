@@ -305,6 +305,7 @@ export class TowerSimulation {
       pendingUpgrades: 0,
       upgradeChoices: [],
       downedRemainingMs: 0,
+      turretWorkshopOpen: false,
       activeWeaponId: 'rifle',
       weapons: TOWER_WEAPONS.map((weapon) => ({
         id: weapon.id,
@@ -428,6 +429,9 @@ export class TowerSimulation {
     }));
 
     for (const { player, input } of entries) {
+      // Entrée persistante : elle est remplacée à chaque tick lockstep. La portée,
+      // l'état du joueur et celui de la tourelle restent validés dynamiquement.
+      player.turretWorkshopOpen = input.turretWorkshopOpen === true;
       this.updateDownedState(player, deltaMs);
       if (player.downedRemainingMs > 0) {
         continue;
@@ -898,7 +902,7 @@ export class TowerSimulation {
   }
 
   private findMonsterTarget(monster: MutableTowerMonster): Vector2 {
-    const player = this.findNearestLivingPlayer(monster.position, MONSTER_PLAYER_AGGRO_RANGE);
+    const player = this.findNearestLivingPlayer(monster.position, MONSTER_PLAYER_AGGRO_RANGE, true);
     return player?.position ?? this.heart.position;
   }
 
@@ -942,7 +946,11 @@ export class TowerSimulation {
   private explodeKamikaze(monster: MutableTowerMonster): void {
     const center = monster.position;
     for (const player of this.players) {
-      if (player.downedRemainingMs > 0 || player.hp <= 0) {
+      if (
+        player.downedRemainingMs > 0 ||
+        player.hp <= 0 ||
+        this.isTurretWorkshopProtected(player)
+      ) {
         continue;
       }
       if (distance(player.position, center) <= KAMIKAZE_EXPLOSION.radius + PLAYER.radius) {
@@ -966,7 +974,11 @@ export class TowerSimulation {
 
   private findContactedPlayer(monster: MutableTowerMonster): MutableTowerPlayer | undefined {
     for (const player of this.players) {
-      if (player.downedRemainingMs > 0 || player.hp <= 0) {
+      if (
+        player.downedRemainingMs > 0 ||
+        player.hp <= 0 ||
+        this.isTurretWorkshopProtected(player)
+      ) {
         continue;
       }
       if (
@@ -1610,6 +1622,20 @@ export class TowerSimulation {
     return nearest?.dir;
   }
 
+  /**
+   * Valide l'intention lockstep contre l'état courant du monde. Ce calcul reste
+   * dynamique : la destruction de la tourelle ou une sortie de portée pendant le
+   * tick retire immédiatement la protection.
+   */
+  private isTurretWorkshopProtected(player: MutableTowerPlayer): boolean {
+    return (
+      player.turretWorkshopOpen &&
+      player.hp > 0 &&
+      player.downedRemainingMs <= 0 &&
+      this.nearTurretFor(player) !== undefined
+    );
+  }
+
   // ── Défaite ───────────────────────────────────────────────────────────────
 
   private checkDefeat(): void {
@@ -1637,11 +1663,16 @@ export class TowerSimulation {
   private findNearestLivingPlayer(
     position: Vector2,
     maxRange: number,
+    excludeTurretWorkshopProtected = false,
   ): MutableTowerPlayer | undefined {
     let nearest: MutableTowerPlayer | undefined;
     let nearestDistance = maxRange;
     for (const player of this.players) {
-      if (player.downedRemainingMs > 0 || player.hp <= 0) {
+      if (
+        player.downedRemainingMs > 0 ||
+        player.hp <= 0 ||
+        (excludeTurretWorkshopProtected && this.isTurretWorkshopProtected(player))
+      ) {
         continue;
       }
       const gap = distance(player.position, position);
@@ -1782,6 +1813,7 @@ export class TowerSimulation {
 
   private projectPlayer(player: MutableTowerPlayer): TowerPlayerState {
     const nearTurret = this.nearTurretFor(player);
+    const turretWorkshopProtected = this.isTurretWorkshopProtected(player);
     const activeWeapon = this.projectWeapons(player).find(
       (weapon) => weapon.id === player.activeWeaponId,
     );
@@ -1806,6 +1838,7 @@ export class TowerSimulation {
       upgradeChoices: player.upgradeChoices.map((card) => ({ ...card })),
       downedRemainingMs: player.downedRemainingMs,
       ...(nearTurret === undefined ? {} : { nearTurret }),
+      ...(turretWorkshopProtected ? { turretWorkshopProtected: true } : {}),
     };
   }
 

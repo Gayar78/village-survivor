@@ -44,6 +44,8 @@ export interface MutableTowerPlayer {
   pendingUpgrades: number;
   upgradeChoices: TowerUpgradeCard[];
   downedRemainingMs: number;
+  /** Intention persistante reçue par l'entrée lockstep courante. */
+  turretWorkshopOpen: boolean;
   activeWeaponId: TowerWeaponId;
   weapons: MutableTowerWeapon[];
 

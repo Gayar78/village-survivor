@@ -163,6 +163,7 @@ function persistentInput(input: TowerInput): TowerInput {
     aimX: input.aimX,
     aimY: input.aimY,
     ...(input.fire === true ? { fire: true } : {}),
+    ...(input.turretWorkshopOpen === true ? { turretWorkshopOpen: true } : {}),
   };
 }
 
@@ -224,6 +225,7 @@ function isValidTowerInput(value: unknown): value is TowerInput {
     Number.isFinite(input.aimY) &&
     Math.abs(input.aimY) <= MAX_AIM_COMPONENT &&
     (input.fire === undefined || typeof input.fire === 'boolean') &&
+    (input.turretWorkshopOpen === undefined || typeof input.turretWorkshopOpen === 'boolean') &&
     (input.selectUpgradeId === undefined ||
       isBoundedNonEmptyString(input.selectUpgradeId, MAX_ACTION_VALUE_LENGTH)) &&
     (input.turretShop === undefined || isTurretShopAction(input.turretShop)) &&
