@@ -41,6 +41,19 @@ function createState(monsters: readonly TowerMonsterState[] = []): TowerGameStat
       rotationId: 0,
       offerIds: ['fortify-heart', 'network-damage', 'network-range'],
     },
+    sharedQuest: {
+      rotationId: 0,
+      id: 'cull-the-horde',
+      objective: 'kill-monsters',
+      progress: 3,
+      target: 5,
+      rewardScrap: 18,
+      completedCount: 0,
+    },
+    merchantShop: {
+      rotationId: 1,
+      offerIds: ['super-rail', 'super-battery'],
+    },
     player,
     players: [player],
     heart: { position: { x: 0, y: 0 }, hp: 400, maxHp: 400, radius: 36 },
@@ -86,5 +99,33 @@ describe('TowerHud living-world projection', () => {
     expect(root.innerHTML).toContain('tower-hud-objective--boss');
     expect(root.innerHTML).toContain('BOSS');
     expect(root.innerHTML).toContain('Colosse Feu');
+  });
+
+  it('projects the current shared quest, including bounded progress and the server reward', () => {
+    const root = { innerHTML: '' } as HTMLElement;
+    const hud = new TowerHud(root);
+    const state = createState();
+    const completedQuest: TowerGameState = {
+      ...state,
+      sharedQuest: {
+        ...state.sharedQuest,
+        rotationId: 1,
+        id: 'elite-bounty',
+        objective: 'kill-elite-or-boss',
+        progress: 7,
+        target: 1,
+        rewardScrap: 25,
+        completedCount: 4,
+      },
+    };
+
+    hud.render(completedQuest);
+
+    expect(root.innerHTML).toContain('Objectif partagé');
+    expect(root.innerHTML).toContain('Rotation 2');
+    expect(root.innerHTML).toContain('Prime d’élite');
+    expect(root.innerHTML).toContain('Progression 1 / 1');
+    expect(root.innerHTML).toContain('+25 ferraille');
+    expect(root.innerHTML).toContain('width:100%');
   });
 });

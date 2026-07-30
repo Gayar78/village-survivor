@@ -7,8 +7,11 @@
 import {
   TOWER_GLOBAL_DEFENSE_OFFERS,
   TOWER_GLOBAL_DEFENSE_ROTATIONS,
+  TOWER_MERCHANT_ROTATIONS,
+  TOWER_SHARED_QUESTS,
   TOWER_TURRET_REPAIR_COST_PER_HP,
   TOWER_TURRET_MODULES,
+  TOWER_TURRET_SUPER_MODULES,
   TOWER_TURRET_SHOP,
   TOWER_TURRET_TARGET_PRIORITIES,
   TOWER_WEAPONS,
@@ -32,7 +35,9 @@ import type {
   TowerPlayerState,
   TowerProjectileState,
   TowerRosterEvent,
+  TowerSharedQuestState,
   TowerStatus,
+  TowerSuperModuleId,
   TowerUpgradeCard,
   TowerWeaponId,
   TowerWeaponState,
@@ -98,6 +103,11 @@ const WEAPON_ACTION_PREFIX = 'weapon:';
 const MODULE_ACTION_PREFIX = 'module:';
 const PRIORITY_ACTION_PREFIX = 'priority:';
 const GLOBAL_ACTION_PREFIX = 'global:';
+
+const TURRET_MODULE_CATALOG = Object.freeze([
+  ...TOWER_TURRET_MODULES,
+  ...TOWER_TURRET_SUPER_MODULES,
+]);
 
 const NEUTRAL_META_BUILD: MetaBuildModifiers = {
   damageMultiplier: 1,
@@ -210,6 +220,10 @@ export class TowerSimulation {
   private elapsedMs = 0;
   private wave = 0;
   private scrapFund = 0;
+  private sharedQuestProgress = 0;
+  private sharedQuestCompletedCount = 0;
+  /** Ids fiables déjà consommés, isolés par joueur pour éviter toute double dépense. */
+  private readonly processedTurretShopActionIds = new Map<string, Set<string>>();
 
   private monsterCounter = 0;
   private projectileCounter = 0;
@@ -1017,6 +1031,42 @@ export class TowerSimulation {
       this.addExperience(beneficiary, XP_PER_KILL_FACTOR * reward);
     }
     this.addEvent('monster-killed', { position: monster.position, amount: reward });
+    this.advanceSharedQuest(monster.rarity, monster.position);
+  }
+
+  private advanceSharedQuest(rarity: TowerMonsterRarity, position: Vector2): void {
+    const quest = this.currentSharedQuestDefinition();
+    const matchesObjective =
+      quest.objective === 'kill-monsters' ||
+      (quest.objective === 'kill-elite-or-boss' && (rarity === 'elite' || rarity === 'boss'));
+    if (!matchesObjective) {
+      return;
+    }
+
+    this.sharedQuestProgress = Math.min(quest.target, this.sharedQuestProgress + 1);
+    if (this.sharedQuestProgress < quest.target) {
+      return;
+    }
+
+    this.scrapFund += quest.rewardScrap;
+    this.sharedQuestCompletedCount += 1;
+    this.sharedQuestProgress = 0;
+    this.addEvent('quest-completed', { position, amount: quest.rewardScrap });
+  }
+
+  private currentSharedQuestDefinition(): (typeof TOWER_SHARED_QUESTS)[number] {
+    if (TOWER_SHARED_QUESTS.length === 0) {
+      throw new Error('Le catalogue Tower requiert au moins une quête commune.');
+    }
+    const quest = TOWER_SHARED_QUESTS[this.currentSharedQuestRotationId()];
+    if (quest === undefined) {
+      throw new Error('La rotation de quête Tower est invalide.');
+    }
+    return quest;
+  }
+
+  private currentSharedQuestRotationId(): number {
+    return this.sharedQuestCompletedCount % TOWER_SHARED_QUESTS.length;
   }
 
   private removeDeadMonsters(): void {
@@ -1337,7 +1387,14 @@ export class TowerSimulation {
 
   private handleTurretShop(player: MutableTowerPlayer, input: TowerInput): void {
     const request = input.turretShop;
-    if (request === undefined || player.downedRemainingMs > 0) {
+    if (
+      request === undefined ||
+      request === null ||
+      typeof request !== 'object' ||
+      typeof request.action !== 'string' ||
+      player.downedRemainingMs > 0 ||
+      !this.consumeTurretShopActionId(player, input.discreteActionId)
+    ) {
       return;
     }
     const turret = this.turrets.find((candidate) => candidate.dir === request.turret);
@@ -1366,10 +1423,43 @@ export class TowerSimulation {
     this.buyTurretUpgrade(turret, request.action);
   }
 
+  private consumeTurretShopActionId(
+    player: MutableTowerPlayer,
+    discreteActionId: string | undefined,
+  ): boolean {
+    // Les anciennes commandes sans id restent compatibles. Dès qu'un id fiable est
+    // présent, il est consommé au premier traitement, même si l'action échoue ensuite.
+    if (discreteActionId === undefined) {
+      return true;
+    }
+    if (
+      typeof discreteActionId !== 'string' ||
+      discreteActionId.length === 0 ||
+      discreteActionId.length > 128
+    ) {
+      return false;
+    }
+    let processed = this.processedTurretShopActionIds.get(player.id);
+    if (processed === undefined) {
+      processed = new Set<string>();
+      this.processedTurretShopActionIds.set(player.id, processed);
+    }
+    if (processed.has(discreteActionId)) {
+      return false;
+    }
+    processed.add(discreteActionId);
+    return true;
+  }
+
   private buyTurretModule(turret: MutableTurret, requestedId: string): void {
-    const module = TOWER_TURRET_MODULES.find((candidate) => candidate.id === requestedId);
+    const module = TURRET_MODULE_CATALOG.find((candidate) => candidate.id === requestedId);
+    const isSuperModule = TOWER_TURRET_SUPER_MODULES.some(
+      (candidate) => candidate.id === requestedId,
+    );
     if (
       module === undefined ||
+      (isSuperModule &&
+        !this.currentMerchantOfferIds().includes(requestedId as TowerSuperModuleId)) ||
       turret.modules.includes(module.id) ||
       this.scrapFund < module.cost
     ) {
@@ -1395,8 +1485,8 @@ export class TowerSimulation {
     turret.modules.push(module.id);
     turret.modules.sort(
       (left, right) =>
-        TOWER_TURRET_MODULES.findIndex((entry) => entry.id === left) -
-        TOWER_TURRET_MODULES.findIndex((entry) => entry.id === right),
+        TURRET_MODULE_CATALOG.findIndex((entry) => entry.id === left) -
+        TURRET_MODULE_CATALOG.findIndex((entry) => entry.id === right),
     );
     this.scrapFund -= module.cost;
   }
@@ -1447,6 +1537,15 @@ export class TowerSimulation {
 
   private currentGlobalDefenseRotationId(): number {
     return this.wave % TOWER_GLOBAL_DEFENSE_ROTATIONS.length;
+  }
+
+  private currentMerchantOfferIds(): readonly TowerSuperModuleId[] {
+    const rotation = TOWER_MERCHANT_ROTATIONS[this.currentMerchantRotationId()];
+    return rotation ?? [];
+  }
+
+  private currentMerchantRotationId(): number {
+    return this.wave % TOWER_MERCHANT_ROTATIONS.length;
   }
 
   private buyTurretUpgrade(turret: MutableTurret, action: string): void {
@@ -1635,6 +1734,11 @@ export class TowerSimulation {
     if (offerIds === undefined) {
       throw new Error('Le catalogue Tower requiert au moins une rotation globale.');
     }
+    const merchantRotationId = this.currentMerchantRotationId();
+    const merchantOfferIds = TOWER_MERCHANT_ROTATIONS[merchantRotationId];
+    if (merchantOfferIds === undefined) {
+      throw new Error('Le catalogue Tower requiert au moins une rotation marchand.');
+    }
     return {
       tick: this.tick,
       elapsedMs: this.elapsedMs,
@@ -1650,6 +1754,8 @@ export class TowerSimulation {
       scrapFund: this.scrapFund,
       globalDefenseUpgrades: this.globalDefenseUpgrades.map((upgrade) => ({ ...upgrade })),
       globalDefenseShop: { rotationId, offerIds: [...offerIds] },
+      sharedQuest: this.projectSharedQuest(),
+      merchantShop: { rotationId: merchantRotationId, offerIds: [...merchantOfferIds] },
       player: primary,
       players,
       heart: this.projectHeart(),
@@ -1658,6 +1764,19 @@ export class TowerSimulation {
       projectiles: this.projectiles.map((bullet) => this.projectProjectile(bullet)),
       scraps: this.scraps.map((scrap) => this.projectScrap(scrap)),
       events: this.events.map((event) => ({ ...event })),
+    };
+  }
+
+  private projectSharedQuest(): TowerSharedQuestState {
+    const quest = this.currentSharedQuestDefinition();
+    return {
+      rotationId: this.currentSharedQuestRotationId(),
+      id: quest.id,
+      objective: quest.objective,
+      progress: this.sharedQuestProgress,
+      target: quest.target,
+      rewardScrap: quest.rewardScrap,
+      completedCount: this.sharedQuestCompletedCount,
     };
   }
 

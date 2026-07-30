@@ -1,5 +1,9 @@
 import type { TowerGameState } from '@village-survivor/protocol';
-import { TOWER_GLOBAL_DEFENSE_OFFERS, TOWER_WEAPONS } from '@village-survivor/content';
+import {
+  TOWER_GLOBAL_DEFENSE_OFFERS,
+  TOWER_SHARED_QUESTS,
+  TOWER_WEAPONS,
+} from '@village-survivor/content';
 
 import './tower-ui.css';
 
@@ -33,6 +37,10 @@ function defenseOfferLabel(id: string): string {
   return TOWER_GLOBAL_DEFENSE_OFFERS.find((offer) => offer.id === id)?.label ?? id;
 }
 
+function sharedQuestDefinition(id: TowerGameState['sharedQuest']['id']) {
+  return TOWER_SHARED_QUESTS.find((quest) => quest.id === id);
+}
+
 /**
  * HUD du nouveau jeu (Tower) : PV joueur, niveau + XP, Ferraille COMMUNE (fonds de
  * défense partagé), Or PERSONNEL et n° de vague. Lecture seule (aucun callback) :
@@ -50,6 +58,9 @@ export class TowerHud {
   public render(state: TowerGameState): void {
     const player = state.player;
     const defenseRotation = state.globalDefenseShop.rotationId;
+    const sharedQuest = state.sharedQuest;
+    const questDefinition = sharedQuestDefinition(sharedQuest.id);
+    const questProgress = Math.max(0, Math.min(sharedQuest.target, sharedQuest.progress));
     const defenseOffers = state.globalDefenseShop.offerIds.map(defenseOfferLabel).join(' · ');
     const activeBoss = state.monsters.find((monster) => monster.rarity === 'boss');
     const waveObjective =
@@ -75,6 +86,12 @@ export class TowerHud {
       activeBoss?.trait ?? '',
       defenseRotation,
       defenseOffers,
+      sharedQuest.rotationId,
+      sharedQuest.id,
+      sharedQuest.progress,
+      sharedQuest.target,
+      sharedQuest.rewardScrap,
+      sharedQuest.completedCount,
       player.activeWeaponId,
       ...player.weapons.flatMap((weapon) => [
         weapon.level,
@@ -137,6 +154,16 @@ export class TowerHud {
           <div class="tower-hud-objective${activeBoss === undefined ? '' : ' tower-hud-objective--boss'}" data-testid="tower-hud-objective">
             <span>Objectif</span><strong>${waveObjective}</strong>
           </div>
+          <section class="tower-hud-quest" data-testid="tower-hud-shared-quest" aria-labelledby="tower-hud-quest-title">
+            <div class="tower-hud-quest__head">
+              <span id="tower-hud-quest-title">Objectif partagé</span>
+              <strong>Rotation ${sharedQuest.rotationId + 1}</strong>
+            </div>
+            <strong class="tower-hud-quest__title">${questDefinition?.label ?? sharedQuest.id}</strong>
+            <small>${questDefinition?.desc ?? sharedQuest.objective}</small>
+            <div class="tower-hud-quest__progress"><span>Progression ${questProgress} / ${sharedQuest.target}</span><strong>+${sharedQuest.rewardScrap} ferraille</strong></div>
+            <div class="bar bar--quest" data-testid="tower-hud-quest-progress"><i style="width:${percentage(questProgress, sharedQuest.target)}%"></i></div>
+          </section>
           <div class="tower-hud-network" data-testid="tower-hud-defense-network">
             <span>Réseau · rotation ${defenseRotation + 1}</span>
             <strong>${defenseOffers}</strong>

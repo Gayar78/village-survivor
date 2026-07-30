@@ -22,8 +22,11 @@ export type TurretDir = 'N' | 'E' | 'S' | 'W';
 /** Règle déterministe utilisée par une tourelle pour départager ses cibles valides. */
 export type TurretTargetPriority = 'nearest' | 'strongest' | 'heartward';
 
+/** Super-modules rares, disponibles uniquement dans la rotation courante du marchand. */
+export type TowerSuperModuleId = 'super-overdrive' | 'super-rail' | 'super-battery';
+
 /** Modules uniques installables sur une tourelle. */
-export type TurretModuleId = 'overclock' | 'piercer' | 'capacitor';
+export type TurretModuleId = 'overclock' | 'piercer' | 'capacitor' | TowerSuperModuleId;
 
 /** Améliorations persistantes achetées pour tout le réseau défensif. */
 export type TowerGlobalDefenseOfferId = 'fortify-heart' | 'network-damage' | 'network-range';
@@ -205,6 +208,32 @@ export type TowerGlobalDefenseShopState = Readonly<{
   ];
 }>;
 
+/** Identifiants du catalogue cyclique de quêtes communes à la partie. */
+export type TowerSharedQuestId = 'cull-the-horde' | 'elite-bounty';
+
+/** Événement de combat suivi par une quête commune. */
+export type TowerSharedQuestObjective = 'kill-monsters' | 'kill-elite-or-boss';
+
+/**
+ * Quête commune active. Une complétion verse `rewardScrap` une fois, puis active
+ * immédiatement la définition suivante dans la rotation canonique.
+ */
+export type TowerSharedQuestState = Readonly<{
+  rotationId: number;
+  id: TowerSharedQuestId;
+  objective: TowerSharedQuestObjective;
+  progress: number;
+  target: number;
+  rewardScrap: number;
+  completedCount: number;
+}>;
+
+/** Paquet courant d'offres rares du marchand, dérivé de la vague de simulation. */
+export type TowerMerchantShopState = Readonly<{
+  rotationId: number;
+  offerIds: readonly [TowerSuperModuleId, TowerSuperModuleId];
+}>;
+
 export type TurretState = Readonly<{
   dir: TurretDir;
   position: Vector2;
@@ -268,6 +297,7 @@ export type TowerEventType =
   | 'level-up'
   | 'upgrade-selected'
   | 'scrap-collected'
+  | 'quest-completed'
   | 'defeat';
 
 export type TowerEvent = Readonly<{
@@ -294,6 +324,10 @@ export type TowerGameState = Readonly<{
   globalDefenseUpgrades: readonly TowerGlobalDefenseUpgradeState[];
   /** Trois offres globales de la vague courante et leur rotation déterministe. */
   globalDefenseShop: TowerGlobalDefenseShopState;
+  /** Quête de partie commune, alimentée par les kills de tous les joueurs et tourelles. */
+  sharedQuest: TowerSharedQuestState;
+  /** Offres rares achetables à la tourelle, canoniques pour la vague courante. */
+  merchantShop: TowerMerchantShopState;
   /** Avatar local (celui du client qui reçoit l'état) ; toujours l'un de `players`. */
   player: TowerPlayerState;
   players: readonly TowerPlayerState[];

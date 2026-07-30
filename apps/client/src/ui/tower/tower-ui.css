@@ -287,6 +287,59 @@
   box-shadow: inset 0 0 16px color-mix(in srgb, var(--tower-hud-color) 15%, transparent);
 }
 
+#hud .tower-hud-quest {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--tower-accent-color) 34%, transparent);
+  border-left: 3px solid var(--tower-secondary-color);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--visual-surface-color) 80%, var(--tower-secondary-color));
+}
+
+#hud .tower-hud-quest__head,
+#hud .tower-hud-quest__progress {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#hud .tower-hud-quest__head span,
+#hud .tower-hud-quest small,
+#hud .tower-hud-quest__progress span {
+  color: var(--visual-muted-text-color);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#hud .tower-hud-quest__head strong,
+#hud .tower-hud-quest__progress strong {
+  color: var(--tower-secondary-color);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud .tower-hud-quest__title {
+  color: var(--visual-text-color);
+  font-size: 12px;
+}
+
+#hud .tower-hud-quest small {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-transform: none;
+}
+
+#hud .tower-hud .bar--quest > i {
+  background: linear-gradient(90deg, var(--tower-accent-color), var(--tower-secondary-color));
+  box-shadow: 0 0 7px color-mix(in srgb, var(--tower-secondary-color) 38%, transparent);
+}
+
 #turret-shop {
   bottom: 20px;
   z-index: 36;
@@ -423,8 +476,14 @@
   margin-top: 8px;
 }
 
+#turret-shop .turret-shop__section--merchant {
+  border-left: 2px solid var(--visual-accent-secondary-color);
+  padding-left: 10px;
+}
+
 #turret-shop .turret-shop-grid--modules,
-#turret-shop .turret-shop-grid--network {
+#turret-shop .turret-shop-grid--network,
+#turret-shop .turret-shop-grid--merchant {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -912,6 +971,7 @@
   #turret-shop .turret-shop-grid,
   #turret-shop .turret-shop-grid--modules,
   #turret-shop .turret-shop-grid--network,
+  #turret-shop .turret-shop-grid--merchant,
   #turret-shop .turret-priorities,
   #levelup .tower-levelup-grid {
     grid-template-columns: 1fr;

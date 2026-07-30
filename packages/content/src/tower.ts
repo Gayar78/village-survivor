@@ -32,7 +32,7 @@ export const TOWER_TURRET_REPAIR_COST_PER_HP = 0.1;
 
 /** Définition sérialisable d'un module individuel de tourelle. */
 export type TowerTurretModuleDefinition = Readonly<{
-  id: 'overclock' | 'piercer' | 'capacitor';
+  id: 'overclock' | 'piercer' | 'capacitor' | 'super-overdrive' | 'super-rail' | 'super-battery';
   label: string;
   desc: string;
   cost: number;
@@ -76,6 +76,82 @@ export const TOWER_TURRET_MODULES: readonly TowerTurretModuleDefinition[] = Obje
       capacityBonus: 50,
       energyGrant: 50,
     }),
+  }),
+]);
+
+/** Modules rares vendus uniquement lorsque leur id figure dans la rotation du marchand. */
+export const TOWER_TURRET_SUPER_MODULES: readonly TowerTurretModuleDefinition[] = Object.freeze([
+  Object.freeze({
+    id: 'super-overdrive',
+    label: 'Surmultiplicateur',
+    desc: '-35 % de temps entre les tirs.',
+    cost: 45,
+    maxStacks: 1,
+    effect: Object.freeze({ kind: 'fire-cooldown-multiplier', multiplier: 0.65 }),
+  }),
+  Object.freeze({
+    id: 'super-rail',
+    label: 'Rail spectral',
+    desc: '+3 ennemis traversés par projectile.',
+    cost: 50,
+    maxStacks: 1,
+    effect: Object.freeze({ kind: 'projectile-pierce-bonus', amount: 3 }),
+  }),
+  Object.freeze({
+    id: 'super-battery',
+    label: 'Batterie quantique',
+    desc: '+120 énergie maximale et +120 énergie à l’installation.',
+    cost: 42,
+    maxStacks: 1,
+    effect: Object.freeze({
+      kind: 'energy-capacity-and-grant',
+      capacityBonus: 120,
+      energyGrant: 120,
+    }),
+  }),
+]);
+
+export type TowerMerchantRotation = readonly [
+  'super-overdrive' | 'super-rail' | 'super-battery',
+  'super-overdrive' | 'super-rail' | 'super-battery',
+];
+
+/** Deux offres uniques par vague ; l’index est exclusivement `wave % length`. */
+export const TOWER_MERCHANT_ROTATIONS: readonly TowerMerchantRotation[] = Object.freeze([
+  Object.freeze(['super-overdrive', 'super-rail'] as const),
+  Object.freeze(['super-rail', 'super-battery'] as const),
+  Object.freeze(['super-battery', 'super-overdrive'] as const),
+]);
+
+export type TowerSharedQuestDefinition = Readonly<{
+  id: 'cull-the-horde' | 'elite-bounty';
+  label: string;
+  desc: string;
+  objective: 'kill-monsters' | 'kill-elite-or-boss';
+  target: number;
+  rewardScrap: number;
+}>;
+
+/**
+ * Rotation canonique des quêtes de partie. Les récompenses sont exclusivement de la
+ * ferraille commune et restent donc sans effet sur l’or personnel ou la méta-progression.
+ */
+export const TOWER_SHARED_QUESTS: readonly TowerSharedQuestDefinition[] = Object.freeze([
+  Object.freeze({
+    id: 'cull-the-horde',
+    label: 'Éclaircir la horde',
+    desc: 'Éliminer 5 monstres en équipe.',
+    objective: 'kill-monsters',
+    target: 5,
+    rewardScrap: 18,
+  }),
+  Object.freeze({
+    id: 'elite-bounty',
+    label: 'Prime d’élite',
+    desc: 'Éliminer un monstre élite ou un boss.',
+    objective: 'kill-elite-or-boss',
+    target: 1,
+    rewardScrap: 25,
   }),
 ]);
 

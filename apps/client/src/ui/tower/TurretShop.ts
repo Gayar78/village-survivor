@@ -5,6 +5,7 @@ import {
   TOWER_TURRET_MODULES,
   TOWER_TURRET_REPAIR_COST_PER_HP,
   TOWER_TURRET_SHOP,
+  TOWER_TURRET_SUPER_MODULES,
   TOWER_TURRET_TARGET_PRIORITIES,
 } from '@village-survivor/content';
 
@@ -24,6 +25,8 @@ type DefenseShopEntry = Readonly<{
 }>;
 
 type GlobalDefenseEntry = DefenseShopEntry & Readonly<{ maxLevel: number }>;
+
+type MerchantModuleEntry = (typeof TOWER_TURRET_SUPER_MODULES)[number];
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => HTML_ENTITIES[character] ?? character);
@@ -101,6 +104,8 @@ export class TurretShop {
     const modules = turret.modules;
     const activeOffers = this.getActiveGlobalOffers(state);
     const rotation = state.globalDefenseShop.rotationId;
+    const merchantOffers = this.getActiveMerchantOffers(state);
+    const merchantRotation = state.merchantShop.rotationId;
     const signature = JSON.stringify({
       turret: nearTurret,
       scrap: state.scrapFund,
@@ -112,6 +117,8 @@ export class TurretShop {
       offers: activeOffers,
       upgrades: state.globalDefenseUpgrades,
       rotation,
+      merchantOffers: state.merchantShop.offerIds,
+      merchantRotation,
     });
     if (this.currentTurret !== nearTurret) {
       this.currentTurret = nearTurret;
@@ -133,6 +140,18 @@ export class TurretShop {
         installed ? 'Installé' : undefined,
       );
     });
+    const merchantButtons = merchantOffers
+      .map((entry) => {
+        const installed = modules.includes(entry.id);
+        const disabled = installed || state.scrapFund < entry.cost;
+        return this.renderActionCard(
+          entry,
+          `module:${entry.id}`,
+          disabled,
+          installed ? 'Installé' : undefined,
+        );
+      })
+      .join('');
     const priority = turret.targetPriority;
     const priorityButtons = TOWER_TURRET_TARGET_PRIORITIES.map((entry) => {
       const active = priority === entry.id;
@@ -175,6 +194,12 @@ export class TurretShop {
           <div class="turret-shop-grid turret-shop-grid--modules">${moduleButtons.join('')}</div>
         </section>
 
+        <section class="turret-shop__section turret-shop__section--merchant" data-testid="turret-merchant-offers" aria-labelledby="turret-merchant-title">
+          <div class="turret-shop__section-heading"><h3 id="turret-merchant-title">Marchand itinérant</h3><span>Rotation ${merchantRotation + 1}</span></div>
+          <p class="turret-shop__section-copy">Super-modules rares disponibles pour cette rotation uniquement.</p>
+          <div class="turret-shop-grid turret-shop-grid--merchant">${merchantButtons}</div>
+        </section>
+
         <section class="turret-shop__section" aria-labelledby="turret-targeting-title">
           <div class="turret-shop__section-heading"><h3 id="turret-targeting-title">Ciblage</h3><span>Priorité active : ${escapeHtml(this.priorityLabel(priority))}</span></div>
           <div class="turret-priorities" role="group" aria-label="Priorité de ciblage">${priorityButtons}</div>
@@ -206,6 +231,17 @@ export class TurretShop {
     const activeOffers: GlobalDefenseEntry[] = [];
     for (const id of state.globalDefenseShop.offerIds) {
       const offer = catalog.find((entry) => entry.id === id);
+      if (offer !== undefined) {
+        activeOffers.push(offer);
+      }
+    }
+    return activeOffers;
+  }
+
+  private getActiveMerchantOffers(state: TowerGameState): readonly MerchantModuleEntry[] {
+    const activeOffers: MerchantModuleEntry[] = [];
+    for (const id of state.merchantShop.offerIds) {
+      const offer = TOWER_TURRET_SUPER_MODULES.find((entry) => entry.id === id);
       if (offer !== undefined) {
         activeOffers.push(offer);
       }
