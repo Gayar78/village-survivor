@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseTowerInputBatch,
+  electTowerCoordinator,
   TOWER_INPUT_BATCH_TICKS,
   TOWER_INPUT_DELAY_TICKS,
   TOWER_LOCKSTEP_EVENTS,
@@ -10,8 +11,12 @@ import {
   towerInputBatchBroadcast,
   towerReadyBroadcast,
   TowerFingerprintMonitor,
+  TowerLockstepHistory,
   TowerLockstepInputBuffer,
   TowerReadyBarrier,
+  TowerRejoinHistoryReceiver,
+  TowerRosterController,
+  type TowerRosterControlEvent,
   type TowerInputBatchMessage,
 } from './towerSession.js';
 
@@ -70,7 +75,7 @@ describe('frames d’entrée par tick', () => {
     expect(buffer.takeNextTick()).toEqual({ host: input(0), guest: input(0) });
     expect(buffer.takeNextTick()).toEqual({ host: input(1), guest: input(1) });
     expect(TOWER_INPUT_BATCH_TICKS).toBeGreaterThanOrEqual(8);
-    expect(TOWER_INPUT_DELAY_TICKS).toBe(4);
+    expect(TOWER_INPUT_DELAY_TICKS).toBe(2);
   });
 
   it('accepte les nouvelles frames d’un batch qui répète aussi des ticks déjà joués', () => {
@@ -127,6 +132,115 @@ describe('frames d’entrée par tick', () => {
         20,
       ),
     ).toBeNull();
+  });
+});
+
+describe('roster lockstep dynamique', () => {
+  const leave = (overrides: Partial<TowerRosterControlEvent> = {}): TowerRosterControlEvent => ({
+    eventId: 'host:1:leave:guest',
+    sequence: 1,
+    tick: 2,
+    action: 'leave',
+    playerId: 'guest',
+    coordinatorId: 'host',
+    reason: 'peer-timeout',
+    ...overrides,
+  });
+
+  it('continue sans frame du pair défaillant jusqu’à sa sortie planifiée', () => {
+    const buffer = new TowerLockstepInputBuffer(roster);
+    expect(buffer.scheduleRosterEvent(leave())).toBe(true);
+    buffer.acceptBatch(batch('host', 0, 1, 2, 3));
+
+    expect(buffer.takeNextTick()).toEqual({ host: input(0), guest: expect.any(Object) });
+    expect(buffer.takeNextTick()).toEqual({ host: input(1), guest: expect.any(Object) });
+    expect(buffer.takeNextTick()).toEqual({ host: input(2) });
+    expect(buffer.takeAppliedRosterEvents()).toEqual([leave()]);
+    expect(buffer.takeNextTick()).toEqual({ host: input(3) });
+  });
+
+  it('remplace un coordinateur périmé par son successeur déterministe', () => {
+    const ids = new Set(['z-host', 'b-peer', 'a-peer']);
+    const controller = new TowerRosterController(ids);
+    expect(electTowerCoordinator(ids)).toBe('a-peer');
+
+    const event = leave({
+      eventId: 'a-peer:1:leave:a-peer',
+      playerId: 'a-peer',
+      coordinatorId: 'b-peer',
+      reason: 'coordinator-timeout',
+    });
+    expect(controller.accept({ senderId: 'b-peer', event }, 0)).toMatchObject({
+      status: 'accepted',
+    });
+    expect(controller.apply(event)).toBe(true);
+    expect(controller.coordinatorId).toBe('b-peer');
+    expect(
+      controller.accept(
+        {
+          senderId: 'a-peer',
+          event: leave({ eventId: 'stale', sequence: 2, coordinatorId: 'a-peer', tick: 3 }),
+        },
+        1,
+      ),
+    ).toEqual({ status: 'ignored' });
+  });
+});
+
+describe('historique de reconnexion', () => {
+  const historyRecord = (tick: number) => ({
+    tick,
+    inputs: { host: input(tick), guest: input(tick) },
+    rosterEvents: [],
+  });
+
+  it('n’accepte que la cible, l’ordre et des records valides', () => {
+    const receiver = new TowerRejoinHistoryReceiver('guest', 'request-1', 'guest', roster);
+    const valid = {
+      senderId: 'guest',
+      targetId: 'guest',
+      requestId: 'request-1',
+      chunkIndex: 0,
+      final: false,
+      records: [historyRecord(0)],
+    };
+    expect(receiver.accept({ ...valid, targetId: 'other' })).toEqual({ status: 'ignored' });
+    expect(receiver.accept({ ...valid, chunkIndex: 1 })).toEqual({ status: 'ignored' });
+    expect(
+      receiver.accept({
+        ...valid,
+        records: [{ ...historyRecord(0), inputs: { host: input(0) } }],
+      }),
+    ).toEqual({ status: 'ignored' });
+    expect(receiver.accept(valid)).toEqual({ status: 'accepted' });
+    expect(
+      receiver.accept({ ...valid, chunkIndex: 1, final: true, records: [historyRecord(1)] }),
+    ).toMatchObject({ status: 'complete' });
+  });
+
+  it('borne les chunks et refuse un paquet surdimensionné', () => {
+    const history = new TowerLockstepHistory();
+    for (let tick = 0; tick < 40; tick += 1) history.append(historyRecord(tick));
+    const chunks = history.chunksFor(
+      { senderId: 'guest', targetId: 'guest', requestId: 'request-2', fromTick: 0 },
+      'host',
+    );
+    expect(chunks).not.toBeNull();
+    expect(chunks!.length).toBeGreaterThan(1);
+    expect(chunks!.every((chunk) => chunk.records.length <= 24)).toBe(true);
+
+    const receiver = new TowerRejoinHistoryReceiver('guest', 'request-2', 'host', roster);
+    expect(
+      receiver.accept({
+        senderId: 'host',
+        targetId: 'guest',
+        requestId: 'request-2',
+        chunkIndex: 0,
+        final: true,
+        records: [],
+        padding: 'x'.repeat(20_000),
+      }),
+    ).toEqual({ status: 'ignored' });
   });
 });
 

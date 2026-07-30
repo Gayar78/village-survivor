@@ -53,6 +53,17 @@ export interface LaunchRosterEntry {
   name: string;
 }
 
+/**
+ * Descripteur public minimal d'une partie co-op encore active. Il sert seulement
+ * à demander une reprise lockstep : aucun état de simulation n'est publié.
+ */
+export interface ActiveGameDescriptor {
+  seed: string;
+  code: string;
+  hostId: string;
+  roster: readonly LaunchRosterEntry[];
+}
+
 /** Paramètres d'un lancement de partie diffusé par le chef à tout le hub. */
 export interface LaunchPayload {
   /** Graine commune du monde : tous les membres démarrent le même monde. */

@@ -59,6 +59,20 @@ export type ProjectileSource = 'player' | 'turret';
 
 // ─── Entrées ────────────────────────────────────────────────────────────────
 
+/** Limite commune à tous les pairs pour le roster Tower actif. */
+export const TOWER_MAX_ACTIVE_PLAYERS = 10;
+
+/**
+ * Mutation de roster déterministe planifiée par la couche réseau.
+ *
+ * `tick` désigne une frontière de simulation : l'événement s'applique après
+ * exactement ce nombre de ticks terminés et avant le tick suivant. Il ne contient
+ * volontairement aucun timestamp mural.
+ */
+export type TowerRosterEvent =
+  | Readonly<{ type: 'join'; tick: number; playerId: string }>
+  | Readonly<{ type: 'leave'; tick: number; playerId: string }>;
+
 export type TowerInput = Readonly<{
   sequence: number;
   /** Déplacement normalisé (-1..1) sur chaque axe (clavier). */

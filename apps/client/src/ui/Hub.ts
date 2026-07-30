@@ -1,6 +1,7 @@
 import { friendsService } from '../hub/friendsService.js';
-import { realtimeService } from '../hub/realtimeService.js';
+import { isActiveGameDescriptor, realtimeService } from '../hub/realtimeService.js';
 import {
+  type ActiveGameDescriptor,
   HUB_CAPACITY,
   type HubInvite,
   type HubMember,
@@ -28,6 +29,7 @@ export interface HubCallbacks {
 interface PresenceSnapshot {
   status: PresenceStatus;
   hubCode?: string;
+  game?: ActiveGameDescriptor;
 }
 
 /** Échappe le texte dynamique injecté dans du innerHTML. */
@@ -65,8 +67,16 @@ function initialsOf(name: string): string {
 }
 
 /** Construit un instantané de présence sans propriété optionnelle undefined. */
-function toSnapshot(status: PresenceStatus, hubCode: string | undefined): PresenceSnapshot {
-  return hubCode === undefined ? { status } : { status, hubCode };
+function toSnapshot(
+  status: PresenceStatus,
+  hubCode: string | undefined,
+  game: ActiveGameDescriptor | undefined,
+): PresenceSnapshot {
+  return {
+    status,
+    ...(hubCode === undefined ? {} : { hubCode }),
+    ...(game === undefined ? {} : { game }),
+  };
 }
 
 /**
@@ -136,7 +146,7 @@ export class Hub {
       realtimeService.onPresence((entries) => {
         const snapshot = new Map<string, PresenceSnapshot>();
         entries.forEach((entry, userId) => {
-          snapshot.set(userId, toSnapshot(entry.status, entry.hubCode));
+          snapshot.set(userId, toSnapshot(entry.status, entry.hubCode, entry.game));
         });
         this.presence = snapshot;
         this.friendsPanel?.updatePresence();
@@ -187,9 +197,11 @@ export class Hub {
     const friendsMount = this.element.querySelector<HTMLElement>('#hub-friends-mount');
     if (friendsMount) {
       this.friendsPanel = new FriendsPanel(friendsMount, {
+        currentUserId: this.session.userId,
         presenceProvider: () => this.presenceProvider(),
         onJoinHub: (code) => this.joinHub(code),
         onInvite: (friendUserId) => this.inviteFriend(friendUserId),
+        onRejoinGame: (game) => this.rejoinGame(game),
       });
     }
 
@@ -335,9 +347,31 @@ export class Hub {
   private presenceProvider(): Map<string, PresenceSnapshot> {
     const copy = new Map<string, PresenceSnapshot>();
     this.presence.forEach((entry, userId) => {
-      copy.set(userId, toSnapshot(entry.status, entry.hubCode));
+      copy.set(userId, toSnapshot(entry.status, entry.hubCode, entry.game));
     });
     return copy;
+  }
+
+  private rejoinGame(game: ActiveGameDescriptor): void {
+    if (
+      !isActiveGameDescriptor(game) ||
+      !game.roster.some((entry) => entry.id === this.session.userId)
+    ) {
+      this.toasts?.info('Cette partie ne peut plus être rejointe.');
+      return;
+    }
+    sessionStorage.setItem(
+      'vs-coop-netcode',
+      JSON.stringify({
+        seed: game.seed,
+        code: game.code,
+        hostId: game.hostId,
+        me: this.session.userId,
+        roster: game.roster,
+        rejoin: true,
+      }),
+    );
+    location.assign('play.html');
   }
 
   private copyCode(): void {

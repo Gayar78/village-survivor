@@ -13,6 +13,7 @@
 
 import { supabase } from '../account/supabaseClient.js';
 import {
+  type ActiveGameDescriptor,
   HUB_CAPACITY,
   type HubInvite,
   type HubMember,
@@ -30,6 +31,7 @@ export interface PresenceEntry {
   displayName: string;
   status: PresenceStatus;
   hubCode?: string;
+  game?: ActiveGameDescriptor;
 }
 
 /** Identité minimale du joueur local passée à `start()`. */
@@ -44,6 +46,8 @@ export interface RealtimeService {
   stop(): Promise<void>;
   /** Met à jour son propre statut de présence (et le hub courant). */
   setStatus(status: PresenceStatus, hubCode?: string): Promise<void>;
+  /** Publie ou efface la partie lockstep rejoinable de ce joueur. */
+  setActiveGame(game: ActiveGameDescriptor | null): Promise<void>;
   /** Abonnement à la présence globale : renvoie une Map userId -> PresenceEntry. Renvoie une fonction de désabonnement. */
   onPresence(cb: (entries: Map<string, PresenceEntry>) => void): () => void;
   /** Rejoint le hub d'un code donné (celui du chef). */
@@ -78,6 +82,7 @@ type GlobalPresencePayload = {
   displayName: string;
   status: PresenceStatus;
   hubCode?: string;
+  game?: ActiveGameDescriptor;
 };
 
 /** Payload de présence poussé sur un canal `hub:<code>`. */
@@ -101,6 +106,7 @@ let myHubCodeRef: string | null = null;
 let currentStatus: PresenceStatus = 'offline';
 /** hubCode publié dans la présence globale (undefined si aucun). */
 let statusHubCode: string | undefined;
+let activeGame: ActiveGameDescriptor | undefined;
 
 let presenceChannel: RealtimeChannel | null = null;
 let personalChannel: RealtimeChannel | null = null;
@@ -115,6 +121,50 @@ const hubStateCbs = new Set<(state: HubState | null) => void>();
 const launchCbs = new Set<(payload: LaunchPayload) => void>();
 const kickedCbs = new Set<() => void>();
 const inviteCbs = new Set<(invite: HubInvite) => void>();
+
+const MAX_GAME_DESCRIPTOR_STRING = 128;
+
+/** Validation de frontière : la présence Realtime n'est jamais une source fiable. */
+export function isActiveGameDescriptor(value: unknown): value is ActiveGameDescriptor {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const game = value as Partial<ActiveGameDescriptor>;
+  if (
+    typeof game.seed !== 'string' ||
+    game.seed.length < 1 ||
+    game.seed.length > MAX_GAME_DESCRIPTOR_STRING ||
+    typeof game.code !== 'string' ||
+    game.code.length < 1 ||
+    game.code.length > MAX_GAME_DESCRIPTOR_STRING ||
+    typeof game.hostId !== 'string' ||
+    game.hostId.length < 1 ||
+    game.hostId.length > MAX_GAME_DESCRIPTOR_STRING ||
+    !Array.isArray(game.roster) ||
+    game.roster.length < 2 ||
+    game.roster.length > HUB_CAPACITY
+  ) {
+    return false;
+  }
+  const ids = new Set<string>();
+  return game.roster.every((entry) => {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      typeof entry.id !== 'string' ||
+      entry.id.length < 1 ||
+      entry.id.length > MAX_GAME_DESCRIPTOR_STRING ||
+      typeof entry.name !== 'string' ||
+      entry.name.length < 1 ||
+      entry.name.length > MAX_GAME_DESCRIPTOR_STRING ||
+      ids.has(entry.id)
+    ) {
+      return false;
+    }
+    ids.add(entry.id);
+    return true;
+  });
+}
 
 // --- Utilitaires de bas niveau ------------------------------------------------
 
@@ -190,6 +240,7 @@ function computePresenceEntries(channel: RealtimeChannel): Map<string, PresenceE
       displayName: p.displayName,
       status: p.status,
       ...(p.hubCode !== undefined ? { hubCode: p.hubCode } : {}),
+      ...(isActiveGameDescriptor(p.game) ? { game: p.game } : {}),
     });
   }
   return entries;
@@ -298,6 +349,7 @@ async function trackGlobalPresence(): Promise<void> {
     displayName: sessionRef.displayName,
     status: currentStatus,
     ...(statusHubCode !== undefined ? { hubCode: statusHubCode } : {}),
+    ...(activeGame !== undefined ? { game: activeGame } : {}),
   };
   const res = await presenceChannel.track(payload);
   if (res !== 'ok') {
@@ -481,6 +533,14 @@ async function setStatusInternal(
   await trackGlobalPresence();
 }
 
+async function setActiveGameInternal(game: ActiveGameDescriptor | null): Promise<void> {
+  if (game !== null && !isActiveGameDescriptor(game)) {
+    throw new Error('Descripteur de partie co-op invalide.');
+  }
+  activeGame = game ?? undefined;
+  await setStatusInternal(game === null ? 'online' : 'in-game', undefined);
+}
+
 // --- Implémentation des méthodes publiques ------------------------------------
 
 async function doStart(session: RealtimeSession, myHubCode: string): Promise<void> {
@@ -492,6 +552,7 @@ async function doStart(session: RealtimeSession, myHubCode: string): Promise<voi
   myHubCodeRef = myHubCode;
   currentStatus = 'online';
   statusHubCode = undefined;
+  activeGame = undefined;
   joinedHubCode = null;
 
   await openPresenceChannel(session.userId);
@@ -514,6 +575,7 @@ async function doStop(): Promise<void> {
   joinedHubCode = null;
   currentStatus = 'offline';
   statusHubCode = undefined;
+  activeGame = undefined;
   sessionRef = null;
   myHubCodeRef = null;
 
@@ -670,6 +732,7 @@ export const realtimeService: RealtimeService = {
   start: (session, myHubCode) => doStart(session, myHubCode),
   stop: () => doStop(),
   setStatus: (status, hubCode) => setStatusInternal(status, hubCode),
+  setActiveGame: (game) => setActiveGameInternal(game),
   onPresence,
   joinHub: (code) => doJoinHub(code),
   leaveHub: () => doLeaveHub(),

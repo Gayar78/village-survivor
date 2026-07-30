@@ -14,6 +14,7 @@ import {
   TOWER_WEAPONS,
   type TowerWeaponDefinition,
 } from '@village-survivor/content';
+import { TOWER_MAX_ACTIVE_PLAYERS } from '@village-survivor/protocol';
 import type {
   HeartState,
   ProjectileSource,
@@ -26,6 +27,7 @@ import type {
   TowerMonsterState,
   TowerPlayerState,
   TowerProjectileState,
+  TowerRosterEvent,
   TowerStatus,
   TowerUpgradeCard,
   TowerWeaponId,
@@ -172,7 +174,20 @@ export class TowerSimulation {
   private static resolvePlayerIds(options?: { playerIds?: readonly string[] }): string[] {
     const requested = options?.playerIds;
     if (requested !== undefined && requested.length > 0) {
-      return requested.slice(0, 10).map((id) => String(id));
+      const uniqueIds: string[] = [];
+      for (const requestedId of requested) {
+        const id = String(requestedId);
+        if (id.length === 0 || uniqueIds.includes(id)) {
+          continue;
+        }
+        uniqueIds.push(id);
+        if (uniqueIds.length >= TOWER_MAX_ACTIVE_PLAYERS) {
+          break;
+        }
+      }
+      if (uniqueIds.length > 0) {
+        return uniqueIds;
+      }
     }
     return ['player-1'];
   }
@@ -257,6 +272,45 @@ export class TowerSimulation {
     if (this.status === 'ready') {
       this.status = 'running';
     }
+  }
+
+  /**
+   * Applique une mutation de roster à la frontière de tick courante.
+   *
+   * Le réseau choisit la frontière dans `event.tick`. Une transition dupliquée,
+   * invalide, tardive ou anticipée est un no-op et renvoie `false`. Les arrivées
+   * sont ajoutées en fin de roster ; aucun avatar existant n'est réordonné.
+   */
+  public applyRosterEvent(event: TowerRosterEvent): boolean {
+    if (
+      this.status === 'defeat' ||
+      !Number.isSafeInteger(event.tick) ||
+      event.tick < 0 ||
+      event.tick !== this.tick ||
+      event.playerId.length === 0
+    ) {
+      return false;
+    }
+
+    const existingIndex = this.playerIds.indexOf(event.playerId);
+    if (event.type === 'join') {
+      if (existingIndex >= 0 || this.players.length >= TOWER_MAX_ACTIVE_PLAYERS) {
+        return false;
+      }
+      const player = this.createPlayer(event.playerId, this.players.length);
+      this.playerIds.push(event.playerId);
+      this.players.push(player);
+      return true;
+    }
+
+    // TowerGameState.player reste toujours défini : une session conserve au moins
+    // un avatar actif jusqu'à sa fermeture par la couche réseau.
+    if (existingIndex < 0 || this.players.length <= 1) {
+      return false;
+    }
+    this.playerIds.splice(existingIndex, 1);
+    this.players.splice(existingIndex, 1);
+    return true;
   }
 
   public step(inputsById: Readonly<Record<string, TowerInput>>): void {
@@ -1000,8 +1054,12 @@ export class TowerSimulation {
     const elapsedSeconds = this.elapsedMs / 1_000;
     const steps = Math.floor(elapsedSeconds / WAVE.budgetStepSeconds);
     const baseBudget = Math.min(WAVE.budgetCap, WAVE.budgetBase + WAVE.budgetPerStep * steps);
-    const playerScale = 1 + WAVE.perPlayerFactor * (this.players.length - 1);
-    let budget = baseBudget * playerScale;
+    const additionalPlayers = clamp(this.players.length - 1, 0, TOWER_MAX_ACTIVE_PLAYERS - 1);
+    const budgetScale = 1 + WAVE.perPlayerFactor * additionalPlayers;
+    // +12 % PV et dégâts par allié, plafonné naturellement par le roster
+    // à 10 joueurs (x2,08). Les monstres déjà présents ne sont pas modifiés.
+    const powerScale = 1 + 0.12 * additionalPlayers;
+    let budget = baseBudget * budgetScale;
 
     while (budget >= 1) {
       const affordable = MONSTER_KINDS.filter((kind) => WAVE_MONSTER_COST[kind] <= budget);
@@ -1013,7 +1071,7 @@ export class TowerSimulation {
         break;
       }
       budget -= WAVE_MONSTER_COST[kind];
-      this.spawnMonster(kind, this.randomWaveSpawnPosition());
+      this.spawnMonsterWithPower(kind, this.randomWaveSpawnPosition(), powerScale);
     }
   }
 
@@ -1338,7 +1396,8 @@ export class TowerSimulation {
       this.addEvent('defeat', {});
       return;
     }
-    if (this.players.length === 1 && (this.players[0]?.hp ?? 0) <= 0) {
+    const onlyPlayer = this.players.length === 1 ? this.players[0] : undefined;
+    if (onlyPlayer !== undefined && onlyPlayer.hp <= 0 && onlyPlayer.downedRemainingMs <= 0) {
       this.status = 'defeat';
       this.addEvent('defeat', {});
     }
@@ -1372,19 +1431,27 @@ export class TowerSimulation {
   // ── Helpers de debug (tests) ─────────────────────────────────────────────────
 
   public spawnMonster(kind: TowerMonsterKind, position?: Vector2): string {
+    return this.spawnMonsterWithPower(kind, position ?? this.randomWaveSpawnPosition(), 1);
+  }
+
+  private spawnMonsterWithPower(
+    kind: TowerMonsterKind,
+    position: Vector2,
+    powerScale: number,
+  ): string {
     const definition = MONSTERS[kind];
     this.monsterCounter += 1;
     const id = `monster-${this.monsterCounter}`;
-    const spawnPosition = position ?? this.randomWaveSpawnPosition();
+    const maxHp = Math.round(definition.hp * powerScale);
     this.monsters.push({
       id,
       kind,
-      position: { x: spawnPosition.x, y: spawnPosition.y },
-      hp: definition.hp,
-      maxHp: definition.hp,
+      position: { x: position.x, y: position.y },
+      hp: maxHp,
+      maxHp,
       radius: definition.radius,
       speed: definition.speed,
-      contactDamage: definition.contactDamage,
+      contactDamage: Math.round(definition.contactDamage * powerScale),
       reward: definition.reward,
       contactCooldownRemaining: 0,
       burnRemainingMs: 0,

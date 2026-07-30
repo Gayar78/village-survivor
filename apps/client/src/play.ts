@@ -1,5 +1,5 @@
 import { TOWER_WEAPONS } from '@village-survivor/content';
-import type { TowerGameState, TowerInput, TurretDir } from '@village-survivor/protocol';
+import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
 import {
@@ -10,6 +10,8 @@ import {
 } from './net/towerSession.js';
 import { authService } from './account/authService.js';
 import { statsService } from './account/statsService.js';
+import { friendsService } from './hub/friendsService.js';
+import { realtimeService } from './hub/realtimeService.js';
 import { TowerScene } from './scenes/TowerScene.js';
 import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
@@ -130,7 +132,7 @@ const hud = new TowerHud(hudElement);
 
 // Actions ponctuelles en attente d'envoi (une seule frame) : choix d'amélioration + achat.
 let pendingSelect: string | undefined;
-let pendingShop: { turret: TurretDir; action: string } | undefined;
+let pendingShop: TowerInput['turretShop'];
 
 const turretShop = new TurretShop(shopElement, (turret, action) => {
   pendingShop = { turret, action };
@@ -167,6 +169,39 @@ async function creditAccountGoldAtEndOfRun(gold: number): Promise<void> {
   } catch (error) {
     // L'écran de fin doit rester utilisable même si Supabase est indisponible.
     console.error("Échec de l'enregistrement de l'or de cette partie.", error);
+  }
+}
+
+/**
+ * La présence ne transporte qu'une invitation de reprise (graine + roster),
+ * jamais l'état du jeu. Une erreur Supabase ne doit surtout pas empêcher la
+ * partie locale de démarrer.
+ */
+async function publishActiveCoopGame(): Promise<void> {
+  if (activeCoopConfig === null) {
+    return;
+  }
+  try {
+    const account = await authService.getSession();
+    if (account === null) {
+      return;
+    }
+    const friendCode = await friendsService.getMyFriendCode();
+    await realtimeService.start(
+      {
+        userId: account.userId,
+        displayName: account.displayName.length > 0 ? account.displayName : account.email,
+      },
+      friendCode,
+    );
+    await realtimeService.setActiveGame({
+      seed: activeCoopConfig.seed,
+      code: activeCoopConfig.code,
+      hostId: activeCoopConfig.hostId,
+      roster: activeCoopConfig.roster,
+    });
+  } catch (error) {
+    console.warn('Présence de reprise co-op indisponible :', error);
   }
 }
 
@@ -294,9 +329,11 @@ window.addEventListener(
   () => {
     unsubscribeConnectionIssue();
     void session.stop();
+    void realtimeService.stop();
   },
   { once: true },
 );
 
 void session.start();
+void publishActiveCoopGame();
 requestAnimationFrame(inputLoop);
