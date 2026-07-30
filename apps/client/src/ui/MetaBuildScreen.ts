@@ -9,6 +9,13 @@ export interface MetaCharacterBuild {
   summary: string;
   level: number;
   active: boolean;
+  isDefault: boolean;
+}
+
+export interface MetaBlessingPath {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface MetaBlessing {
@@ -29,6 +36,9 @@ export interface MetaEngineerSkill {
   description: string;
   equipped: boolean;
   slot: number | null;
+  rank: number;
+  maxRank: number;
+  cost: number | null;
 }
 
 export interface MetaGem {
@@ -50,6 +60,8 @@ export interface MetaForgeRecipe {
 /** Données prêtes à afficher : le service de progression reste le propriétaire de leur persistance. */
 export interface MetaBuildViewModel {
   accountGold: number | null;
+  profileLimit: number;
+  blessingPaths: readonly MetaBlessingPath[];
   characters: readonly MetaCharacterBuild[];
   blessingBudget: { spent: number; total: number };
   blessings: readonly MetaBlessing[];
@@ -65,20 +77,50 @@ export interface MetaActionResult {
 
 export interface MetaBuildController {
   load: () => Promise<MetaBuildViewModel>;
+  createCharacter?: (name: string, blessingPathId: string) => Promise<MetaActionResult>;
   activateCharacter?: (characterId: string) => Promise<MetaActionResult>;
+  deleteCharacter?: (characterId: string) => Promise<MetaActionResult>;
   unlockBlessing?: (blessingId: string) => Promise<MetaActionResult>;
+  purchaseSkill?: (skillId: string) => Promise<MetaActionResult>;
   equipSkill?: (skillId: string, slot: number) => Promise<MetaActionResult>;
+  unequipSkill?: (slot: number) => Promise<MetaActionResult>;
   socketGem?: (gemId: string, slot: number) => Promise<MetaActionResult>;
+  unsocketGem?: (slot: number) => Promise<MetaActionResult>;
   forge?: (recipeId: string) => Promise<MetaActionResult>;
 }
 
 export type MetaActionKind =
-  'activateCharacter' | 'unlockBlessing' | 'equipSkill' | 'socketGem' | 'forge';
+  | 'createCharacter'
+  | 'activateCharacter'
+  | 'deleteCharacter'
+  | 'unlockBlessing'
+  | 'purchaseSkill'
+  | 'equipSkill'
+  | 'unequipSkill'
+  | 'socketGem'
+  | 'unsocketGem'
+  | 'forge';
 
 export interface MetaPendingAction {
   kind: MetaActionKind;
   id: string;
   slot?: number;
+}
+
+export function canDeleteProfile(character: Pick<MetaCharacterBuild, 'isDefault'>): boolean {
+  return !character.isDefault;
+}
+
+export function defaultReplacementSlot(
+  occupiedSlots: readonly number[],
+  slotCount = 3,
+): number | null {
+  if (slotCount < 1) return null;
+  return (
+    Array.from({ length: slotCount }, (_, slot) => slot).find(
+      (slot) => !occupiedSlots.includes(slot),
+    ) ?? 0
+  );
 }
 
 const tabs: ReadonlyArray<{ id: MetaBuildTab; label: string }> = [
@@ -121,6 +163,7 @@ export class MetaBuildScreen {
   private viewModel: MetaBuildViewModel | null = null;
   private tab: MetaBuildTab = 'characters';
   private pending: MetaPendingAction | null = null;
+  private deleteConfirmationId: string | null = null;
   private notice: { type: 'error' | 'success' | 'info'; text: string } | null = null;
 
   public constructor(element: HTMLElement, onClose: () => void, controller: MetaBuildController) {
@@ -134,6 +177,7 @@ export class MetaBuildScreen {
     this.show();
     this.viewModel = null;
     this.pending = null;
+    this.deleteConfirmationId = null;
     this.notice = null;
     this.render();
     try {
@@ -202,10 +246,15 @@ export class MetaBuildScreen {
   }
 
   private renderCharacters(model: MetaBuildViewModel): string {
+    const canCreate =
+      model.characters.length < model.profileLimit &&
+      canRequestMetaAction(this.controller, 'createCharacter', this.pending);
+    const createPending = this.pending?.kind === 'createCharacter';
+    const defaultName = `Survivant ${Math.min(model.characters.length + 1, model.profileLimit)}`;
     return `
       <div class="meta-build__panel-heading">
         <div><p class="meta-build__eyebrow">Profils sauvegardés</p><h2>Choisissez votre survivant</h2></div>
-        <p>Un seul profil est actif en partie.</p>
+        <p>${model.characters.length} / ${model.profileLimit} profils · un seul profil est actif en partie.</p>
       </div>
       <div class="meta-build__character-grid">
         ${model.characters
@@ -216,16 +265,34 @@ export class MetaBuildScreen {
               this.pending?.kind === 'activateCharacter' && this.pending.id === character.id;
             const allowed =
               canRequestMetaAction(this.controller, 'activateCharacter', this.pending) && !active;
+            const deleteAllowed =
+              canDeleteProfile(character) &&
+              canRequestMetaAction(this.controller, 'deleteCharacter', this.pending);
+            const asksForDelete = this.deleteConfirmationId === character.id;
+            const deletePending =
+              this.pending?.kind === 'deleteCharacter' && this.pending.id === character.id;
             return `<article class="meta-character ${active ? 'meta-character--active' : ''}">
             <div class="meta-character__seal" aria-hidden="true">${escapeHtml(character.name.charAt(0).toUpperCase())}</div>
-            <p class="meta-build__eyebrow">${escapeHtml(character.title)}</p>
+            <p class="meta-build__eyebrow">${escapeHtml(character.title)}${character.isDefault ? ' · Profil par défaut' : ''}</p>
             <h3>${escapeHtml(character.name)}</h3><p>${escapeHtml(character.summary)}</p>
             <div class="meta-character__footer"><span>Niveau ${character.level}</span>
-              ${active ? '<strong>Actif</strong>' : `<button type="button" data-action="activateCharacter" data-id="${escapeHtml(character.id)}" ${allowed ? '' : 'disabled'}>${isPending ? 'Activation…' : 'Activer'}</button>`}
+              ${active ? '<strong aria-label="Profil actif">Actif</strong>' : `<button type="button" data-action="activateCharacter" data-id="${escapeHtml(character.id)}" ${allowed ? '' : 'disabled'}>${isPending ? 'Activation…' : 'Activer'}</button>`}
             </div>
+            ${
+              character.isDefault
+                ? '<small>Le profil par défaut ne peut pas être supprimé.</small>'
+                : asksForDelete
+                  ? `<div class="meta-character__confirm" role="group" aria-label="Confirmer la suppression de ${escapeHtml(character.name)}"><span>Supprimer définitivement ce profil ?</span><button type="button" data-action="deleteCharacter" data-id="${escapeHtml(character.id)}" ${deleteAllowed ? '' : 'disabled'}>${deletePending ? 'Suppression…' : 'Confirmer'}</button><button type="button" data-cancel-delete>Annuler</button></div>`
+                  : `<button type="button" data-request-delete="${escapeHtml(character.id)}" ${deleteAllowed ? '' : 'disabled'}>Supprimer</button>`
+            }
           </article>`;
           })
           .join('')}
+        ${
+          model.characters.length < model.profileLimit
+            ? `<form class="meta-character meta-character--create" id="meta-create-character"><p class="meta-build__eyebrow">Nouveau profil</p><h3>Créer un survivant</h3><label>Nom<input type="text" name="name" value="${escapeHtml(defaultName)}" minlength="1" maxlength="32" required ${canCreate ? '' : 'disabled'}></label><label>Voie de bénédiction<select name="blessingPathId" required ${canCreate ? '' : 'disabled'}>${model.blessingPaths.map((path) => `<option value="${escapeHtml(path.id)}">${escapeHtml(path.name)} — ${escapeHtml(path.description)}</option>`).join('')}</select></label><button type="submit" ${canCreate ? '' : 'disabled'}>${createPending ? 'Création…' : 'Créer le profil'}</button></form>`
+            : ''
+        }
       </div>`;
   }
 
@@ -265,15 +332,20 @@ export class MetaBuildScreen {
       <div class="meta-build__panel-heading"><div><p class="meta-build__eyebrow">Équipement de terrain</p><h2>Forge et modules</h2></div><p>Les choix sont confirmés par l’atelier avant d’être équipés.</p></div>
       <div class="meta-engineer__layout">
         <section class="meta-engineer__section"><h3>Compétences équipées</h3><div class="meta-slots">
-          ${skills.map((skill, slot) => `<div class="meta-slot"><span>Emplacement ${slot + 1}</span><strong>${skill ? escapeHtml(skill.name) : 'Vide'}</strong><small>${skill ? escapeHtml(skill.description) : 'Choisissez une compétence ci-dessous.'}</small></div>`).join('')}
-        </div><div class="meta-inventory">${
-          model.skills
-            .filter((skill) => !skill.equipped)
-            .map((skill) => this.renderSkill(skill))
-            .join('') || '<p>Aucune autre compétence disponible.</p>'
-        }</div></section>
+          ${skills
+            .map(
+              (skill, slot) =>
+                `<div class="meta-slot"><span>Emplacement ${slot + 1}</span><strong>${skill ? escapeHtml(skill.name) : 'Vide'}</strong><small>${skill ? escapeHtml(skill.description) : 'Choisissez une compétence ci-dessous.'}</small>${skill ? `<button type="button" data-action="unequipSkill" data-id="${slot}" ${canRequestMetaAction(this.controller, 'unequipSkill', this.pending) ? '' : 'disabled'}>${this.pending?.kind === 'unequipSkill' && this.pending.id === String(slot) ? 'Retrait…' : 'Retirer'}</button>` : ''}</div>`,
+            )
+            .join('')}
+        </div><div class="meta-inventory">${model.skills.map((skill) => this.renderSkill(skill, model.accountGold)).join('')}</div></section>
         <section class="meta-engineer__section"><h3>Gemmes d’augmentation</h3><div class="meta-slots">
-          ${gems.map((gem, slot) => `<div class="meta-slot meta-slot--gem"><span>Châsse ${slot + 1}</span><strong>${gem ? escapeHtml(gem.name) : 'Vide'}</strong><small>${gem ? escapeHtml(gem.effect) : 'Une gemme peut être sertie ici.'}</small></div>`).join('')}
+          ${gems
+            .map(
+              (gem, slot) =>
+                `<div class="meta-slot meta-slot--gem"><span>Châsse ${slot + 1}</span><strong>${gem ? escapeHtml(gem.name) : 'Vide'}</strong><small>${gem ? escapeHtml(gem.effect) : 'Une gemme peut être sertie ici.'}</small>${gem ? `<button type="button" data-action="unsocketGem" data-id="${slot}" ${canRequestMetaAction(this.controller, 'unsocketGem', this.pending) ? '' : 'disabled'}>${this.pending?.kind === 'unsocketGem' && this.pending.id === String(slot) ? 'Retrait…' : 'Retirer'}</button>` : ''}</div>`,
+            )
+            .join('')}
         </div><div class="meta-inventory">${
           model.gems
             .filter((gem) => gem.equippedSlot === null && gem.quantity > 0)
@@ -284,20 +356,52 @@ export class MetaBuildScreen {
       <section class="meta-forge"><div><p class="meta-build__eyebrow">Recettes disponibles</p><h3>Forge de l’Ingénieur</h3></div><div class="meta-forge__recipes">${model.forgeRecipes.map((recipe) => this.renderRecipe(recipe, model.accountGold)).join('')}</div></section>`;
   }
 
-  private renderSkill(skill: MetaEngineerSkill): string {
-    const slot = this.firstEmptySkillSlot();
+  private renderSkill(skill: MetaEngineerSkill, gold: number | null): string {
+    const defaultSlot = defaultReplacementSlot(
+      this.viewModel?.skills.flatMap((candidate) =>
+        candidate.slot === null ? [] : [candidate.slot],
+      ) ?? [],
+    );
     const isPending = this.pending?.kind === 'equipSkill' && this.pending.id === skill.id;
-    const allowed =
-      slot !== null && canRequestMetaAction(this.controller, 'equipSkill', this.pending);
-    return `<div class="meta-inventory__item"><div><strong>${escapeHtml(skill.name)}</strong><span>${escapeHtml(skill.description)}</span></div><button type="button" data-action="equipSkill" data-id="${escapeHtml(skill.id)}" data-slot="${slot ?? ''}" ${allowed ? '' : 'disabled'}>${isPending ? 'Équipement…' : 'Équiper'}</button></div>`;
+    const purchasePending = this.pending?.kind === 'purchaseSkill' && this.pending.id === skill.id;
+    const enoughGold = skill.cost !== null && gold !== null && gold >= skill.cost;
+    const canPurchase =
+      skill.rank < skill.maxRank &&
+      enoughGold &&
+      canRequestMetaAction(this.controller, 'purchaseSkill', this.pending);
+    const canEquip =
+      skill.rank > 0 &&
+      !skill.equipped &&
+      defaultSlot !== null &&
+      canRequestMetaAction(this.controller, 'equipSkill', this.pending);
+    return `<article class="meta-inventory__item"><div><strong>${escapeHtml(skill.name)}</strong><span>${escapeHtml(skill.description)}</span><span>Rang ${skill.rank} / ${skill.maxRank}</span></div><div class="meta-inventory__actions"><button type="button" data-action="purchaseSkill" data-id="${escapeHtml(skill.id)}" ${canPurchase ? '' : 'disabled'}>${skill.rank >= skill.maxRank ? 'Rang maximal' : purchasePending ? 'Achat…' : `${skill.rank === 0 ? 'Acheter' : 'Améliorer'} · ${skill.cost ?? 0} or`}</button>${
+      skill.equipped
+        ? `<span>Équipée · emplacement ${(skill.slot ?? 0) + 1}</span>`
+        : skill.rank > 0
+          ? `<form data-equipment-form="equipSkill" data-id="${escapeHtml(skill.id)}"><label>Emplacement<span class="meta-build__sr-only"> pour ${escapeHtml(skill.name)}</span><select name="slot">${this.renderSlotOptions(defaultSlot, 'Emplacement')}</select></label><button type="submit" ${canEquip ? '' : 'disabled'}>${isPending ? 'Équipement…' : 'Équiper / remplacer'}</button></form>`
+          : '<span>Achetez cette compétence pour l’équiper.</span>'
+    }</div></article>`;
   }
 
   private renderGem(gem: MetaGem): string {
-    const slot = this.firstEmptyGemSlot();
+    const slot = defaultReplacementSlot(
+      this.viewModel?.gems.flatMap((candidate) =>
+        candidate.equippedSlot === null ? [] : [candidate.equippedSlot],
+      ) ?? [],
+    );
     const isPending = this.pending?.kind === 'socketGem' && this.pending.id === gem.id;
     const allowed =
       slot !== null && canRequestMetaAction(this.controller, 'socketGem', this.pending);
-    return `<div class="meta-inventory__item"><div><strong>${escapeHtml(gem.name)} <em>×${gem.quantity}</em></strong><span>${escapeHtml(gem.effect)}</span></div><button type="button" data-action="socketGem" data-id="${escapeHtml(gem.id)}" data-slot="${slot ?? ''}" ${allowed ? '' : 'disabled'}>${isPending ? 'Sertissage…' : 'Sertir'}</button></div>`;
+    return `<div class="meta-inventory__item"><div><strong>${escapeHtml(gem.name)} <em>×${gem.quantity}</em></strong><span>${escapeHtml(gem.effect)}</span></div><form data-equipment-form="socketGem" data-id="${escapeHtml(gem.id)}"><label>Châsse<span class="meta-build__sr-only"> pour ${escapeHtml(gem.name)}</span><select name="slot">${this.renderSlotOptions(slot, 'Châsse')}</select></label><button type="submit" ${allowed ? '' : 'disabled'}>${isPending ? 'Sertissage…' : 'Sertir / remplacer'}</button></form></div>`;
+  }
+
+  private renderSlotOptions(selectedSlot: number | null, label: string): string {
+    return [0, 1, 2]
+      .map(
+        (slot) =>
+          `<option value="${slot}" ${slot === selectedSlot ? 'selected' : ''}>${label} ${slot + 1}</option>`,
+      )
+      .join('');
   }
 
   private renderRecipe(recipe: MetaForgeRecipe, gold: number | null): string {
@@ -308,21 +412,6 @@ export class MetaBuildScreen {
       enoughGold &&
       canRequestMetaAction(this.controller, 'forge', this.pending);
     return `<article class="meta-recipe"><div><strong>${escapeHtml(recipe.name)}</strong><span>${escapeHtml(recipe.output)}</span></div><button type="button" data-action="forge" data-id="${escapeHtml(recipe.id)}" ${allowed ? '' : 'disabled'}>${isPending ? 'Forge…' : `${recipe.goldCost} or`}</button></article>`;
-  }
-
-  private firstEmptySkillSlot(): number | null {
-    if (!this.viewModel) return null;
-    return (
-      [0, 1, 2].find((slot) => !this.viewModel?.skills.some((skill) => skill.slot === slot)) ?? null
-    );
-  }
-
-  private firstEmptyGemSlot(): number | null {
-    if (!this.viewModel) return null;
-    return (
-      [0, 1, 2].find((slot) => !this.viewModel?.gems.some((gem) => gem.equippedSlot === slot)) ??
-      null
-    );
   }
 
   private attachListeners(): void {
@@ -341,6 +430,68 @@ export class MetaBuildScreen {
         if (id) void this.handleAction(kind, id, button.dataset.slot);
       }),
     );
+    this.element
+      .querySelector<HTMLFormElement>('#meta-create-character')
+      ?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void this.handleCreateCharacter(event.currentTarget as HTMLFormElement);
+      });
+    this.element.querySelectorAll<HTMLFormElement>('[data-equipment-form]').forEach((form) =>
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const kind = form.dataset.equipmentForm as 'equipSkill' | 'socketGem';
+        const id = form.dataset.id;
+        const slot = new FormData(form).get('slot');
+        if (id && typeof slot === 'string') void this.handleAction(kind, id, slot);
+      }),
+    );
+    this.element.querySelectorAll<HTMLButtonElement>('[data-request-delete]').forEach((button) =>
+      button.addEventListener('click', () => {
+        const id = button.dataset.requestDelete;
+        const character = this.viewModel?.characters.find((candidate) => candidate.id === id);
+        if (id && character && canDeleteProfile(character) && this.pending === null) {
+          this.deleteConfirmationId = id;
+          this.render();
+        }
+      }),
+    );
+    this.element.querySelector('[data-cancel-delete]')?.addEventListener('click', () => {
+      this.deleteConfirmationId = null;
+      this.render();
+    });
+  }
+
+  private async handleCreateCharacter(form: HTMLFormElement): Promise<void> {
+    if (!canRequestMetaAction(this.controller, 'createCharacter', this.pending)) return;
+    const data = new FormData(form);
+    const name = data.get('name');
+    const blessingPathId = data.get('blessingPathId');
+    if (typeof name !== 'string' || name.trim().length < 1 || name.trim().length > 32) {
+      this.notice = {
+        type: 'error',
+        text: 'Le nom du personnage doit contenir entre 1 et 32 caractères.',
+      };
+      this.render();
+      return;
+    }
+    if (typeof blessingPathId !== 'string' || blessingPathId.length === 0) {
+      this.notice = { type: 'error', text: 'Choisissez une voie de bénédiction.' };
+      this.render();
+      return;
+    }
+    this.pending = { kind: 'createCharacter', id: blessingPathId };
+    this.notice = { type: 'info', text: 'Création du profil en cours…' };
+    this.render();
+    try {
+      const result = await this.controller.createCharacter!(name.trim(), blessingPathId);
+      if (result.viewModel) this.viewModel = result.viewModel;
+      this.notice = { type: 'success', text: result.message ?? 'Profil créé et confirmé.' };
+    } catch (error) {
+      this.notice = { type: 'error', text: this.describeError(error) };
+    } finally {
+      this.pending = null;
+      this.render();
+    }
   }
 
   private async handleAction(
@@ -354,25 +505,53 @@ export class MetaBuildScreen {
       return;
     }
     const slot = rawSlot === undefined || rawSlot === '' ? undefined : Number(rawSlot);
+    if (slot !== undefined && (!Number.isInteger(slot) || slot < 0 || slot > 2)) {
+      this.notice = { type: 'error', text: 'Choisissez un emplacement valide.' };
+      this.render();
+      return;
+    }
+    if (kind === 'deleteCharacter') {
+      const character = this.viewModel?.characters.find((candidate) => candidate.id === id);
+      if (!character || !canDeleteProfile(character) || this.deleteConfirmationId !== id) {
+        this.notice = { type: 'error', text: 'Le profil par défaut ne peut pas être supprimé.' };
+        this.render();
+        return;
+      }
+    }
     this.pending = slot === undefined ? { kind, id } : { kind, id, slot };
     this.notice = { type: 'info', text: 'Validation de l’atelier en cours…' };
     this.render();
     try {
       let result: MetaActionResult;
       switch (kind) {
+        case 'createCharacter':
+          throw new Error('Utilisez le formulaire pour créer un profil.');
         case 'activateCharacter':
           result = await this.controller.activateCharacter!(id);
           break;
+        case 'deleteCharacter':
+          result = await this.controller.deleteCharacter!(id);
+          this.deleteConfirmationId = null;
+          break;
         case 'unlockBlessing':
           result = await this.controller.unlockBlessing!(id);
+          break;
+        case 'purchaseSkill':
+          result = await this.controller.purchaseSkill!(id);
           break;
         case 'equipSkill':
           if (slot === undefined) throw new Error('Choisissez un emplacement de compétence.');
           result = await this.controller.equipSkill!(id, slot);
           break;
+        case 'unequipSkill':
+          result = await this.controller.unequipSkill!(Number(id));
+          break;
         case 'socketGem':
           if (slot === undefined) throw new Error('Choisissez une châsse pour cette gemme.');
           result = await this.controller.socketGem!(id, slot);
+          break;
+        case 'unsocketGem':
+          result = await this.controller.unsocketGem!(Number(id));
           break;
         case 'forge':
           result = await this.controller.forge!(id);

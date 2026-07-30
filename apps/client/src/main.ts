@@ -5,10 +5,12 @@ import type { AccountSession, MetaProgressionSnapshot } from './account/types.js
 import {
   META_BLESSING_BUDGET,
   META_CATALOG,
+  META_PROFILE_LIMIT,
   resolveMetaBuildEffects,
 } from '@village-survivor/protocol';
 import type {
   BlessingId,
+  BlessingPathId,
   ForgeRecipeId,
   MetaCharacterProfile,
   MetaGemId,
@@ -136,6 +138,12 @@ function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewM
   });
   return {
     accountGold: snapshot.goldBalance,
+    profileLimit: META_PROFILE_LIMIT,
+    blessingPaths: META_CATALOG.paths.map((path) => ({
+      id: path.id,
+      name: path.label,
+      description: path.description,
+    })),
     characters: snapshot.profiles.map((profile, index) => ({
       id: profile.id,
       name: profile.name,
@@ -145,6 +153,7 @@ function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewM
           ?.description ?? 'Build sauvegardé.',
       level: 1,
       active: profile.isActive,
+      isDefault: profile.isDefault,
     })),
     blessingBudget: { spent: active?.blessingBudget ?? 0, total: META_BLESSING_BUDGET },
     blessings: META_CATALOG.blessings.map((blessing) => {
@@ -163,18 +172,20 @@ function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewM
         isMaxed: rank >= blessing.maxRank,
       };
     }),
-    skills: META_CATALOG.skills
-      .filter((skill) => (snapshot.ownedSkills[skill.id] ?? 0) > 0)
-      .map((skill) => {
-        const slot = equippedSkills.findIndex((equipped) => equipped?.id === skill.id);
-        return {
-          id: skill.id,
-          name: skill.label,
-          description: skill.description,
-          equipped: slot >= 0,
-          slot: slot >= 0 ? slot : null,
-        };
-      }),
+    skills: META_CATALOG.skills.map((skill) => {
+      const rank = snapshot.ownedSkills[skill.id] ?? 0;
+      const slot = equippedSkills.findIndex((equipped) => equipped?.id === skill.id);
+      return {
+        id: skill.id,
+        name: skill.label,
+        description: skill.description,
+        equipped: slot >= 0,
+        slot: slot >= 0 ? slot : null,
+        rank,
+        maxRank: skill.maxRank,
+        cost: rank < skill.maxRank ? (skill.goldCosts[rank] ?? null) : null,
+      };
+    }),
     gems: [...equippedGemViews, ...spareGemViews],
     forgeRecipes: META_CATALOG.forgeRecipes.map((recipe) => ({
       id: recipe.id,
@@ -200,39 +211,87 @@ function createMetaBuildController(): MetaBuildController {
     if (!profile) throw new Error('Créez d’abord un personnage pour modifier son build.');
     return profile;
   };
+  const requireSlot = (slot: number): void => {
+    if (!Number.isInteger(slot) || slot < 0 || slot > 2) {
+      throw new Error('Choisissez un emplacement valide.');
+    }
+  };
+  const saveSlots = async (
+    profile: MetaCharacterProfile,
+    skillSlots: readonly (MetaSkillId | null)[],
+    gemSlots: readonly (MetaGemId | null)[],
+  ): Promise<void> => {
+    await metaProgressionService.saveProfile(profile.id, {
+      name: profile.name,
+      blessingPathId: profile.blessingPathId,
+      skillSlots,
+      gemSlots,
+    });
+  };
   return {
     load: refresh,
+    createCharacter: async (name, blessingPathId) => {
+      await metaProgressionService.createProfile(name, blessingPathId as BlessingPathId);
+      return { viewModel: await refresh(), message: 'Profil créé et confirmé.' };
+    },
     activateCharacter: async (profileId) => {
       await metaProgressionService.activateProfile(profileId);
       return { viewModel: await refresh(), message: 'Personnage actif confirmé.' };
+    },
+    deleteCharacter: async (profileId) => {
+      const profile = snapshot?.profiles.find((candidate) => candidate.id === profileId);
+      if (!profile) throw new Error('Ce personnage est introuvable.');
+      if (profile.isDefault) throw new Error('Le profil par défaut ne peut pas être supprimé.');
+      await metaProgressionService.deleteProfile(profileId);
+      return { viewModel: await refresh(), message: 'Profil supprimé et confirmation reçue.' };
     },
     unlockBlessing: async (blessingId) => {
       await metaProgressionService.purchaseBlessing(requireActive().id, blessingId as BlessingId);
       return { viewModel: await refresh(), message: 'Bénédiction confirmée.' };
     },
+    purchaseSkill: async (skillId) => {
+      await metaProgressionService.purchaseSkill(skillId as MetaSkillId);
+      return { viewModel: await refresh(), message: 'Compétence achetée et confirmée.' };
+    },
     equipSkill: async (skillId, slot) => {
       const profile = requireActive();
+      requireSlot(slot);
       const skillSlots = profile.skillSlots.map((skill) => skill?.id ?? null);
       skillSlots[slot] = skillId as MetaSkillId;
-      await metaProgressionService.saveProfile(profile.id, {
-        name: profile.name,
-        blessingPathId: profile.blessingPathId,
-        skillSlots,
-        gemSlots: profile.gemSlots,
-      });
+      await saveSlots(profile, skillSlots, profile.gemSlots);
       return { viewModel: await refresh(), message: 'Compétence équipée et confirmée.' };
+    },
+    unequipSkill: async (slot) => {
+      const profile = requireActive();
+      requireSlot(slot);
+      const skillSlots = profile.skillSlots.map((skill) => skill?.id ?? null);
+      skillSlots[slot] = null;
+      await saveSlots(profile, skillSlots, profile.gemSlots);
+      return { viewModel: await refresh(), message: 'Compétence retirée et confirmation reçue.' };
     },
     socketGem: async (gemId, slot) => {
       const profile = requireActive();
+      requireSlot(slot);
       const gemSlots = [...profile.gemSlots];
       gemSlots[slot] = gemId as MetaGemId;
-      await metaProgressionService.saveProfile(profile.id, {
-        name: profile.name,
-        blessingPathId: profile.blessingPathId,
-        skillSlots: profile.skillSlots.map((skill) => skill?.id ?? null),
+      await saveSlots(
+        profile,
+        profile.skillSlots.map((skill) => skill?.id ?? null),
         gemSlots,
-      });
+      );
       return { viewModel: await refresh(), message: 'Gemme sertie et confirmée.' };
+    },
+    unsocketGem: async (slot) => {
+      const profile = requireActive();
+      requireSlot(slot);
+      const gemSlots = [...profile.gemSlots];
+      gemSlots[slot] = null;
+      await saveSlots(
+        profile,
+        profile.skillSlots.map((skill) => skill?.id ?? null),
+        gemSlots,
+      );
+      return { viewModel: await refresh(), message: 'Gemme retirée et confirmation reçue.' };
     },
     forge: async (recipeId) => {
       await metaProgressionService.forge(recipeId as ForgeRecipeId);
