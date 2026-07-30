@@ -1,5 +1,5 @@
 import { TOWER_WEAPONS } from '@village-survivor/content';
-import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
+import type { MetaBuildModifiers, TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
 import {
@@ -54,6 +54,7 @@ const syncStatus = {
 
 // Config co-op posée par le lobby (même clé/forme que l'ancien jeu). Consommée une fois.
 const NETCODE_KEY = 'vs-coop-netcode';
+const SOLO_META_BUILD_KEY = 'vs-solo-meta-build';
 function readCoopConfig(): TowerCoopConfig | null {
   const raw = sessionStorage.getItem(NETCODE_KEY);
   if (raw === null) {
@@ -79,6 +80,23 @@ function readCoopConfig(): TowerCoopConfig | null {
   return null;
 }
 
+/** Lit une build résolue par le menu, sans jamais bloquer une partie si elle est altérée. */
+function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
+  const raw = sessionStorage.getItem(SOLO_META_BUILD_KEY);
+  sessionStorage.removeItem(SOLO_META_BUILD_KEY);
+  if (raw === null) {
+    return undefined;
+  }
+  try {
+    const value: unknown = JSON.parse(raw);
+    return typeof value === 'object' && value !== null
+      ? (value as Partial<MetaBuildModifiers>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const parameters = new URLSearchParams(location.search);
 const seed = parameters.get('seed') ?? crypto.randomUUID().slice(0, 8);
 
@@ -91,12 +109,16 @@ function restartGame(): void {
 }
 
 const coopConfig = readCoopConfig();
+const soloMetaBuild = readSoloMetaBuild();
 const activeCoopConfig = coopConfig !== null && coopConfig.roster.length > 1 ? coopConfig : null;
 const isCoopSession = activeCoopConfig !== null;
 const session: TowerRenderableSession =
   activeCoopConfig !== null
     ? createTowerCoopSession(activeCoopConfig)
-    : new TowerLocalSession({ seed });
+    : new TowerLocalSession({
+        seed,
+        ...(soloMetaBuild === undefined ? {} : { metaBuild: soloMetaBuild }),
+      });
 
 type CoopStatusTone = 'pending' | 'issue';
 
@@ -199,6 +221,9 @@ async function publishActiveCoopGame(): Promise<void> {
       code: activeCoopConfig.code,
       hostId: activeCoopConfig.hostId,
       roster: activeCoopConfig.roster,
+      ...(activeCoopConfig.metaBuildsByPlayerId === undefined
+        ? {}
+        : { metaBuildsByPlayerId: activeCoopConfig.metaBuildsByPlayerId }),
     });
   } catch (error) {
     console.warn('Présence de reprise co-op indisponible :', error);

@@ -12,6 +12,7 @@
 // dépendent réellement du réseau sont annotés « NOTE live-test ».
 
 import { supabase } from '../account/supabaseClient.js';
+import type { MetaBuildModifiers } from '@village-survivor/protocol';
 import {
   type ActiveGameDescriptor,
   HUB_CAPACITY,
@@ -38,6 +39,7 @@ export interface PresenceEntry {
 export interface RealtimeSession {
   userId: string;
   displayName: string;
+  metaBuild?: Partial<MetaBuildModifiers>;
 }
 
 export interface RealtimeService {
@@ -93,6 +95,7 @@ type HubPresencePayload = {
   isOwner: boolean;
   /** Sert à stabiliser l'ordre d'admission côté client (anciens clients : absent). */
   joinedAt?: number;
+  metaBuild?: Partial<MetaBuildModifiers>;
 };
 
 /** Payload broadcast d'exclusion (event `kick`). */
@@ -123,6 +126,34 @@ const kickedCbs = new Set<() => void>();
 const inviteCbs = new Set<(invite: HubInvite) => void>();
 
 const MAX_GAME_DESCRIPTOR_STRING = 128;
+
+function sanitizeMetaBuild(value: unknown): Partial<MetaBuildModifiers> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const source = value as Partial<Record<keyof MetaBuildModifiers, unknown>>;
+  const result: { -readonly [Key in keyof MetaBuildModifiers]?: MetaBuildModifiers[Key] } = {};
+  const keys: readonly (keyof MetaBuildModifiers)[] = [
+    'damageMultiplier',
+    'fireRateMultiplier',
+    'moveSpeedMultiplier',
+    'maxHealthMultiplier',
+    'heartMaxHealthMultiplier',
+    'pickupRadiusMultiplier',
+  ];
+  for (const key of keys) {
+    const modifier = source[key];
+    if (
+      typeof modifier === 'number' &&
+      Number.isFinite(modifier) &&
+      modifier >= 0.5 &&
+      modifier <= 2
+    ) {
+      result[key] = modifier;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
 /** Validation de frontière : la présence Realtime n'est jamais une source fiable. */
 export function isActiveGameDescriptor(value: unknown): value is ActiveGameDescriptor {
@@ -259,10 +290,12 @@ function computeHubState(channel: RealtimeChannel, code: string): HubState {
     if (isChief) {
       chiefUserId = p.userId;
     }
+    const metaBuild = sanitizeMetaBuild(p.metaBuild);
     found.push({
       userId: p.userId,
       displayName: p.displayName,
       isChief,
+      ...(metaBuild === undefined ? {} : { metaBuild }),
       joinedAt: typeof p.joinedAt === 'number' ? p.joinedAt : 0,
     });
   }
@@ -271,10 +304,11 @@ function computeHubState(channel: RealtimeChannel, code: string): HubState {
     if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
     return a.userId.localeCompare(b.userId);
   });
-  const members: HubMember[] = found.map(({ userId, displayName, isChief }) => ({
+  const members: HubMember[] = found.map(({ userId, displayName, isChief, metaBuild }) => ({
     userId,
     displayName,
     isChief,
+    ...(metaBuild === undefined ? {} : { metaBuild }),
   }));
   return { code, chiefUserId, members, capacity: HUB_CAPACITY };
 }
@@ -361,11 +395,13 @@ async function trackHubPresence(isOwner: boolean): Promise<void> {
   if (hubChannel === null || sessionRef === null) {
     return;
   }
+  const metaBuild = sanitizeMetaBuild(sessionRef.metaBuild);
   const payload: HubPresencePayload = {
     userId: sessionRef.userId,
     displayName: sessionRef.displayName,
     isOwner,
     joinedAt: hubJoinedAt,
+    ...(metaBuild === undefined ? {} : { metaBuild }),
   };
   const res = await hubChannel.track(payload);
   if (res !== 'ok') {

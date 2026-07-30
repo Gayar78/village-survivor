@@ -5,6 +5,7 @@ export interface MainMenuCallbacks {
   onMultiplayer: () => void;
   onCompendium: () => void;
   onProfile: () => void;
+  onMetaBuild: () => void;
   onSettings?: () => void;
   onSandbox?: () => void;
   onSignOut: () => void;
@@ -105,6 +106,14 @@ export class MainMenu {
               </span>
               <span class="main-menu-link__arrow" aria-hidden="true">→</span>
             </button>
+            <button type="button" class="main-menu-link main-menu-link--atelier" id="main-menu-atelier">
+              <span class="main-menu-link__glyph" aria-hidden="true">✦</span>
+              <span>
+                <span class="main-menu-link__eyebrow">Progression</span>
+                <span class="main-menu-link__title">Atelier de l’Ingénieur</span>
+              </span>
+              <span class="main-menu-link__arrow" aria-hidden="true">→</span>
+            </button>
             ${settings}
             ${sandbox}
           </div>
@@ -121,6 +130,7 @@ export class MainMenu {
     this.bind('#main-menu-multiplayer', this.callbacks.onMultiplayer);
     this.bind('#main-menu-compendium', this.callbacks.onCompendium);
     this.bind('#main-menu-profile', this.callbacks.onProfile);
+    this.bind('#main-menu-atelier', this.callbacks.onMetaBuild);
     this.bind('#main-menu-settings', this.callbacks.onSettings);
     this.bind('#main-menu-sandbox', this.callbacks.onSandbox);
     this.bind('#main-menu-signout', this.callbacks.onSignOut);

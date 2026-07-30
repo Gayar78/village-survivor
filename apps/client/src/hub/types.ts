@@ -2,6 +2,8 @@
 // Consommés par friendsService (données Supabase), realtimeService (Supabase
 // Realtime : présence, hub, invitations) et l'UI du hub.
 
+import type { MetaBuildModifiers } from '@village-survivor/protocol';
+
 /** État de présence d'un joueur, dérivé du canal de présence global Supabase. */
 export type PresenceStatus = 'online' | 'in-hub' | 'in-game' | 'offline';
 
@@ -28,6 +30,7 @@ export interface HubMember {
   userId: string;
   displayName: string;
   isChief: boolean;
+  metaBuild?: Partial<MetaBuildModifiers>;
 }
 
 /** État courant d'un hub (lobby), reconstruit depuis la présence du canal du hub. */
@@ -51,6 +54,7 @@ export interface HubInvite {
 export interface LaunchRosterEntry {
   id: string;
   name: string;
+  metaBuild?: Partial<MetaBuildModifiers>;
 }
 
 /**
@@ -62,6 +66,7 @@ export interface ActiveGameDescriptor {
   code: string;
   hostId: string;
   roster: readonly LaunchRosterEntry[];
+  metaBuildsByPlayerId?: Readonly<Record<string, Partial<MetaBuildModifiers>>>;
 }
 
 /** Paramètres d'un lancement de partie diffusé par le chef à tout le hub. */

@@ -1,5 +1,6 @@
 import { createTowerStateFingerprint, TowerSimulation } from '@village-survivor/game-core';
 import type {
+  MetaBuildModifiers,
   TowerGameState,
   TowerInput,
   TowerRosterEvent,
@@ -61,6 +62,8 @@ export interface TowerCoopConfig {
   hostId: string;
   me: string;
   roster: readonly { id: string; name: string }[];
+  /** Effets de méta-build résolus avant lancement, immuables pendant la partie. */
+  metaBuildsByPlayerId?: Readonly<Record<string, Partial<MetaBuildModifiers>>>;
   /** Rejoue seed + historique lockstep avant de demander sa réintégration. */
   rejoin?: boolean;
 }
@@ -1025,8 +1028,13 @@ export class TowerLocalSession implements TowerRenderableSession {
   private lastTimestamp = 0;
   private accumulatorMs = 0;
 
-  public constructor(options: { seed: string }) {
-    this.simulation = new TowerSimulation(options.seed, { playerIds: ['player-1'] });
+  public constructor(options: { seed: string; metaBuild?: Partial<MetaBuildModifiers> }) {
+    this.simulation = new TowerSimulation(options.seed, {
+      playerIds: ['player-1'],
+      ...(options.metaBuild === undefined
+        ? {}
+        : { metaBuildsByPlayerId: { 'player-1': options.metaBuild } }),
+    });
   }
 
   public async start(): Promise<void> {
@@ -1143,6 +1151,9 @@ class TowerLockstepSession implements TowerRenderableSession {
     this.fingerprintMonitor = new TowerFingerprintMonitor(this.rosterIds, this.me);
     this.simulation = new TowerSimulation(config.seed, {
       playerIds: config.roster.map((entry) => entry.id),
+      ...(config.metaBuildsByPlayerId === undefined
+        ? {}
+        : { metaBuildsByPlayerId: config.metaBuildsByPlayerId }),
     });
     this.channel = supabase.channel(`tower:${config.code}`, {
       config: { broadcast: { self: false } },

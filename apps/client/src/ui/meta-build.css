@@ -1,0 +1,531 @@
+.meta-build {
+  position: fixed;
+  inset: 0;
+  z-index: 48;
+  overflow-y: auto;
+  color: var(--visual-text-color);
+  background:
+    radial-gradient(
+      circle at 83% 7%,
+      color-mix(in srgb, var(--visual-accent-secondary-color) 28%, transparent),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 5% 100%,
+      color-mix(in srgb, var(--visual-player-color) 18%, transparent),
+      transparent 30rem
+    ),
+    linear-gradient(145deg, #090b20, var(--visual-surface-raised-color) 48%, #080a19);
+  transition:
+    opacity 160ms ease,
+    visibility 160ms ease;
+}
+
+.meta-build--hidden {
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.meta-build::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: '';
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--visual-accent-color) 7%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--visual-accent-color) 7%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+}
+
+.meta-build__shell {
+  width: min(1180px, calc(100% - 40px));
+  min-height: 100%;
+  margin: 0 auto;
+  padding: clamp(28px, 6vh, 72px) 0 44px;
+}
+.meta-build__header,
+.meta-build__header-actions,
+.meta-build__panel-heading,
+.meta-build__panel-heading--split,
+.meta-character__footer,
+.meta-inventory__item,
+.meta-recipe,
+.meta-forge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.meta-build__header {
+  align-items: flex-start;
+}
+.meta-build__kicker,
+.meta-build__eyebrow,
+.meta-blessing__region {
+  margin: 0;
+  color: var(--visual-accent-secondary-color);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.meta-build h1,
+.meta-build h2,
+.meta-build h3 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+}
+.meta-build h1 {
+  margin-top: 0.42rem;
+  font-size: clamp(2.7rem, 6vw, 5.2rem);
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+}
+.meta-build h2 {
+  margin-top: 0.3rem;
+  color: var(--visual-text-color);
+  font-size: clamp(1.8rem, 3vw, 2.55rem);
+}
+.meta-build h3 {
+  color: var(--visual-text-color);
+  font-size: 1.38rem;
+}
+.meta-build__intro,
+.meta-build__panel-heading > p,
+.meta-build__preview,
+.meta-character p,
+.meta-blessing p,
+.meta-slot small,
+.meta-inventory__item span,
+.meta-recipe span {
+  color: var(--visual-muted-text-color);
+  line-height: 1.55;
+}
+.meta-build__intro {
+  max-width: 560px;
+  margin: 1rem 0 0;
+}
+.meta-build__header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.meta-build__gold {
+  margin: 0;
+  padding: 0.66rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--visual-accent-secondary-color) 42%, transparent);
+  border-radius: 999px;
+  color: var(--visual-text-color);
+  background: color-mix(in srgb, var(--visual-surface-color) 80%, var(--visual-accent-color));
+  font-weight: 700;
+}
+.meta-build__gold span {
+  color: var(--visual-accent-secondary-color);
+}
+.meta-build__back,
+.meta-build button {
+  color: var(--visual-text-color);
+  font: inherit;
+  cursor: pointer;
+}
+.meta-build__back {
+  padding: 0.65rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--visual-accent-color) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--visual-surface-color) 80%, var(--visual-accent-color));
+}
+.meta-build__back:hover,
+.meta-build__back:focus-visible,
+.meta-build button:not(:disabled):hover,
+.meta-build button:not(:disabled):focus-visible {
+  border-color: var(--visual-player-projectile-color);
+  outline: 2px solid color-mix(in srgb, var(--visual-player-projectile-color) 30%, transparent);
+  outline-offset: 2px;
+}
+.meta-build button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.meta-build__tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: clamp(30px, 5vh, 56px);
+  padding-bottom: 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--visual-accent-color) 27%, transparent);
+}
+.meta-build__tabs button {
+  padding: 0.75rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--visual-muted-text-color);
+  background: transparent;
+  white-space: nowrap;
+}
+.meta-build__tabs button[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--visual-accent-color) 64%, transparent);
+  color: var(--visual-text-color);
+  background: color-mix(in srgb, var(--visual-accent-color) 16%, transparent);
+  box-shadow: inset 0 1px color-mix(in srgb, white 12%, transparent);
+}
+.meta-build__notice {
+  margin: 18px 0 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--visual-surface-color) 88%, transparent);
+}
+.meta-build__notice--info {
+  border-color: color-mix(in srgb, var(--visual-player-color) 55%, transparent);
+  color: #cce8ff;
+}
+.meta-build__notice--success {
+  border-color: color-mix(in srgb, #70dfa7 55%, transparent);
+  color: #c6f5d8;
+}
+.meta-build__notice--error {
+  border-color: color-mix(in srgb, #ff9aa7 60%, transparent);
+  color: #ffd0d7;
+}
+.meta-build__content {
+  margin-top: 28px;
+}
+.meta-build__loading {
+  display: flex;
+  min-height: 270px;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  color: var(--visual-muted-text-color);
+}
+.meta-build__loading span {
+  width: 20px;
+  height: 20px;
+  border: 2px solid color-mix(in srgb, var(--visual-accent-color) 24%, transparent);
+  border-top-color: var(--visual-accent-secondary-color);
+  border-radius: 50%;
+  animation: meta-build-spin 0.75s linear infinite;
+}
+
+.meta-build__character-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.meta-character,
+.meta-blessing,
+.meta-engineer__section,
+.meta-forge {
+  border: 1px solid color-mix(in srgb, var(--visual-accent-color) 31%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--visual-surface-raised-color) 94%, var(--visual-accent-color)),
+    color-mix(in srgb, var(--visual-surface-color) 94%, black)
+  );
+  box-shadow: inset 0 1px color-mix(in srgb, white 7%, transparent);
+}
+.meta-character {
+  display: flex;
+  min-height: 250px;
+  padding: 21px;
+  flex-direction: column;
+}
+.meta-character--active {
+  border-color: color-mix(in srgb, var(--visual-accent-secondary-color) 72%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--visual-accent-secondary-color) 18%, transparent),
+    0 16px 38px color-mix(in srgb, var(--visual-accent-color) 14%, transparent);
+}
+.meta-character__seal {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 20px;
+  border: 1px solid color-mix(in srgb, var(--visual-player-projectile-color) 60%, transparent);
+  border-radius: 50% 50% 45% 45%;
+  place-items: center;
+  color: var(--visual-player-projectile-color);
+  font-family: Georgia, serif;
+  font-size: 1.25rem;
+}
+.meta-character h3 {
+  margin-top: 0.35rem;
+}
+.meta-character p:not(.meta-build__eyebrow) {
+  margin: 0.75rem 0 0;
+}
+.meta-character__footer {
+  margin-top: auto;
+  padding-top: 20px;
+  color: var(--visual-muted-text-color);
+  font-size: 0.83rem;
+}
+.meta-character__footer strong {
+  color: #d6ffe6;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.meta-character__footer button,
+.meta-blessing button,
+.meta-inventory__item button,
+.meta-recipe button {
+  padding: 0.52rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--visual-accent-color) 56%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--visual-accent-color) 18%, var(--visual-surface-color));
+}
+
+.meta-build__budget {
+  display: grid;
+  min-width: 180px;
+  gap: 4px;
+  color: var(--visual-muted-text-color);
+  font-size: 0.78rem;
+}
+.meta-build__budget strong {
+  color: var(--visual-text-color);
+  font-size: 1rem;
+}
+.meta-build__budget i {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--visual-accent-color) 18%, transparent);
+}
+.meta-build__budget i::after {
+  display: block;
+  width: var(--meta-budget);
+  height: 100%;
+  content: '';
+  background: linear-gradient(
+    90deg,
+    var(--visual-player-color),
+    var(--visual-accent-secondary-color)
+  );
+}
+.meta-build__preview {
+  margin: 15px 0 0;
+}
+.meta-build__blessing-tree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.meta-blessing {
+  position: relative;
+  min-height: 214px;
+  padding: 19px;
+  overflow: hidden;
+}
+.meta-blessing::before {
+  position: absolute;
+  top: 0;
+  left: 22px;
+  width: 1px;
+  height: 17px;
+  content: '';
+  background: color-mix(in srgb, var(--visual-accent-secondary-color) 62%, transparent);
+}
+.meta-blessing--unlocked {
+  border-color: color-mix(in srgb, #70dfa7 62%, transparent);
+}
+.meta-blessing--locked {
+  filter: saturate(0.55);
+}
+.meta-blessing h3 {
+  margin-top: 0.6rem;
+}
+.meta-blessing p {
+  margin: 0.6rem 0;
+  font-size: 0.9rem;
+}
+.meta-blessing > strong {
+  display: block;
+  color: var(--visual-player-projectile-color);
+  font-size: 0.86rem;
+}
+.meta-blessing button {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+}
+
+.meta-engineer__layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.meta-engineer__section {
+  padding: 20px;
+}
+.meta-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 15px;
+}
+.meta-slot {
+  min-height: 130px;
+  padding: 12px;
+  border: 1px dashed color-mix(in srgb, var(--visual-accent-color) 35%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--visual-surface-color) 70%, transparent);
+}
+.meta-slot--gem {
+  border-color: color-mix(in srgb, var(--visual-player-color) 44%, transparent);
+}
+.meta-slot span,
+.meta-slot strong,
+.meta-slot small {
+  display: block;
+}
+.meta-slot span {
+  color: var(--visual-accent-secondary-color);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.meta-slot strong {
+  margin-top: 0.5rem;
+  color: var(--visual-text-color);
+  font-size: 0.93rem;
+}
+.meta-slot small {
+  margin-top: 0.45rem;
+  font-size: 0.75rem;
+}
+.meta-inventory {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+}
+.meta-inventory > p {
+  margin: 0;
+  color: var(--visual-muted-text-color);
+  font-size: 0.85rem;
+}
+.meta-inventory__item {
+  padding: 9px 0;
+  border-top: 1px solid color-mix(in srgb, var(--visual-accent-color) 16%, transparent);
+}
+.meta-inventory__item div {
+  min-width: 0;
+}
+.meta-inventory__item strong,
+.meta-inventory__item span {
+  display: block;
+}
+.meta-inventory__item strong {
+  font-size: 0.9rem;
+}
+.meta-inventory__item strong em {
+  color: var(--visual-accent-secondary-color);
+  font-style: normal;
+}
+.meta-inventory__item span {
+  margin-top: 2px;
+  font-size: 0.76rem;
+}
+.meta-forge {
+  margin-top: 14px;
+  padding: 20px;
+  align-items: flex-start;
+}
+.meta-forge h3 {
+  margin-top: 0.35rem;
+}
+.meta-forge__recipes {
+  display: grid;
+  width: min(100%, 610px);
+  gap: 8px;
+}
+.meta-recipe {
+  padding: 10px 0 10px 12px;
+  border-left: 2px solid color-mix(in srgb, var(--visual-accent-secondary-color) 52%, transparent);
+  background: color-mix(in srgb, var(--visual-surface-color) 48%, transparent);
+}
+.meta-recipe strong,
+.meta-recipe span {
+  display: block;
+}
+.meta-recipe span {
+  margin-top: 2px;
+  font-size: 0.78rem;
+}
+
+@keyframes meta-build-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .meta-build,
+  .meta-build__loading span {
+    transition: none;
+    animation: none;
+  }
+}
+@media (max-width: 800px) {
+  .meta-build__shell {
+    width: min(100% - 28px, 1180px);
+  }
+  .meta-build__header,
+  .meta-build__panel-heading--split,
+  .meta-forge {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .meta-build__header-actions {
+    justify-content: flex-start;
+  }
+  .meta-build__character-grid,
+  .meta-build__blessing-tree,
+  .meta-engineer__layout {
+    grid-template-columns: 1fr;
+  }
+  .meta-forge__recipes {
+    width: 100%;
+  }
+}
+@media (max-width: 500px) {
+  .meta-build__shell {
+    padding-top: 26px;
+  }
+  .meta-build h1 {
+    font-size: 2.85rem;
+  }
+  .meta-build__header-actions {
+    width: 100%;
+  }
+  .meta-build__gold,
+  .meta-build__back {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+  .meta-slots {
+    grid-template-columns: 1fr;
+  }
+  .meta-slot {
+    min-height: auto;
+  }
+  .meta-recipe {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

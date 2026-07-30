@@ -630,6 +630,10 @@
   );
 }
 
+.main-menu-link--atelier {
+  border-color: color-mix(in srgb, var(--visual-accent-secondary-color) 44%, transparent);
+}
+
 .main-menu::after {
   border-color: color-mix(in srgb, var(--visual-accent-color) 26%, transparent);
   background:

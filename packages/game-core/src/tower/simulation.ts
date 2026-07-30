@@ -17,6 +17,7 @@ import {
 import { TOWER_MAX_ACTIVE_PLAYERS } from '@village-survivor/protocol';
 import type {
   HeartState,
+  MetaBuildModifiers,
   ProjectileSource,
   TowerEvent,
   TowerEventType,
@@ -90,6 +91,21 @@ const MODULE_ACTION_PREFIX = 'module:';
 const PRIORITY_ACTION_PREFIX = 'priority:';
 const GLOBAL_ACTION_PREFIX = 'global:';
 
+const NEUTRAL_META_BUILD: MetaBuildModifiers = {
+  damageMultiplier: 1,
+  fireRateMultiplier: 1,
+  moveSpeedMultiplier: 1,
+  maxHealthMultiplier: 1,
+  heartMaxHealthMultiplier: 1,
+  pickupRadiusMultiplier: 1,
+};
+
+export interface TowerSimulationOptions {
+  playerIds?: readonly string[];
+  /** Effets résolus et figés avant le lancement, indexés par id de joueur. */
+  metaBuildsByPlayerId?: Readonly<Record<string, Partial<MetaBuildModifiers>>>;
+}
+
 function weaponDefinition(id: TowerWeaponId): TowerWeaponDefinition {
   const definition = TOWER_WEAPONS.find((candidate) => candidate.id === id);
   if (definition === undefined) {
@@ -115,6 +131,17 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+function normalizeMetaBuild(value: Partial<MetaBuildModifiers> | undefined): MetaBuildModifiers {
+  const result = { ...NEUTRAL_META_BUILD };
+  for (const key of Object.keys(result) as Array<keyof MetaBuildModifiers>) {
+    const modifier = value?.[key];
+    if (typeof modifier === 'number' && Number.isFinite(modifier)) {
+      result[key] = clamp(modifier, 0.5, 2);
+    }
+  }
+  return result;
+}
+
 /** Différence angulaire absolue (degrés) ramenée dans [0, 180]. */
 function angleDifferenceDeg(a: number, b: number): number {
   const diff = ((((a - b) % 360) + 540) % 360) - 180;
@@ -129,6 +156,7 @@ export class TowerSimulation {
 
   private readonly players: MutableTowerPlayer[];
   private readonly playerIds: string[];
+  private readonly metaBuildsByPlayerId: Readonly<Record<string, MetaBuildModifiers>>;
   private readonly heart: MutableHeart;
   private readonly turrets: MutableTurret[];
   private readonly monsters: MutableTowerMonster[] = [];
@@ -155,23 +183,27 @@ export class TowerSimulation {
   private waveTimerMs = 0;
   private naturalScrapTimerMs = 0;
 
-  public constructor(seed: string, options?: { playerIds?: readonly string[] }) {
+  public constructor(seed: string, options?: TowerSimulationOptions) {
     this.seed = seed;
     this.random = new SeededRandom(seed);
     this.upgradeRandom = new SeededRandom(`${seed}:upgrades`);
     this.combatRandom = new SeededRandom(`${seed}:combat`);
     this.playerIds = TowerSimulation.resolvePlayerIds(options);
+    this.metaBuildsByPlayerId = TowerSimulation.resolveMetaBuilds(options, this.playerIds);
     this.players = this.playerIds.map((id, index) => this.createPlayer(id, index));
+    const heartMultiplier = Math.max(
+      ...this.playerIds.map((id) => this.metaBuildsByPlayerId[id]?.heartMaxHealthMultiplier ?? 1),
+    );
     this.heart = {
       position: { x: 0, y: 0 },
-      hp: HEART.hp,
-      maxHp: HEART.hp,
+      hp: Math.round(HEART.hp * heartMultiplier),
+      maxHp: Math.round(HEART.hp * heartMultiplier),
       radius: HEART.radius,
     };
     this.turrets = TURRET_DIRS.map((dir) => this.createTurret(dir));
   }
 
-  private static resolvePlayerIds(options?: { playerIds?: readonly string[] }): string[] {
+  private static resolvePlayerIds(options?: TowerSimulationOptions): string[] {
     const requested = options?.playerIds;
     if (requested !== undefined && requested.length > 0) {
       const uniqueIds: string[] = [];
@@ -192,14 +224,27 @@ export class TowerSimulation {
     return ['player-1'];
   }
 
+  private static resolveMetaBuilds(
+    options: TowerSimulationOptions | undefined,
+    playerIds: readonly string[],
+  ): Readonly<Record<string, MetaBuildModifiers>> {
+    const builds: Record<string, MetaBuildModifiers> = {};
+    for (const playerId of playerIds) {
+      builds[playerId] = normalizeMetaBuild(options?.metaBuildsByPlayerId?.[playerId]);
+    }
+    return builds;
+  }
+
   private createPlayer(id: string, index: number): MutableTowerPlayer {
     const offset = (index - (this.playerIds.length - 1) / 2) * AVATAR_START_SPACING;
+    const meta = this.metaBuildsByPlayerId[id] ?? NEUTRAL_META_BUILD;
+    const maxHp = Math.round(PLAYER.maxHp * meta.maxHealthMultiplier);
     return {
       id,
       position: { x: offset, y: HEART.radius + PLAYER.radius + 60 },
       aim: { x: 0, y: -1 },
-      hp: PLAYER.maxHp,
-      maxHp: PLAYER.maxHp,
+      hp: maxHp,
+      maxHp,
       level: 1,
       experience: 0,
       experienceToNext: xpForLevel(1),
@@ -217,11 +262,11 @@ export class TowerSimulation {
         pierceBonus: 0,
         fireCooldownRemaining: 0,
       })),
-      speed: PLAYER.speed,
-      pickupRadius: PLAYER.pickupRadius,
-      fireRate: PLAYER.fireRate,
+      speed: PLAYER.speed * meta.moveSpeedMultiplier,
+      pickupRadius: PLAYER.pickupRadius * meta.pickupRadiusMultiplier,
+      fireRate: PLAYER.fireRate / meta.fireRateMultiplier,
       fireCooldownRemaining: 0,
-      bulletDamage: PLAYER.bulletDamage,
+      bulletDamage: PLAYER.bulletDamage * meta.damageMultiplier,
       bulletSpeed: PLAYER.bulletSpeed,
       bulletRange: PLAYER.bulletRange,
       bulletRadius: PLAYER.bulletRadius,

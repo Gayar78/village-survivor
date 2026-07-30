@@ -1,6 +1,19 @@
 import { authService } from './account/authService.js';
+import { metaProgressionService } from './account/metaProgressionService.js';
 import { isSupabaseConfigured } from './account/supabaseClient.js';
-import type { AccountSession } from './account/types.js';
+import type { AccountSession, MetaProgressionSnapshot } from './account/types.js';
+import {
+  META_BLESSING_BUDGET,
+  META_CATALOG,
+  resolveMetaBuildEffects,
+} from '@village-survivor/protocol';
+import type {
+  BlessingId,
+  ForgeRecipeId,
+  MetaCharacterProfile,
+  MetaGemId,
+  MetaSkillId,
+} from '@village-survivor/protocol';
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
@@ -8,6 +21,8 @@ import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
 import { MainMenu } from './ui/MainMenu.js';
+import { MetaBuildScreen } from './ui/MetaBuildScreen.js';
+import type { MetaBuildController, MetaBuildViewModel } from './ui/MetaBuildScreen.js';
 import { ProfileScreen } from './ui/ProfileScreen.js';
 import { SettingsScreen } from './ui/SettingsScreen.js';
 import './styles.css';
@@ -17,6 +32,7 @@ const menuElement = document.querySelector<HTMLElement>('#main-menu');
 const compendiumElement = document.querySelector<HTMLElement>('#compendium');
 const profileElement = document.querySelector<HTMLElement>('#profile');
 const settingsElement = document.querySelector<HTMLElement>('#settings');
+const metaBuildElement = document.querySelector<HTMLElement>('#meta-build');
 const hubElement = document.querySelector<HTMLElement>('#hub');
 const multiplayerNav = document.querySelector<HTMLElement>('#multiplayer-nav');
 if (
@@ -25,6 +41,7 @@ if (
   compendiumElement === null ||
   profileElement === null ||
   settingsElement === null ||
+  metaBuildElement === null ||
   hubElement === null ||
   multiplayerNav === null
 ) {
@@ -50,6 +67,7 @@ function showMenu(): void {
   profileScreen.hide();
   settingsScreen.hide();
   compendium.hide();
+  metaBuildScreen.hide();
   hideMultiplayer();
   mainMenu.show();
 }
@@ -61,6 +79,7 @@ function openProfile(): void {
   mainMenu.hide();
   settingsScreen.hide();
   compendium.hide();
+  metaBuildScreen.hide();
   hideMultiplayer();
   void profileScreen.open(accountSession);
 }
@@ -69,6 +88,7 @@ function openSettings(): void {
   mainMenu.hide();
   profileScreen.hide();
   compendium.hide();
+  metaBuildScreen.hide();
   hideMultiplayer();
   settingsScreen.show();
 }
@@ -79,6 +99,153 @@ profileScreen.hide();
 const settingsScreen = new SettingsScreen(settingsElement, showMenu);
 settingsScreen.hide();
 
+function activeProfile(snapshot: MetaProgressionSnapshot): MetaCharacterProfile | null {
+  return snapshot.profiles.find((profile) => profile.isActive) ?? snapshot.profiles[0] ?? null;
+}
+
+async function loadActiveMetaBuild(): Promise<
+  ReturnType<typeof resolveMetaBuildEffects> | undefined
+> {
+  try {
+    const profile = activeProfile(await metaProgressionService.loadMetaProgression());
+    return profile === null ? undefined : resolveMetaBuildEffects(profile);
+  } catch (error) {
+    console.warn('Build méta indisponible : statistiques de base utilisées.', error);
+    return undefined;
+  }
+}
+
+function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewModel {
+  const active = activeProfile(snapshot);
+  const equippedSkills = active?.skillSlots ?? [];
+  const equippedGems = active?.gemSlots ?? [];
+  const equippedGemViews = equippedGems.flatMap((gemId, slot) => {
+    const gem = META_CATALOG.gems.find((candidate) => candidate.id === gemId);
+    return gem
+      ? [{ id: gem.id, name: gem.label, effect: gem.description, quantity: 0, equippedSlot: slot }]
+      : [];
+  });
+  const spareGemViews = META_CATALOG.gems.flatMap((gem) => {
+    const quantity = Math.max(
+      0,
+      snapshot.ownedGems[gem.id] - equippedGems.filter((equipped) => equipped === gem.id).length,
+    );
+    return quantity > 0
+      ? [{ id: gem.id, name: gem.label, effect: gem.description, quantity, equippedSlot: null }]
+      : [];
+  });
+  return {
+    accountGold: snapshot.goldBalance,
+    characters: snapshot.profiles.map((profile, index) => ({
+      id: profile.id,
+      name: profile.name,
+      title: `Profil ${String(index + 1).padStart(2, '0')}`,
+      summary:
+        META_CATALOG.paths.find((candidate) => candidate.id === profile.blessingPathId)
+          ?.description ?? 'Build sauvegardé.',
+      level: 1,
+      active: profile.isActive,
+    })),
+    blessingBudget: { spent: active?.blessingBudget ?? 0, total: META_BLESSING_BUDGET },
+    blessings: META_CATALOG.blessings.map((blessing) => {
+      const rank = active?.blessingRanks[blessing.id] ?? 0;
+      return {
+        id: blessing.id,
+        name: blessing.label,
+        region:
+          META_CATALOG.paths.find((candidate) => candidate.id === blessing.pathId)?.label ?? 'Voie',
+        description: blessing.description,
+        effect: `Rang ${rank} / ${blessing.maxRank}`,
+        cost: blessing.goldCosts[Math.min(rank, blessing.goldCosts.length - 1)] ?? 0,
+        unlocked: rank > 0,
+        available:
+          active !== null && blessing.pathId === active.blessingPathId && rank < blessing.maxRank,
+        isMaxed: rank >= blessing.maxRank,
+      };
+    }),
+    skills: META_CATALOG.skills
+      .filter((skill) => (snapshot.ownedSkills[skill.id] ?? 0) > 0)
+      .map((skill) => {
+        const slot = equippedSkills.findIndex((equipped) => equipped?.id === skill.id);
+        return {
+          id: skill.id,
+          name: skill.label,
+          description: skill.description,
+          equipped: slot >= 0,
+          slot: slot >= 0 ? slot : null,
+        };
+      }),
+    gems: [...equippedGemViews, ...spareGemViews],
+    forgeRecipes: META_CATALOG.forgeRecipes.map((recipe) => ({
+      id: recipe.id,
+      name: recipe.label,
+      output: `${recipe.output.quantity} × ${META_CATALOG.gems.find((gem) => gem.id === recipe.output.gemId)?.label ?? recipe.output.gemId}`,
+      goldCost: recipe.goldCost,
+      available: recipe.ingredients.every(
+        (ingredient) => (snapshot.ownedGems[ingredient.gemId] ?? 0) >= ingredient.quantity,
+      ),
+    })),
+  };
+}
+
+/** Adaptateur UI : les écritures restent exclusivement dans metaProgressionService. */
+function createMetaBuildController(): MetaBuildController {
+  let snapshot: MetaProgressionSnapshot | null = null;
+  const refresh = async (): Promise<MetaBuildViewModel> => {
+    snapshot = await metaProgressionService.loadMetaProgression();
+    return toMetaBuildViewModel(snapshot);
+  };
+  const requireActive = (): MetaCharacterProfile => {
+    const profile = snapshot ? activeProfile(snapshot) : null;
+    if (!profile) throw new Error('Créez d’abord un personnage pour modifier son build.');
+    return profile;
+  };
+  return {
+    load: refresh,
+    activateCharacter: async (profileId) => {
+      await metaProgressionService.activateProfile(profileId);
+      return { viewModel: await refresh(), message: 'Personnage actif confirmé.' };
+    },
+    unlockBlessing: async (blessingId) => {
+      await metaProgressionService.purchaseBlessing(requireActive().id, blessingId as BlessingId);
+      return { viewModel: await refresh(), message: 'Bénédiction confirmée.' };
+    },
+    equipSkill: async (skillId, slot) => {
+      const profile = requireActive();
+      const skillSlots = profile.skillSlots.map((skill) => skill?.id ?? null);
+      skillSlots[slot] = skillId as MetaSkillId;
+      await metaProgressionService.saveProfile(profile.id, {
+        name: profile.name,
+        blessingPathId: profile.blessingPathId,
+        skillSlots,
+        gemSlots: profile.gemSlots,
+      });
+      return { viewModel: await refresh(), message: 'Compétence équipée et confirmée.' };
+    },
+    socketGem: async (gemId, slot) => {
+      const profile = requireActive();
+      const gemSlots = [...profile.gemSlots];
+      gemSlots[slot] = gemId as MetaGemId;
+      await metaProgressionService.saveProfile(profile.id, {
+        name: profile.name,
+        blessingPathId: profile.blessingPathId,
+        skillSlots: profile.skillSlots.map((skill) => skill?.id ?? null),
+        gemSlots,
+      });
+      return { viewModel: await refresh(), message: 'Gemme sertie et confirmée.' };
+    },
+    forge: async (recipeId) => {
+      await metaProgressionService.forge(recipeId as ForgeRecipeId);
+      return { viewModel: await refresh(), message: 'Recette forgée et confirmée.' };
+    },
+  };
+}
+
+const metaBuildController = createMetaBuildController();
+
+const metaBuildScreen = new MetaBuildScreen(metaBuildElement, showMenu, metaBuildController);
+metaBuildScreen.hide();
+
 const compendium = new Compendium(compendiumElement, showMenu);
 compendium.hide();
 
@@ -86,8 +253,19 @@ function randomSeed(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-function beginClassic(): void {
-  location.assign(`play.html?seed=${encodeURIComponent(randomSeed())}&players=1`);
+async function beginClassic(): Promise<void> {
+  const seed = randomSeed();
+  try {
+    const metaBuild = await loadActiveMetaBuild();
+    if (metaBuild !== undefined) {
+      sessionStorage.setItem('vs-solo-meta-build', JSON.stringify(metaBuild));
+    }
+  } catch (error) {
+    // La progression ne doit jamais empêcher de jouer hors connexion.
+    console.warn('Build méta indisponible : démarrage avec les statistiques de base.', error);
+    sessionStorage.removeItem('vs-solo-meta-build');
+  }
+  location.assign(`play.html?seed=${encodeURIComponent(seed)}&players=1`);
 }
 
 function beginLaunch(payload: LaunchPayload): void {
@@ -111,6 +289,9 @@ function beginLaunch(payload: LaunchPayload): void {
         hostId: payload.hostId,
         me,
         roster: payload.roster,
+        metaBuildsByPlayerId: Object.fromEntries(
+          payload.roster.map((entry) => [entry.id, entry.metaBuild ?? {}]),
+        ),
       }),
     );
     location.assign('play.html');
@@ -130,12 +311,18 @@ async function openMultiplayer(): Promise<void> {
   compendium.hide();
   profileScreen.hide();
   settingsScreen.hide();
+  metaBuildScreen.hide();
   try {
     if (!multiplayerStarted) {
       multiplayerStarted = true;
       const displayName =
         accountSession.displayName.length > 0 ? accountSession.displayName : accountSession.email;
-      const hubSession = { userId: accountSession.userId, displayName };
+      const metaBuild = await loadActiveMetaBuild();
+      const hubSession = {
+        userId: accountSession.userId,
+        displayName,
+        ...(metaBuild === undefined ? {} : { metaBuild }),
+      };
       try {
         const friendCode = await friendsService.getMyFriendCode();
         await realtimeService.start(hubSession, friendCode);
@@ -155,8 +342,18 @@ async function openMultiplayer(): Promise<void> {
 function openCompendium(): void {
   mainMenu.hide();
   settingsScreen.hide();
+  metaBuildScreen.hide();
   hideMultiplayer();
   compendium.show();
+}
+
+function openMetaBuild(): void {
+  mainMenu.hide();
+  profileScreen.hide();
+  settingsScreen.hide();
+  compendium.hide();
+  hideMultiplayer();
+  void metaBuildScreen.open();
 }
 
 function openSandbox(): void {
@@ -166,10 +363,11 @@ function openSandbox(): void {
 }
 
 const mainMenu = new MainMenu(menuElement, {
-  onClassic: beginClassic,
+  onClassic: () => void beginClassic(),
   onMultiplayer: () => void openMultiplayer(),
   onCompendium: openCompendium,
   onProfile: openProfile,
+  onMetaBuild: openMetaBuild,
   onSettings: openSettings,
   ...(import.meta.env.DEV ? { onSandbox: openSandbox } : {}),
   onSignOut: () => {

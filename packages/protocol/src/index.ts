@@ -226,3 +226,4 @@ export interface GameSession {
   sendInput(input: PlayerInput): void;
   subscribe(listener: (state: PublicGameState) => void): () => void;
 }
+export * from './meta.js';

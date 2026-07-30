@@ -1,5 +1,6 @@
 import { friendsService } from '../hub/friendsService.js';
 import { isActiveGameDescriptor, realtimeService } from '../hub/realtimeService.js';
+import type { MetaBuildModifiers } from '@village-survivor/protocol';
 import {
   type ActiveGameDescriptor,
   HUB_CAPACITY,
@@ -16,6 +17,7 @@ import { Toasts } from './Toasts.js';
 interface HubSession {
   userId: string;
   displayName: string;
+  metaBuild?: Partial<MetaBuildModifiers>;
 }
 
 /** Callbacks fournis par l'orchestrateur (main.ts). */
@@ -368,6 +370,9 @@ export class Hub {
         hostId: game.hostId,
         me: this.session.userId,
         roster: game.roster,
+        ...(game.metaBuildsByPlayerId === undefined
+          ? {}
+          : { metaBuildsByPlayerId: game.metaBuildsByPlayerId }),
         rejoin: true,
       }),
     );
@@ -403,7 +408,11 @@ export class Hub {
     }
     const roster = [...members]
       .sort((a, b) => (a.isChief === b.isChief ? 0 : a.isChief ? -1 : 1))
-      .map((member) => ({ id: member.userId, name: member.displayName }));
+      .map((member) => ({
+        id: member.userId,
+        name: member.displayName,
+        ...(member.metaBuild === undefined ? {} : { metaBuild: member.metaBuild }),
+      }));
     const code = this.currentCode();
     const payload: LaunchPayload = {
       seed: randomSeed(),
