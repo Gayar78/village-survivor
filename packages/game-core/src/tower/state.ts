@@ -3,7 +3,10 @@
 
 import type {
   ProjectileSource,
+  TowerMonsterAffinity,
   TowerMonsterKind,
+  TowerMonsterRarity,
+  TowerMonsterTrait,
   TurretModuleId,
   TurretTargetPriority,
   TowerUpgradeCard,
@@ -75,6 +78,9 @@ export interface MutableTowerPlayer {
 export interface MutableTowerMonster {
   id: string;
   kind: TowerMonsterKind;
+  rarity: TowerMonsterRarity;
+  affinity: TowerMonsterAffinity;
+  trait: TowerMonsterTrait;
   position: Vector2;
   hp: number;
   maxHp: number;

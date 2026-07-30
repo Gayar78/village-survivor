@@ -48,6 +48,18 @@ export type TurretShopAction =
 /** Types de monstres du set MVP (Phase 1). Le roster complet viendra plus tard. */
 export type TowerMonsterKind = 'chaser' | 'runner' | 'brute' | 'kamikaze';
 
+/** Biomes du monde vivant. Leur rotation ne dépend que de la seed et de la vague. */
+export type TowerBiomeId = 'grove' | 'badlands' | 'tundra' | 'tempest';
+
+/** Affinité élémentaire visible d'un monstre et couleur dominante de son biome. */
+export type TowerMonsterAffinity = 'nature' | 'fire' | 'frost' | 'storm';
+
+/** Rareté de combat ; `boss` est réservée au monstre périodique unique d'une vague. */
+export type TowerMonsterRarity = 'common' | 'uncommon' | 'rare' | 'elite' | 'boss';
+
+/** Trait synthétique exposé au rendu. Les traits ordinaires découlent de l'affinité. */
+export type TowerMonsterTrait = 'hardened' | 'ferocious' | 'armored' | 'swift' | 'colossus';
+
 /** Arsenal personnel disponible dès le début d'une partie Tower. */
 export type TowerWeaponId = 'rifle' | 'shotgun' | 'marksman';
 
@@ -217,9 +229,23 @@ export type HeartState = Readonly<{
   radius: number;
 }>;
 
+/** Projection déterministe du biome courant, suffisante pour le décor et le HUD. */
+export type TowerBiomeState = Readonly<{
+  id: TowerBiomeId;
+  affinity: TowerMonsterAffinity;
+  /** Index de rotation, à partir de zéro. */
+  cycle: number;
+  /** Première vague utilisant ce biome (la pré-vague 0 annonce le biome de la vague 1). */
+  startsAtWave: number;
+  durationWaves: number;
+}>;
+
 export type TowerMonsterState = Readonly<{
   id: string;
   kind: TowerMonsterKind;
+  rarity: TowerMonsterRarity;
+  affinity: TowerMonsterAffinity;
+  trait: TowerMonsterTrait;
   position: Vector2;
   hp: number;
   maxHp: number;
@@ -258,6 +284,8 @@ export type TowerGameState = Readonly<{
   status: TowerStatus;
   seed: string;
   world: Readonly<{ width: number; height: number; spawnZoneRadius: number }>;
+  /** Biome actif, calculé uniquement depuis `seed` et `wave`. */
+  biome: TowerBiomeState;
   /** Numéro de vague courant + budget d'apparition (pour le HUD/debug). */
   wave: number;
   /** Ferraille COMMUNE (fonds de défense partagé pour la boutique de tourelle). */

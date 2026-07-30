@@ -3,7 +3,14 @@
 // Toutes les constantes de simulation vivent ici pour rester lisibles et faciles à
 // équilibrer. Le moteur (`simulation.ts`) les applique ; rien n'est dupliqué ailleurs.
 
-import type { TowerMonsterKind, TurretDir } from '@village-survivor/protocol';
+import type {
+  TowerBiomeId,
+  TowerMonsterAffinity,
+  TowerMonsterKind,
+  TowerMonsterRarity,
+  TowerMonsterTrait,
+  TurretDir,
+} from '@village-survivor/protocol';
 
 /** Durée d'un tick de simulation (ms). 20 Hz. */
 export const TICK_MS = 50;
@@ -112,6 +119,58 @@ export const MONSTERS: Readonly<Record<TowerMonsterKind, MonsterDefinition>> = {
   kamikaze: { hp: 25, speed: 120, radius: 11, contactDamage: 0, reward: 2 },
 };
 
+/** Rotation des décors. Une entrée décrit aussi l'affinité dominante de ses vagues. */
+export const TOWER_BIOMES: readonly Readonly<{
+  id: TowerBiomeId;
+  affinity: TowerMonsterAffinity;
+}>[] = [
+  { id: 'grove', affinity: 'nature' },
+  { id: 'badlands', affinity: 'fire' },
+  { id: 'tundra', affinity: 'frost' },
+  { id: 'tempest', affinity: 'storm' },
+];
+
+/** Nombre de vagues consécutives passées dans le même biome. */
+export const BIOME_DURATION_WAVES = 3;
+
+/** Trait ordinaire stable associé à chaque affinité (le boss force `colossus`). */
+export const MONSTER_AFFINITY_TRAITS: Readonly<Record<TowerMonsterAffinity, TowerMonsterTrait>> = {
+  nature: 'hardened',
+  fire: 'ferocious',
+  frost: 'armored',
+  storm: 'swift',
+};
+
+export interface MonsterStatModifiers {
+  hp: number;
+  speed: number;
+  contactDamage: number;
+  radius: number;
+  reward: number;
+}
+
+/** Multiplicateurs bornés et centralisés appliqués une seule fois à l'apparition. */
+export const MONSTER_RARITY_MODIFIERS: Readonly<Record<TowerMonsterRarity, MonsterStatModifiers>> =
+  {
+    common: { hp: 1, speed: 1, contactDamage: 1, radius: 1, reward: 1 },
+    uncommon: { hp: 1.3, speed: 1.05, contactDamage: 1.15, radius: 1.05, reward: 2 },
+    rare: { hp: 1.8, speed: 1.08, contactDamage: 1.35, radius: 1.1, reward: 3 },
+    elite: { hp: 2.7, speed: 1.12, contactDamage: 1.65, radius: 1.2, reward: 5 },
+    boss: { hp: 6, speed: 0.85, contactDamage: 2.25, radius: 1.5, reward: 12 },
+  };
+
+/** Poids progressifs : les raretés supérieures n'entrent qu'aux vagues indiquées. */
+export const WAVE_RARITY_RULES: readonly Readonly<{
+  rarity: Exclude<TowerMonsterRarity, 'boss'>;
+  minimumWave: number;
+  weight: number;
+}>[] = [
+  { rarity: 'common', minimumWave: 1, weight: 70 },
+  { rarity: 'uncommon', minimumWave: 2, weight: 20 },
+  { rarity: 'rare', minimumWave: 4, weight: 8 },
+  { rarity: 'elite', minimumWave: 7, weight: 2 },
+];
+
 /** Explosion du kamikaze (au contact d'un joueur/tourelle/cœur OU à sa mort). */
 export const KAMIKAZE_EXPLOSION = {
   radius: 70,
@@ -164,6 +223,11 @@ export const WAVE = {
   ringMaxFactor: 0.95,
   /** Distance minimale d'apparition par rapport à chaque joueur. */
   minDistanceFromPlayers: 720,
+  /** Probabilité qu'un monstre ordinaire adopte l'affinité dominante du biome. */
+  biomeAffinityChance: 0.7,
+  /** Chaque multiple de cette valeur reçoit exactement un boss supplémentaire. */
+  bossEvery: 5,
+  bossKind: 'brute' as TowerMonsterKind,
 } as const;
 
 /** Coût (budget) de chaque type de monstre dans une vague. */

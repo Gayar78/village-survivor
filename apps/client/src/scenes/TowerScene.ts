@@ -11,6 +11,7 @@ import type {
   ScrapPickupState,
   TowerGameState,
   TowerMonsterKind,
+  TowerMonsterRarity,
   TowerMonsterState,
   TowerPlayerState,
   TowerProjectileState,
@@ -65,6 +66,14 @@ const MONSTER_COLORS: Readonly<Record<TowerMonsterKind, number>> = {
   runner: 0xd0a749,
   brute: 0x765a82,
   kamikaze: 0xd66a3f,
+};
+
+const RARITY_MARKER_RADIUS: Readonly<Record<TowerMonsterRarity, number>> = {
+  common: 0,
+  uncommon: 3,
+  rare: 5,
+  elite: 7,
+  boss: 11,
 };
 
 const WEAPON_COLORS: Readonly<Record<TowerWeaponId, number>> = {
@@ -438,6 +447,7 @@ export class TowerScene extends Phaser.Scene {
     for (const monster of state.monsters) {
       const { x, y } = this.toScreen(this.monsterRenderPos(monster));
       const color = MONSTER_COLORS[monster.kind];
+      this.drawMonsterRarityAura(x, y, monster);
       graphics.fillStyle(color, 1);
       if (monster.kind === 'runner' || monster.kind === 'kamikaze') {
         graphics.fillTriangle(
@@ -455,17 +465,96 @@ export class TowerScene extends Phaser.Scene {
         graphics.lineStyle(3, COLORS.root, 0.7);
         graphics.strokeCircle(x, y, monster.radius * 0.65);
       }
+      this.drawMonsterRarityMarker(x, y, monster);
       graphics.lineStyle(1, 0x15130d, 0.8);
       graphics.strokeCircle(x, y, monster.radius);
+      const barWidth = monster.radius * 2 * (monster.rarity === 'boss' ? 1.45 : 1);
+      const markerRadius = RARITY_MARKER_RADIUS[monster.rarity];
       this.drawBar(
-        x - monster.radius,
-        y - monster.radius - 8,
-        monster.radius * 2,
-        3,
+        x - barWidth / 2,
+        y - monster.radius - markerRadius - 8,
+        barWidth,
+        monster.rarity === 'boss' ? 5 : 3,
         monster.hp / monster.maxHp,
-        color,
+        monster.rarity === 'common' ? color : this.rarityMarkerColor(monster.rarity),
       );
     }
+  }
+
+  /**
+   * Les formes de rareté s'ajoutent à la silhouette native, sans la remplacer :
+   * le type reste lisible même si les couleurs de préférence sont proches.
+   */
+  private rarityMarkerColor(rarity: TowerMonsterRarity): number {
+    switch (rarity) {
+      case 'uncommon':
+        return hexToPhaserColor(this.visualPreferences.accentSecondaryColor, COLORS.ally);
+      case 'rare':
+        return hexToPhaserColor(this.visualPreferences.accentColor, COLORS.turretRange);
+      case 'elite':
+      case 'boss':
+        return hexToPhaserColor(this.visualPreferences.hudColor, COLORS.heartOutline);
+      case 'common':
+        return 0;
+    }
+  }
+
+  private drawMonsterRarityAura(x: number, y: number, monster: TowerMonsterState): void {
+    if (monster.rarity !== 'boss') {
+      return;
+    }
+    const graphics = this.graphics;
+    const color = this.rarityMarkerColor(monster.rarity);
+    graphics.fillStyle(color, 0.12);
+    graphics.fillCircle(x, y, monster.radius + RARITY_MARKER_RADIUS.boss + 7);
+  }
+
+  private drawDiamond(x: number, y: number, radius: number, color: number, alpha: number): void {
+    const graphics = this.graphics;
+    graphics.lineStyle(2, color, alpha);
+    graphics.lineBetween(x, y - radius, x + radius, y);
+    graphics.lineBetween(x + radius, y, x, y + radius);
+    graphics.lineBetween(x, y + radius, x - radius, y);
+    graphics.lineBetween(x - radius, y, x, y - radius);
+  }
+
+  private drawMonsterRarityMarker(x: number, y: number, monster: TowerMonsterState): void {
+    if (monster.rarity === 'common') {
+      return;
+    }
+    const graphics = this.graphics;
+    const color = this.rarityMarkerColor(monster.rarity);
+    const radius = monster.radius + RARITY_MARKER_RADIUS[monster.rarity];
+
+    if (monster.rarity === 'uncommon') {
+      graphics.lineStyle(1.5, color, 0.9);
+      graphics.strokeCircle(x, y, radius);
+      return;
+    }
+
+    if (monster.rarity === 'rare') {
+      this.drawDiamond(x, y, radius, color, 0.95);
+      return;
+    }
+
+    if (monster.rarity === 'elite') {
+      graphics.lineStyle(2, color, 0.96);
+      graphics.strokeCircle(x, y, radius);
+      this.drawDiamond(x, y, radius + 3, color, 0.96);
+      return;
+    }
+
+    // Boss : anneau épais, losange et quatre repères, lisibles dans une mêlée.
+    graphics.lineStyle(3, color, 1);
+    graphics.strokeCircle(x, y, radius);
+    this.drawDiamond(x, y, radius + 5, color, 1);
+    graphics.lineStyle(2, color, 1);
+    const spokeStart = radius + 7;
+    const spokeEnd = radius + 13;
+    graphics.lineBetween(x, y - spokeStart, x, y - spokeEnd);
+    graphics.lineBetween(x + spokeStart, y, x + spokeEnd, y);
+    graphics.lineBetween(x, y + spokeStart, x, y + spokeEnd);
+    graphics.lineBetween(x - spokeStart, y, x - spokeEnd, y);
   }
 
   private drawPlayers(state: TowerGameState): void {
@@ -640,8 +729,7 @@ export class TowerScene extends Phaser.Scene {
 
     for (const monster of state.monsters) {
       const monsterPoint = point(this.monsterRenderPos(monster));
-      graphics.fillStyle(MONSTER_COLORS[monster.kind], 0.9);
-      graphics.fillCircle(monsterPoint.x, monsterPoint.y, 2);
+      this.drawMinimapMonster(monsterPoint, monster);
     }
 
     for (const player of state.players) {
@@ -656,5 +744,49 @@ export class TowerScene extends Phaser.Scene {
     const localPoint = point(localPos);
     graphics.fillStyle(hexToPhaserColor(this.visualPreferences.playerColor, COLORS.local), 1);
     graphics.fillCircle(localPoint.x, localPoint.y, 3);
+  }
+
+  private drawMinimapMonster(point: Vector2, monster: TowerMonsterState): void {
+    const graphics = this.minimap;
+    const baseColor = MONSTER_COLORS[monster.kind];
+    const markerColor = this.rarityMarkerColor(monster.rarity);
+
+    if (monster.rarity === 'boss') {
+      graphics.fillStyle(markerColor, 0.2);
+      graphics.fillCircle(point.x, point.y, 7);
+      graphics.lineStyle(2, markerColor, 1);
+      graphics.strokeCircle(point.x, point.y, 5);
+      graphics.lineBetween(point.x - 7, point.y, point.x + 7, point.y);
+      graphics.lineBetween(point.x, point.y - 7, point.x, point.y + 7);
+      graphics.fillStyle(baseColor, 1);
+      graphics.fillCircle(point.x, point.y, 3);
+      return;
+    }
+
+    graphics.fillStyle(baseColor, 0.95);
+    graphics.fillCircle(point.x, point.y, 2);
+    if (monster.rarity === 'uncommon') {
+      graphics.lineStyle(1, markerColor, 1);
+      graphics.strokeCircle(point.x, point.y, 3.5);
+      return;
+    }
+    if (monster.rarity === 'rare') {
+      this.drawMinimapDiamond(point, 4, markerColor);
+      return;
+    }
+    if (monster.rarity === 'elite') {
+      graphics.lineStyle(1.5, markerColor, 1);
+      graphics.strokeCircle(point.x, point.y, 4.5);
+      this.drawMinimapDiamond(point, 5.5, markerColor);
+    }
+  }
+
+  private drawMinimapDiamond(point: Vector2, radius: number, color: number): void {
+    const graphics = this.minimap;
+    graphics.lineStyle(1.5, color, 1);
+    graphics.lineBetween(point.x, point.y - radius, point.x + radius, point.y);
+    graphics.lineBetween(point.x + radius, point.y, point.x, point.y + radius);
+    graphics.lineBetween(point.x, point.y + radius, point.x - radius, point.y);
+    graphics.lineBetween(point.x - radius, point.y, point.x, point.y - radius);
   }
 }

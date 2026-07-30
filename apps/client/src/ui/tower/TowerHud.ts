@@ -3,6 +3,28 @@ import { TOWER_GLOBAL_DEFENSE_OFFERS, TOWER_WEAPONS } from '@village-survivor/co
 
 import './tower-ui.css';
 
+const BIOME_LABELS: Readonly<Record<TowerGameState['biome']['id'], string>> = {
+  grove: 'Clairière',
+  badlands: 'Terres arides',
+  tundra: 'Toundra',
+  tempest: 'Front des tempêtes',
+};
+
+const AFFINITY_LABELS: Readonly<Record<TowerGameState['biome']['affinity'], string>> = {
+  nature: 'Nature',
+  fire: 'Feu',
+  frost: 'Givre',
+  storm: 'Foudre',
+};
+
+const TRAIT_LABELS: Readonly<Record<TowerGameState['monsters'][number]['trait'], string>> = {
+  hardened: 'Endurci',
+  ferocious: 'Féroce',
+  armored: 'Blindé',
+  swift: 'Fulgurant',
+  colossus: 'Colosse',
+};
+
 function percentage(value: number, maximum: number): number {
   return maximum <= 0 ? 0 : Math.max(0, Math.min(100, (value / maximum) * 100));
 }
@@ -29,6 +51,11 @@ export class TowerHud {
     const player = state.player;
     const defenseRotation = state.globalDefenseShop.rotationId;
     const defenseOffers = state.globalDefenseShop.offerIds.map(defenseOfferLabel).join(' · ');
+    const activeBoss = state.monsters.find((monster) => monster.rarity === 'boss');
+    const waveObjective =
+      activeBoss === undefined
+        ? `Défendre la vague ${state.wave}`
+        : `BOSS · ${TRAIT_LABELS[activeBoss.trait]} ${AFFINITY_LABELS[activeBoss.affinity]}`;
     const signature = [
       Math.ceil(player.hp),
       player.maxHp,
@@ -38,6 +65,14 @@ export class TowerHud {
       state.scrapFund,
       player.gold,
       state.wave,
+      state.biome.id,
+      state.biome.affinity,
+      state.biome.cycle,
+      state.biome.startsAtWave,
+      state.biome.durationWaves,
+      activeBoss?.id ?? '',
+      activeBoss?.affinity ?? '',
+      activeBoss?.trait ?? '',
       defenseRotation,
       defenseOffers,
       player.activeWeaponId,
@@ -90,6 +125,18 @@ export class TowerHud {
             </div>
           </div>
           <div class="tower-hud-wave" data-testid="tower-hud-wave"><span>Veille</span> Vague ${state.wave}</div>
+          <div class="tower-hud-world" data-testid="tower-hud-world" data-affinity="${state.biome.affinity}">
+            <div class="tower-hud-world__fact">
+              <span>Biome actif</span><strong>${BIOME_LABELS[state.biome.id]}</strong>
+            </div>
+            <div class="tower-hud-world__fact">
+              <span>Affinité</span><strong>${AFFINITY_LABELS[state.biome.affinity]}</strong>
+            </div>
+            <small>Cycle ${state.biome.cycle + 1} · vagues ${state.biome.startsAtWave}–${state.biome.startsAtWave + state.biome.durationWaves - 1}</small>
+          </div>
+          <div class="tower-hud-objective${activeBoss === undefined ? '' : ' tower-hud-objective--boss'}" data-testid="tower-hud-objective">
+            <span>Objectif</span><strong>${waveObjective}</strong>
+          </div>
           <div class="tower-hud-network" data-testid="tower-hud-defense-network">
             <span>Réseau · rotation ${defenseRotation + 1}</span>
             <strong>${defenseOffers}</strong>

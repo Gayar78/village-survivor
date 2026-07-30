@@ -1,6 +1,6 @@
 /* Surcouche isolée du mode Tower : forêt nocturne, bois et métal ancien. */
 #hud .tower-hud {
-  --tower-hud-color: var(--visual-hud-color, #f6b866);
+  --tower-hud-color: var(--visual-hud-color);
 
   position: fixed;
   top: 18px;
@@ -224,6 +224,67 @@
 #hud .tower-hud-wave span {
   margin-right: 5px;
   color: #d0b77d;
+}
+
+#hud .tower-hud-world,
+#hud .tower-hud-objective {
+  display: grid;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--tower-hud-color) 32%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--visual-surface-color) 82%, var(--tower-hud-color));
+}
+
+#hud .tower-hud-world {
+  grid-template-columns: 1fr 1fr;
+}
+
+#hud .tower-hud-world__fact {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+#hud .tower-hud-world__fact span,
+#hud .tower-hud-world small,
+#hud .tower-hud-objective span {
+  color: var(--visual-muted-text-color);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+#hud .tower-hud-world__fact strong,
+#hud .tower-hud-objective strong {
+  overflow: hidden;
+  color: var(--tower-hud-color);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#hud .tower-hud-world small {
+  grid-column: 1 / -1;
+  color: var(--visual-muted-text-color);
+  letter-spacing: 0.04em;
+}
+
+#hud .tower-hud-objective {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  border-left: 3px solid var(--tower-hud-color);
+}
+
+#hud .tower-hud-objective strong {
+  text-align: right;
+}
+
+#hud .tower-hud-objective--boss {
+  border-color: var(--tower-hud-color);
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--tower-hud-color) 15%, transparent);
 }
 
 #turret-shop {

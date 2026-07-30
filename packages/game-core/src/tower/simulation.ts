@@ -19,12 +19,15 @@ import type {
   HeartState,
   MetaBuildModifiers,
   ProjectileSource,
+  TowerBiomeState,
   TowerEvent,
   TowerEventType,
   TowerGameState,
   TowerGlobalDefenseOfferId,
   TowerInput,
+  TowerMonsterAffinity,
   TowerMonsterKind,
+  TowerMonsterRarity,
   TowerMonsterState,
   TowerPlayerState,
   TowerProjectileState,
@@ -51,6 +54,7 @@ import type {
 } from './state.js';
 import {
   AVATAR_START_SPACING,
+  BIOME_DURATION_WAVES,
   BURN,
   CONTACT_COOLDOWN_MS,
   CONTACT_MARGIN,
@@ -60,11 +64,14 @@ import {
   HEART,
   KAMIKAZE_EXPLOSION,
   MONSTER_PLAYER_AGGRO_RANGE,
+  MONSTER_AFFINITY_TRAITS,
+  MONSTER_RARITY_MODIFIERS,
   MONSTERS,
   MULTISHOT_SPREAD_RAD,
   NATURAL_SCRAP,
   PLAYER,
   TICK_MS,
+  TOWER_BIOMES,
   TURRET,
   TURRET_ANGLES,
   TURRET_SHOP_EFFECTS,
@@ -73,6 +80,7 @@ import {
   UPGRADE_RARITY_WEIGHTS,
   WAVE,
   WAVE_MONSTER_COST,
+  WAVE_RARITY_RULES,
   WORLD,
   XP_BASE,
   XP_GROWTH,
@@ -148,10 +156,40 @@ function angleDifferenceDeg(a: number, b: number): number {
   return Math.abs(diff);
 }
 
+/**
+ * Résout un biome uniquement depuis la seed et la vague, sans dépendre du nombre de
+ * monstres tirés. Chaque nouveau cycle choisit l'un des trois autres biomes : une
+ * transition visible est donc garantie à la frontière de cycle.
+ */
+function biomeForSeedAndWave(seed: string, wave: number): TowerBiomeState {
+  const biomeCount = TOWER_BIOMES.length;
+  if (biomeCount === 0) {
+    throw new Error('Le catalogue Tower requiert au moins un biome.');
+  }
+  const cycle = Math.floor(Math.max(0, wave - 1) / BIOME_DURATION_WAVES);
+  let biomeIndex = new SeededRandom(`${seed}:biome:0`).integer(0, biomeCount - 1);
+  for (let index = 1; index <= cycle; index += 1) {
+    const offset = new SeededRandom(`${seed}:biome:${index}`).integer(1, biomeCount - 1);
+    biomeIndex = (biomeIndex + offset) % biomeCount;
+  }
+  const biome = TOWER_BIOMES[biomeIndex];
+  if (biome === undefined) {
+    throw new Error(`Biome Tower introuvable à l'index ${biomeIndex}.`);
+  }
+  return {
+    ...biome,
+    cycle,
+    startsAtWave: cycle * BIOME_DURATION_WAVES + 1,
+    durationWaves: BIOME_DURATION_WAVES,
+  };
+}
+
 export class TowerSimulation {
   private readonly random: SeededRandom;
   private readonly upgradeRandom: SeededRandom;
   private readonly combatRandom: SeededRandom;
+  /** Flux isolé pour raretés/affinités : aucun tir de loot ou de combat ne le décale. */
+  private readonly worldRandom: SeededRandom;
   private readonly seed: string;
 
   private readonly players: MutableTowerPlayer[];
@@ -188,6 +226,7 @@ export class TowerSimulation {
     this.random = new SeededRandom(seed);
     this.upgradeRandom = new SeededRandom(`${seed}:upgrades`);
     this.combatRandom = new SeededRandom(`${seed}:combat`);
+    this.worldRandom = new SeededRandom(`${seed}:world`);
     this.playerIds = TowerSimulation.resolvePlayerIds(options);
     this.metaBuildsByPlayerId = TowerSimulation.resolveMetaBuilds(options, this.playerIds);
     this.players = this.playerIds.map((id, index) => this.createPlayer(id, index));
@@ -1106,6 +1145,19 @@ export class TowerSimulation {
     const powerScale = 1 + 0.12 * additionalPlayers;
     let budget = baseBudget * budgetScale;
 
+    const biome = biomeForSeedAndWave(this.seed, this.wave);
+    // Le boss est volontairement hors budget : chaque vague périodique en contient
+    // exactement un, quelle que soit la taille du roster ou la composition ordinaire.
+    if (this.wave % WAVE.bossEvery === 0) {
+      this.spawnMonsterWithPower(
+        WAVE.bossKind,
+        this.randomWaveSpawnPosition(),
+        powerScale,
+        'boss',
+        biome.affinity,
+      );
+    }
+
     while (budget >= 1) {
       const affordable = MONSTER_KINDS.filter((kind) => WAVE_MONSTER_COST[kind] <= budget);
       if (affordable.length === 0) {
@@ -1116,8 +1168,37 @@ export class TowerSimulation {
         break;
       }
       budget -= WAVE_MONSTER_COST[kind];
-      this.spawnMonsterWithPower(kind, this.randomWaveSpawnPosition(), powerScale);
+      this.spawnMonsterWithPower(
+        kind,
+        this.randomWaveSpawnPosition(),
+        powerScale,
+        this.pickWaveRarity(),
+        this.pickWaveAffinity(biome.affinity),
+      );
     }
+  }
+
+  private pickWaveRarity(): Exclude<TowerMonsterRarity, 'boss'> {
+    const eligible = WAVE_RARITY_RULES.filter((rule) => rule.minimumWave <= this.wave);
+    const totalWeight = eligible.reduce((total, rule) => total + rule.weight, 0);
+    let roll = this.worldRandom.between(0, totalWeight);
+    for (const rule of eligible) {
+      roll -= rule.weight;
+      if (roll < 0) {
+        return rule.rarity;
+      }
+    }
+    return eligible[eligible.length - 1]?.rarity ?? 'common';
+  }
+
+  private pickWaveAffinity(dominant: TowerMonsterAffinity): TowerMonsterAffinity {
+    if (this.worldRandom.next() < WAVE.biomeAffinityChance) {
+      return dominant;
+    }
+    const alternatives = TOWER_BIOMES.map((biome) => biome.affinity).filter(
+      (affinity) => affinity !== dominant,
+    );
+    return alternatives[this.worldRandom.integer(0, alternatives.length - 1)] ?? dominant;
   }
 
   private randomWaveSpawnPosition(): Vector2 {
@@ -1476,28 +1557,41 @@ export class TowerSimulation {
   // ── Helpers de debug (tests) ─────────────────────────────────────────────────
 
   public spawnMonster(kind: TowerMonsterKind, position?: Vector2): string {
-    return this.spawnMonsterWithPower(kind, position ?? this.randomWaveSpawnPosition(), 1);
+    const biome = biomeForSeedAndWave(this.seed, this.wave);
+    return this.spawnMonsterWithPower(
+      kind,
+      position ?? this.randomWaveSpawnPosition(),
+      1,
+      'common',
+      biome.affinity,
+    );
   }
 
   private spawnMonsterWithPower(
     kind: TowerMonsterKind,
     position: Vector2,
     powerScale: number,
+    rarity: TowerMonsterRarity,
+    affinity: TowerMonsterAffinity,
   ): string {
     const definition = MONSTERS[kind];
+    const modifiers = MONSTER_RARITY_MODIFIERS[rarity];
     this.monsterCounter += 1;
     const id = `monster-${this.monsterCounter}`;
-    const maxHp = Math.round(definition.hp * powerScale);
+    const maxHp = Math.round(definition.hp * powerScale * modifiers.hp);
     this.monsters.push({
       id,
       kind,
+      rarity,
+      affinity,
+      trait: rarity === 'boss' ? 'colossus' : MONSTER_AFFINITY_TRAITS[affinity],
       position: { x: position.x, y: position.y },
       hp: maxHp,
       maxHp,
-      radius: definition.radius,
-      speed: definition.speed,
-      contactDamage: Math.round(definition.contactDamage * powerScale),
-      reward: definition.reward,
+      radius: definition.radius * modifiers.radius,
+      speed: definition.speed * modifiers.speed,
+      contactDamage: Math.round(definition.contactDamage * powerScale * modifiers.contactDamage),
+      reward: Math.max(1, Math.round(definition.reward * modifiers.reward)),
       contactCooldownRemaining: 0,
       burnRemainingMs: 0,
       burnStacks: 0,
@@ -1551,6 +1645,7 @@ export class TowerSimulation {
         height: WORLD.height,
         spawnZoneRadius: WORLD.spawnZoneRadius,
       },
+      biome: biomeForSeedAndWave(this.seed, this.wave),
       wave: this.wave,
       scrapFund: this.scrapFund,
       globalDefenseUpgrades: this.globalDefenseUpgrades.map((upgrade) => ({ ...upgrade })),
@@ -1637,6 +1732,9 @@ export class TowerSimulation {
     return {
       id: monster.id,
       kind: monster.kind,
+      rarity: monster.rarity,
+      affinity: monster.affinity,
+      trait: monster.trait,
       position: { ...monster.position },
       hp: monster.hp,
       maxHp: monster.maxHp,
