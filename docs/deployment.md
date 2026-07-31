@@ -1,13 +1,17 @@
 # Déploiement
 
-Statut : **build de production fonctionnel, aucun hébergement configuré**
+Statut : **déploiement LAN auto-hébergé fonctionnel, aucun hébergement public**
 Dernière mise à jour : 31 juillet 2026
 
 ## 1. État réel
 
 Le client produit un site statique dans `apps/client/dist`, composé de deux pages :
-`index.html` (lobby) et `play.html` (partie). Le jeu n'est **hébergé nulle part** : ni compte
-Cloudflare, ni URL publique, ni pipeline de publication.
+`index.html` (lobby) et `play.html` (partie).
+
+Un **environnement LAN auto-hébergé existe et fonctionne** depuis le 31 juillet 2026 : le jeu y
+est jouable en multijoueur sans aucune dépendance à internet (voir §7). En revanche, aucun
+**hébergement public** n'est configuré : ni compte Cloudflare, ni URL publique, ni pipeline de
+publication.
 
 Il n'existe aucun serveur de jeu à déployer — la simulation tourne dans le navigateur et la
 coopération est pair-à-pair. Le seul service externe est **Supabase**, qui n'est pas déployé par
@@ -68,7 +72,7 @@ requise ».
 
 ## 4. Base de données
 
-Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — quatre fichiers SQL
+Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — cinq fichiers SQL
 idempotents. **Leur application est manuelle** : éditeur SQL du tableau de bord, ou
 `supabase db push`. Aucun automatisme ne les applique, et rien ne vérifie qu'un environnement est
 à jour. Voir [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md).

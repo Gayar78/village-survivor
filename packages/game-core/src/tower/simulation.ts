@@ -145,6 +145,49 @@ function distance(a: Vector2, b: Vector2): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+/**
+ * Fraction du segment `[from, to]` à laquelle il entre en contact avec le cercle décrit par
+ * `centre` et `radius`, ou `undefined` s'il n'y a pas de contact.
+ *
+ * Ne tester que la position d'arrivée laisserait les projectiles rapides traverser leurs cibles :
+ * à 950 unités par seconde et 20 ticks par seconde, une balle avance de 47,5 unités par tick,
+ * soit bien plus que les 12 unités de contact d'un coureur. Le tir de précision ratait donc
+ * régulièrement ce qu'il touchait visiblement.
+ *
+ * Résolution exacte de |from + t·(to − from) − centre|² = radius², puis conservation de la
+ * première racine si elle tombe dans le segment. N'utilise que des opérations IEEE-754 exactes,
+ * ce qui préserve le déterminisme dont dépend le lockstep coopératif.
+ */
+function segmentCircleEntry(
+  from: Vector2,
+  to: Vector2,
+  centre: Vector2,
+  radius: number,
+): number | undefined {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const fx = from.x - centre.x;
+  const fy = from.y - centre.y;
+
+  const startsInside = fx * fx + fy * fy <= radius * radius;
+  if (startsInside) {
+    return 0;
+  }
+
+  const a = dx * dx + dy * dy;
+  if (a === 0) {
+    return undefined;
+  }
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - radius * radius;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) {
+    return undefined;
+  }
+  const entry = (-b - Math.sqrt(discriminant)) / (2 * a);
+  return entry >= 0 && entry <= 1 ? entry : undefined;
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
@@ -735,6 +778,9 @@ export class TowerSimulation {
         continue;
       }
       const step = Math.hypot(bullet.velocityX, bullet.velocityY) * deltaSeconds;
+      // Le point de départ du tick est conservé : les collisions sont résolues sur le trajet
+      // parcouru, pas sur la seule position d'arrivée.
+      const sweepFrom = bullet.position;
       bullet.position = {
         x: bullet.position.x + bullet.velocityX * deltaSeconds,
         y: bullet.position.y + bullet.velocityY * deltaSeconds,
@@ -743,7 +789,7 @@ export class TowerSimulation {
       if (bullet.growingBullet > 0) {
         bullet.radius += bullet.growingBullet * deltaSeconds;
       }
-      const alive = this.resolveBulletCollisions(bullet);
+      const alive = this.resolveBulletCollisions(bullet, sweepFrom);
       const outOfRange = bullet.remainingRange <= 0;
       const outOfBounds =
         Math.abs(bullet.position.x) > WORLD.bound || Math.abs(bullet.position.y) > WORLD.bound;
@@ -753,11 +799,18 @@ export class TowerSimulation {
     }
   }
 
-  /** Résout les impacts d'une balle sur ce tick. Renvoie `false` si la balle disparaît. */
-  private resolveBulletCollisions(bullet: MutableTowerProjectile): boolean {
+  /**
+   * Résout les impacts d'une balle sur ce tick. Renvoie `false` si la balle disparaît.
+   *
+   * `sweepFrom` est la position occupée au début du tick : les cibles sont cherchées sur tout le
+   * trajet parcouru. Un rebond change la trajectoire en cours de tick et invalide ce segment,
+   * d'où sa remise à `undefined` — les impacts suivants retombent alors sur la position courante.
+   */
+  private resolveBulletCollisions(bullet: MutableTowerProjectile, sweepFrom: Vector2): boolean {
+    let sweptFrom: Vector2 | undefined = sweepFrom;
     // Jusqu'à quelques impacts par tick (perforation/rebond) ; borné pour éviter les boucles.
     for (let iteration = 0; iteration < 8; iteration += 1) {
-      const monster = this.findBulletHit(bullet);
+      const monster = this.findBulletHit(bullet, sweptFrom);
       if (monster === undefined) {
         return true;
       }
@@ -773,6 +826,7 @@ export class TowerSimulation {
         if (next !== undefined) {
           bullet.bounce -= 1;
           this.redirectBullet(bullet, next.position);
+          sweptFrom = undefined;
           continue;
         }
       }
@@ -781,16 +835,34 @@ export class TowerSimulation {
     return true;
   }
 
-  private findBulletHit(bullet: MutableTowerProjectile): MutableTowerMonster | undefined {
+  /**
+   * Premier monstre rencontré sur le trajet du tick, ou le plus proche de la position courante
+   * lorsque le segment n'est plus exploitable (après un rebond).
+   */
+  private findBulletHit(
+    bullet: MutableTowerProjectile,
+    sweptFrom: Vector2 | undefined,
+  ): MutableTowerMonster | undefined {
     let nearest: MutableTowerMonster | undefined;
-    let nearestDistance = Infinity;
+    // Distance au point d'arrivée sans segment, fraction d'entrée sur le segment sinon. Les deux
+    // sémantiques ne se mélangent jamais : `sweptFrom` est fixé pour toute la boucle.
+    let nearestRank = Infinity;
     for (const monster of this.monsters) {
       if (monster.hp <= 0 || bullet.hitMonsterIds.has(monster.id)) {
         continue;
       }
-      const gap = distance(monster.position, bullet.position);
-      if (gap <= bullet.radius + monster.radius && gap < nearestDistance) {
-        nearestDistance = gap;
+      const reach = bullet.radius + monster.radius;
+      if (sweptFrom === undefined) {
+        const gap = distance(monster.position, bullet.position);
+        if (gap <= reach && gap < nearestRank) {
+          nearestRank = gap;
+          nearest = monster;
+        }
+        continue;
+      }
+      const entry = segmentCircleEntry(sweptFrom, bullet.position, monster.position, reach);
+      if (entry !== undefined && entry < nearestRank) {
+        nearestRank = entry;
         nearest = monster;
       }
     }
@@ -909,7 +981,9 @@ export class TowerSimulation {
   private resolveMonsterContacts(monster: MutableTowerMonster): void {
     if (monster.kind === 'kamikaze') {
       if (this.kamikazeTouchesTarget(monster)) {
-        this.explodeKamikaze(monster);
+        // La détonation appartient désormais à `killMonster` : le kamikaze explose de la même
+        // façon qu'il meure au contact ou sous les tirs.
+        this.killMonster(monster, this.findNearestLivingPlayer(monster.position, Infinity));
       }
       return;
     }
@@ -943,7 +1017,14 @@ export class TowerSimulation {
     );
   }
 
-  private explodeKamikaze(monster: MutableTowerMonster): void {
+  /**
+   * Applique l'explosion d'un kamikaze, sans le tuer : c'est `killMonster` qui l'appelle, de
+   * sorte que la détonation ait lieu quelle que soit la cause de la mort — contact, balle,
+   * brûlure ou aura. Auparavant elle n'était déclenchée qu'au contact, si bien qu'abattre un
+   * kamikaze le désamorçait purement et simplement, contrairement à ce qu'annonçaient son nom,
+   * le réglage et les règles de gameplay.
+   */
+  private detonateKamikaze(monster: MutableTowerMonster): void {
     const center = monster.position;
     for (const player of this.players) {
       if (
@@ -968,8 +1049,6 @@ export class TowerSimulation {
     if (distance(this.heart.position, center) <= KAMIKAZE_EXPLOSION.radius + this.heart.radius) {
       this.damageHeartInternal(KAMIKAZE_EXPLOSION.damage);
     }
-    // Le kamikaze meurt dans son explosion (sans dégâts joueur crédités, mais lâche sa ferraille).
-    this.killMonster(monster, this.findNearestLivingPlayer(center, Infinity));
   }
 
   private findContactedPlayer(monster: MutableTowerMonster): MutableTowerPlayer | undefined {
@@ -1031,6 +1110,15 @@ export class TowerSimulation {
   }
 
   private killMonster(monster: MutableTowerMonster, killer: MutableTowerPlayer | undefined): void {
+    // `detonated` garantit une seule explosion par kamikaze. Les points de vie ne peuvent pas
+    // jouer ce rôle : `damageMonster` les met à zéro avant d'appeler cette méthode, si bien
+    // qu'un test `hp > 0` désamorcerait précisément la mort par balle qu'on veut couvrir.
+    // `detonateKamikaze` ne blesse que joueurs, tourelles et Cœur, jamais un monstre : aucune
+    // récursion n'est possible.
+    if (monster.kind === 'kamikaze' && !monster.detonated) {
+      monster.detonated = true;
+      this.detonateKamikaze(monster);
+    }
     if (monster.hp > 0) {
       monster.hp = 0;
     }
@@ -1726,6 +1814,7 @@ export class TowerSimulation {
       burnRemainingMs: 0,
       burnStacks: 0,
       burnOwnerId: undefined,
+      detonated: false,
     });
     return id;
   }

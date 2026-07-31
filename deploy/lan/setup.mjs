@@ -105,20 +105,65 @@ writeFileSync(
   'utf8',
 );
 
+/**
+ * Met à jour des clés dans un fichier d'environnement **sans détruire le reste**.
+ *
+ * Ce script écrasait auparavant le `.env` racine par ses deux seules variables : quiconque y
+ * gardait la configuration d'un projet Supabase hébergé, ou toute autre variable, la perdait
+ * sans avertissement au premier déploiement LAN. Les clés connues sont désormais remplacées sur
+ * place, les inconnues ajoutées à la fin, et tout le reste — y compris les commentaires et
+ * l'ordre des lignes — laissé intact. Une copie de sécurité est écrite avant modification.
+ *
+ * Renvoie le chemin de la sauvegarde, ou `null` si le fichier n'existait pas.
+ */
+function upsertEnv(path, values) {
+  if (!existsSync(path)) {
+    const header = [
+      '# Généré par deploy/lan/setup.mjs pour le déploiement LAN.',
+      '# Ces deux valeurs sont figées dans le paquet à la compilation : après toute',
+      '# modification, reconstruire le client avec `pnpm build`.',
+    ];
+    const body = Object.entries(values).map(([key, value]) => `${key}=${value}`);
+    writeFileSync(path, [...header, ...body, ''].join('\n'), 'utf8');
+    return null;
+  }
+
+  const original = readFileSync(path, 'utf8');
+  const backup = `${path}.bak`;
+  writeFileSync(backup, original, 'utf8');
+
+  const pending = new Map(Object.entries(values));
+  const merged = original.split(/\r?\n/).map((line) => {
+    const key = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1];
+    if (key === undefined || !pending.has(key)) {
+      return line;
+    }
+    const value = pending.get(key);
+    pending.delete(key);
+    return `${key}=${value}`;
+  });
+
+  if (pending.size > 0) {
+    if (merged.at(-1) !== '') {
+      merged.push('');
+    }
+    merged.push('# Ajouté par deploy/lan/setup.mjs');
+    for (const [key, value] of pending) {
+      merged.push(`${key}=${value}`);
+    }
+    merged.push('');
+  }
+
+  writeFileSync(path, merged.join('\n'), 'utf8');
+  return backup;
+}
+
 // Vite lit le `.env` de la racine du monorepo (voir `envDir` dans vite.config.ts) et fige
 // ces deux valeurs dans le paquet : le client doit donc être reconstruit après ce script.
-writeFileSync(
-  join(repoRoot, '.env'),
-  [
-    '# Généré par deploy/lan/setup.mjs pour le déploiement LAN.',
-    '# Ces deux valeurs sont figées dans le paquet à la compilation : après toute',
-    '# modification, reconstruire le client avec `pnpm build`.',
-    `VITE_SUPABASE_URL=${publicUrl}`,
-    `VITE_SUPABASE_ANON_KEY=${anonKey}`,
-    '',
-  ].join('\n'),
-  'utf8',
-);
+const rootEnvBackup = upsertEnv(join(repoRoot, '.env'), {
+  VITE_SUPABASE_URL: publicUrl,
+  VITE_SUPABASE_ANON_KEY: anonKey,
+});
 
 console.log(`Adresse retenue : ${publicUrl}`);
 if (candidates.length > 1) {
@@ -130,4 +175,9 @@ if (candidates.length > 1) {
   );
 }
 console.log('Écrit : deploy/lan/.env et .env');
+if (rootEnvBackup !== null) {
+  console.log(
+    `Le .env racine existait : mis à jour clé par clé, copie de sécurité ${rootEnvBackup}`,
+  );
+}
 console.log('Suite : pnpm build, puis docker compose -f deploy/lan/docker-compose.yml up -d');

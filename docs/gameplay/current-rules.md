@@ -182,12 +182,22 @@ arrivées et départs sont planifiés à une frontière de tick précise, identi
 Un joueur peut rejoindre une partie en cours : il rejoue la graine et l'historique d'entrées
 avant de demander sa réintégration.
 
+**La reconnexion a une limite de temps.** Le rejeu part du premier tick de la partie, et
+l'historique conservé couvre **vingt minutes**. Au-delà, un joueur déconnecté ne peut plus
+revenir : il reçoit un refus explicite et la partie continue sans lui. Le correctif de fond —
+des points de reprise périodiques, qui rendraient le rejeu proportionnel au temps écoulé depuis
+le dernier d'entre eux — est consigné dans la feuille de route.
+
 Voir [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) pour la décision et ses limites.
 
 ## Méta-progression (hors partie)
 
 Elle vit sur le compte, pas dans la partie, et **persiste entre les parties**. Elle exige un
 compte Supabase — voir [ADR-0009](../decisions/0009-account-persistence.md).
+
+L'accès aux données de compte exige une **double authentification satisfaite** : un compte
+créé par courriel doit avoir validé son second facteur, faute de quoi la base refuse aussi bien
+la lecture que l'écriture. Les comptes fédérés en sont dispensés, comme à l'écran.
 
 - jusqu'à **3 profils** de personnage, un seul actif ;
 - une **voie** parmi Bastion, Chasseur, Éclaireur ;

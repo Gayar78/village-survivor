@@ -69,7 +69,7 @@ Procédure détaillée, vérifications et portée de sécurité :
 Le lobby, en revanche, exige un projet Supabase : sans les variables `VITE_SUPABASE_URL` et
 `VITE_SUPABASE_ANON_KEY` dans un fichier `.env` à la racine, il affiche « Configuration requise »
 et ni le menu, ni la coopération, ni la progression de compte ne sont accessibles. Le guide pas à
-pas est [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md) — pensez à appliquer **les quatre**
+pas est [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md) — pensez à appliquer **les cinq**
 migrations de `supabase/migrations`, pas seulement la première.
 
 ## Contrôles

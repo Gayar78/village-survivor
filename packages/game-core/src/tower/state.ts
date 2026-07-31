@@ -97,6 +97,14 @@ export interface MutableTowerMonster {
   burnStacks: number;
   /** Joueur crédité des dégâts de brûlure (id) ; undefined sinon. */
   burnOwnerId: string | undefined;
+  /**
+   * Kamikaze uniquement : sa charge a-t-elle déjà sauté ?
+   *
+   * Les points de vie ne peuvent pas servir de garde d'unicité, `damageMonster` les mettant à
+   * zéro avant d'appeler `killMonster`. Ce drapeau n'est pas projeté dans l'état public et
+   * n'entre donc pas dans l'empreinte comparée par le lockstep.
+   */
+  detonated: boolean;
 }
 
 export interface MutableTowerProjectile {

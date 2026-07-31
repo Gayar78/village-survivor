@@ -12,6 +12,49 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 
 ---
 
+## Correctifs d'audit — 31 juillet 2026
+
+### Corrigé
+
+- **les projectiles rapides ne traversent plus leurs cibles.** La collision ne testait que la
+  position d'arrivée de la balle ; à 950 unités par seconde et 20 ticks par seconde, la
+  Longue-vue avançait de 47,5 unités par tick contre une fenêtre de contact de 12 unités sur un
+  coureur, et ratait donc visiblement ce qu'elle visait. Le trajet du tick est désormais résolu
+  exactement, par intersection segment-cercle ;
+- **un kamikaze abattu explose.** Le réglage et les règles annonçaient « au contact ou à sa
+  mort », mais seul le contact était implémenté : le tirer de loin le désamorçait. La détonation
+  appartient désormais à la mort du monstre, quelle qu'en soit la cause ;
+- **la double authentification n'est plus contournable.** L'interface révélait le contenu
+  authentifié dès que le contrôle du niveau d'assurance échouait — une simple panne réseau
+  suffisait ; elle échoue maintenant fermé. Côté base, la migration `0005_require_mfa.sql`
+  ajoute une politique restrictive par table et une garde sur le crédit d'or, les comptes
+  fédérés restant dispensés comme à l'écran ;
+- **le budget de bénédictions n'affiche plus un montant faux.** `blessingBudget` est une
+  capacité constante, verrouillée à quatre par une contrainte en base ; l'utiliser comme montant
+  dépensé faisait annoncer « 4 / 4 investis » à tout profil neuf. Le montant se déduit désormais
+  des rangs acquis, et les achats sont refusés à l'écran plutôt que par un message d'erreur de
+  la base ;
+- **la fenêtre de reconnexion passe de dix à vingt minutes.** Elle reste bornée, non par la
+  mémoire mais par le temps de rejeu, qui doit tenir dans l'avance accordée au joueur qui
+  revient ;
+- **`setup.mjs` ne détruit plus le `.env` racine.** Il fusionne clé par clé, conserve
+  commentaires et variables inconnues, et écrit une sauvegarde avant modification ;
+- **vulnérabilité transitive écartée** : `brace-expansion` est forcé en version corrigée par un
+  override. Elle n'affectait que l'outillage de développement, jamais le paquet livré.
+
+### Documentation
+
+- corrige quatre incohérences relevées par l'audit : la feuille de route affirmait à la fois que
+  l'ancien jeu subsistait et qu'il avait été supprimé, la matrice annonçait 167 tests au lieu de
+  111, le document de déploiement disait qu'aucun hébergement n'existait alors que le
+  déploiement LAN y est décrit, et la page d'accueil portait encore le titre et la description
+  du MVP « M1 » ;
+- consigne trois surfaces de sécurité **volontairement non traitées**, par cohérence avec la
+  frontière de l'objectif : canaux temps réel usurpables, montant d'or déclaré par le client, et
+  fonctions `security definer` autres que le crédit d'or.
+
+---
+
 ## Déploiement LAN — 31 juillet 2026
 
 ### Ajouté

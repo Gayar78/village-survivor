@@ -41,9 +41,8 @@ Le MVP M1 a été livré et vérifié le 21 juillet 2026 : carte issue d'une gra
 gisements gardés, transport et dépôt, disciplines Épée et Barrière, balistes, progression du Cœur
 du village, vague finale, victoire et défaite.
 
-Il a été remplacé fin juillet par le jeu Tower. Son code reste dans le dépôt sans être atteignable
-depuis aucune page, et sa suppression est en attente. Ses tests continuent de passer et couvrent
-donc du code que personne n'exécute.
+Il a été remplacé fin juillet par le jeu Tower, puis **son code a été supprimé du dépôt le
+31 juillet 2026** — 38 fichiers, 7 612 lignes. Il reste consultable dans l'historique Git.
 
 ### Jalon V1 — Boucle solo élargie — Abandonné de fait
 
@@ -115,6 +114,31 @@ et suppose, elle, un projet Supabase hébergé.
   une page servie en HTTP depuis une adresse de réseau local, ce qui faisait échouer le
   lancement d'une partie. Les trois points d'appel partagent désormais un assistant unique.
 
+## Correctifs du 31 juillet 2026 — audit externe
+
+Un audit indépendant a relevé dix constats. Ceux qui ont été vérifiés dans le code sont corrigés :
+
+- **projectiles traversants** — la collision ne testait que la position d'arrivée. À 47,5 unités
+  par tick, la Longue-vue sautait par-dessus les petits monstres. Remplacée par un test exact du
+  segment parcouru ;
+- **kamikaze désamorcé par les tirs** — il n'explosait qu'au contact, alors que le réglage et les
+  règles annonçaient « au contact ou à sa mort ». L'abattre le neutralisait purement ;
+- **double authentification contournable** — l'interface révélait le contenu authentifié dès que
+  le contrôle échouait, et la base ne vérifiait aucun niveau d'assurance. L'interface échoue
+  désormais fermé, et `0005_require_mfa.sql` ajoute des politiques restrictives ainsi qu'une
+  garde sur le crédit d'or ;
+- **budget de bénédictions affiché à tort** — une capacité constante était présentée comme un
+  montant dépensé, si bien qu'un profil neuf annonçait « 4 / 4 investis » ;
+- **fenêtre de reconnexion** — portée de dix à vingt minutes, bornée par le temps de rejeu ;
+- **`setup.mjs` écrasait le `.env` racine** — il fusionne désormais clé par clé, avec sauvegarde ;
+- **vulnérabilité transitive** — `brace-expansion` forcé en version corrigée par un override ;
+- **incohérences documentaires** — suppression du M1, nombre de tests, statut d'hébergement et
+  titre de page.
+
+Trois constats de sécurité ne sont **pas** traités, par cohérence avec la frontière de
+l'objectif : canaux temps réel usurpables, montant d'or déclaré par le client, et fonctions
+`security definer` autres que le crédit d'or. Ils sont consignés dans la matrice de traçabilité.
+
 ## Dette à résorber — Prochain
 
 Ces travaux ne demandent aucune décision produit.
@@ -138,6 +162,12 @@ Ces travaux ne demandent aucune décision produit.
    chargement ; le catalogue Tower n'en a aucun, et une partie du réglage vit dans le moteur.
 7. **Nettoyer le schéma Supabase.** Les tables `coffre_balances`, `unlocked_spells` et
    `account_items` de la migration `0001` ne sont référencées par aucun code.
+8. **Points de reprise pour la reconnexion.** Tant que le rejeu part du premier tick, la fenêtre
+   de reconnexion restera bornée par le temps de rejeu. Des instantanés périodiques de l'état de
+   simulation la rendraient indépendante de la durée de la partie — condition nécessaire pour
+   des sessions longues, qui sont précisément ce que vise un jeu de survie sans fin.
+9. **Améliorations sans effet.** « Fracture glaciale » incrémente un compteur que la simulation
+   ne consomme jamais : l'amélioration mythique la plus rare ne fait rien.
 
 ## Décisions à arbitrer
 

@@ -61,8 +61,8 @@ Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://sup
 
 ## 3. Appliquer les migrations SQL
 
-Le schéma est réparti en **quatre migrations**, dans `supabase/migrations/`. Elles doivent être
-appliquées **dans l'ordre** et **toutes** : le jeu utilise les quatre. Chacune est idempotente,
+Le schéma est réparti en **cinq migrations**, dans `supabase/migrations/`. Elles doivent être
+appliquées **dans l'ordre** et **toutes** : le jeu utilise les cinq. Chacune est idempotente,
 donc rejouable sans dommage.
 
 | Fichier | Contenu |
@@ -71,6 +71,7 @@ donc rejouable sans dommage.
 | `0002_friends.sql` | codes amis, tables `friend_requests` et `friendships`, RPC `get_my_friend_code`, `send_friend_request`, `respond_friend_request`, `remove_friend`, `list_friends`, `list_incoming_requests` |
 | `0003_account_gold_wallet.sql` | table `account_gold_wallets`, RPC `credit_account_gold` |
 | `0004_meta_progression.sql` | tables `meta_character_profiles`, `meta_owned_skills`, `meta_owned_gems` et les RPC de profils, bénédictions, compétences et forge |
+| `0005_require_mfa.sql` | fonction `mfa_satisfied()`, politiques restrictives exigeant la double authentification, garde sur `credit_account_gold` |
 
 Chaque migration installe aussi ses propres politiques RLS. Sauter l'une d'elles produit des
 erreurs du type `relation "..." does not exist` au premier usage de la fonctionnalité concernée
@@ -83,8 +84,8 @@ erreurs du type `relation "..." does not exist` au premier usage de la fonctionn
 3. Ouvrez `supabase/migrations/0001_init.sql` dans un éditeur de texte et copiez tout son contenu.
 4. Collez-le dans le SQL Editor de Supabase.
 5. Cliquez sur **Run** (ou `Ctrl+Enter`) et vérifiez qu'aucune erreur n'apparaît.
-6. **Répétez les étapes 2 à 5 pour `0002_friends.sql`, `0003_account_gold_wallet.sql` puis
-   `0004_meta_progression.sql`, dans cet ordre.**
+6. **Répétez les étapes 2 à 5 pour `0002_friends.sql`, `0003_account_gold_wallet.sql`,
+   `0004_meta_progression.sql` puis `0005_require_mfa.sql`, dans cet ordre.**
 7. Allez dans **Table Editor** et confirmez la présence de `profiles`, `player_stats`,
    `coffre_balances`, `unlocked_spells`, `account_items`, `friend_requests`, `friendships`,
    `account_gold_wallets`, `meta_character_profiles`, `meta_owned_skills` et `meta_owned_gems`.

@@ -37,7 +37,7 @@ accessibles.
 - **Social** : code ami, demandes d'amis, présence temps réel, invitations et reprise de partie.
 - **Statistiques** de parties jouées, gagnées, perdues, durée, cycle atteint, ressources.
 
-Quatre migrations composent le schéma, dans
+Cinq migrations composent le schéma, dans
 [`supabase/migrations/`](../../supabase/migrations) :
 
 | Migration | Contenu |
@@ -46,6 +46,7 @@ Quatre migrations composent le schéma, dans
 | `0002_friends.sql` | codes amis, demandes, relations |
 | `0003_account_gold_wallet.sql` | `account_gold_wallets`, RPC `credit_account_gold` |
 | `0004_meta_progression.sql` | profils de personnage, bénédictions, compétences, gemmes, forge |
+| `0005_require_mfa.sql` | exigence de double authentification sur les tables et sur le crédit d'or |
 
 ### Ce que la partie ne persiste pas
 

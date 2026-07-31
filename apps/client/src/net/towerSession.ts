@@ -21,7 +21,33 @@ const MAX_INPUT_PACKET_BYTES = 16_384;
 const MAX_CONTROL_PACKET_BYTES = 4_096;
 const MAX_HISTORY_PACKET_BYTES = 16_384;
 const MAX_HISTORY_CHUNK_TICKS = 24;
-const MAX_HISTORY_TICKS = 12_000;
+/**
+ * Profondeur de l'historique d'entrées conservé pour une reconnexion, en ticks de 50 ms.
+ *
+ * Une reconnexion rejoue la partie depuis le tick 0 : c'est le seul mécanisme disponible, faute
+ * d'instantané de l'état interne de la simulation. Passé ce plafond, les ticks les plus anciens
+ * sont écartés et toute reconnexion devient définitivement impossible — le pair qui revient
+ * reçoit `history-unavailable` et reste dehors.
+ *
+ * À 12 000 ticks, ce couperet tombait au bout de dix minutes, dans un jeu de survie sans fin
+ * conçu pour durer : toute déconnexion un peu tardive était sans retour. La fenêtre passe à
+ * vingt minutes.
+ *
+ * Trois coûts la bornent, et il faut les tenir ensemble :
+ *
+ * 1. **mémoire** — environ 620 octets par tick à quatre joueurs, soit à peu près 15 Mo retenus
+ *    en fin de fenêtre, dans un onglet qui porte déjà le moteur de rendu ;
+ * 2. **temps de rejeu** — le pair qui revient rejoue toute la fenêtre sur le fil principal,
+ *    soit de l'ordre de 4 secondes ici ;
+ * 3. **avance de réintégration** — ce rejeu doit tenir dans les `REJOIN_EVENT_LEAD_TICKS`
+ *    (12 secondes) accordés avant l'entrée effective, sinon le revenant arrive en retard et
+ *    diverge. C'est cette contrainte, et non la mémoire, qui interdit d'aller beaucoup plus loin.
+ *
+ * Le correctif de fond est ailleurs : des instantanés périodiques de l'état de simulation
+ * rendraient le rejeu proportionnel au temps écoulé depuis le dernier point de reprise, et non
+ * au début de la partie. Il est consigné comme dette dans la feuille de route.
+ */
+const MAX_HISTORY_TICKS = 24_000;
 const ROSTER_EVENT_LEAD_TICKS = TOWER_INPUT_BATCH_TICKS + TOWER_INPUT_DELAY_TICKS;
 const REJOIN_EVENT_LEAD_TICKS = MAX_FUTURE_INPUT_TICKS;
 const PEER_TIMEOUT_MS = 5_000;

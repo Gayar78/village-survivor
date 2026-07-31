@@ -39,7 +39,7 @@ Aucune ligne n'est supprimée. Une exigence qui n'est plus tenue reste présente
 | `REQ-ASSET-001` | Cadrage initial | Rendu géométrique de `TowerScene`, aucun asset | Revue visuelle | Tenu — toujours aucun asset |
 | `REQ-ASSET-002` | Cadrage initial | `scripts/assets` | — | Différé au premier asset |
 | `REQ-ASSET-003` | [Analyse historique](../product/legacy-analysis/selection-matrix.md) | Métadonnées de provenance | Contrôle de licence en revue | Sans objet à ce jour |
-| `REQ-TEST-001` | Cadrage initial | Tests proches des packages | `pnpm test` — 167 tests | Implémenté |
+| `REQ-TEST-001` | Cadrage initial | Tests proches des packages | `pnpm test` — 111 tests | Implémenté |
 | `REQ-TEST-002` | [ADR-0002](../decisions/0002-headless-fixed-step-simulation.md) | `packages/game-core/test/tower-*.test.ts` | Vitest sans navigateur | Implémenté |
 | `REQ-TEST-003` | [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) | `apps/client/src/net/towerSession.test.ts` | Barrière de démarrage, roster | Partiellement tenu — pas de test multi-pairs réel |
 | `REQ-TEST-004` | Cadrage initial | `tests/smoke/production.spec.ts` | `pnpm test:smoke`, exécuté en CI | Partiellement tenu — le jeu est couvert, le lobby ne l'est pas |
@@ -56,7 +56,7 @@ Aucune ligne n'est supprimée. Une exigence qui n'est plus tenue reste présente
 | `REQ-WORK-001` | Cadrage initial | Processus de livraison | Checklist d'incrément | Partiellement tenu — étape « mettre à jour la documentation » systématiquement omise |
 | `REQ-WORK-002` | Cadrage initial | ADR ou note de refactoring | Revue avant refonte | **Non tenu** — le changement de jeu n'a pas été documenté avant réalisation |
 | `REQ-QUALITY-001` | Cadrage initial | TypeScript, ESLint, Prettier | Format, lint, types et CI | Tenu — code mort de l'ancien jeu supprimé le 31/07 |
-| `REQ-SEC-001` | [ADR-0008](../decisions/0008-p2p-lockstep-coop.md), [ADR-0009](../decisions/0009-account-persistence.md) | RLS et RPC côté Supabase ; validation de grammaire côté pair | Inspection du schéma | Partiellement tenu — solide sur la base, absent sur la simulation |
+| `REQ-SEC-001` | [ADR-0008](../decisions/0008-p2p-lockstep-coop.md), [ADR-0009](../decisions/0009-account-persistence.md) | RLS, RPC et exigence de double authentification (`0005_require_mfa.sql`) ; validation de grammaire côté pair | Inspection du schéma | Partiellement tenu — solide sur la base, absent sur la simulation et les canaux temps réel |
 
 ## 3. Synthèse des exigences non tenues
 
@@ -76,6 +76,23 @@ DOM. `REQ-TEST-004` et `REQ-PERF-001` ont été partiellement ou totalement rét
 **Modèle de confiance** — `REQ-NET-001`, `REQ-PERSISTENCE-001`, `REQ-CONTENT-001`,
 `REQ-CONTENT-002`. Le client est devenu autorité sur sa simulation et sur son or de compte, et
 le contenu n'est plus validé.
+
+## 3 ter. Surfaces de sécurité restant ouvertes
+
+Consignées à la suite d'un audit externe du 31 juillet 2026, et **non traitées** parce qu'elles
+tombent dans les ajournements assumés de [`../objectif.md`](../objectif.md) — cercle fermé,
+lutte contre la triche écartée, conséquences acceptées.
+
+1. **Les canaux temps réel sont publics et l'identité y est déclarative.** Aucune politique ne
+   protège `realtime.messages`, les canaux ne sont pas ouverts en `private`, et l'émetteur d'un
+   message se nomme lui-même dans la charge utile. Quiconque connaît le code d'un salon peut
+   donc simuler une présence, lancer une partie ou émettre des entrées au nom d'un autre.
+2. **Le montant d'or reste déclaré par le client.** La migration `0005` exige désormais la
+   double authentification pour créditer un compte, mais rien ne vérifie que le montant
+   corresponde à une partie réellement jouée.
+3. **Les autres fonctions `security definer` n'exigent pas la double authentification.** Seule
+   `credit_account_gold` a été durcie, parce qu'elle est la seule à créer de la valeur ; les
+   autres restent bornées au périmètre du compte appelant.
 
 ## 3 bis. Anomalie fonctionnelle relevée
 
