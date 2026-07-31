@@ -47,6 +47,25 @@ ligne une ou deux fois, et spécifiait parfois avant de construire. En conséque
 tranche les décisions techniques et annonce leur coût, leur délai et leur risque en langage
 clair, plutôt que de les soumettre à l'arbitrage.
 
+## Contrainte de publication
+
+> **Le dépôt distant `Gayar78/village-survivor` est public.**
+>
+> **Aucun push n'est autorisé avant une passe de désensibilisation de la documentation.**
+> Décision du 31 juillet 2026. Le travail est commité localement en attendant.
+>
+> Trois familles de contenu sont concernées, à traiter avant toute publication :
+>
+> 1. **les prénoms** de Gayar, Hida et Clem, qui apparaissent dans l'objectif et le critère de
+>    réussite ;
+> 2. **les faiblesses de sécurité assumées**, décrites précisément — le jeu croit le navigateur
+>    du joueur sur parole, et l'or de compte est déclaré par le client. Écrit pour l'équipe,
+>    c'est une information utile ; publié, c'est un mode d'emploi ;
+> 3. **les écarts et anomalies** relevés par l'audit, qui décrivent où le produit est faible.
+>
+> Cette contrainte tombe si le dépôt passe en privé — réglage qui appartient à ses
+> propriétaires, et que l'agent ne modifie pas.
+
 ## Hypothèses ouvertes
 
 | ID | Décision provisoire | Impact | Validation attendue |
