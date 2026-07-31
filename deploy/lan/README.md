@@ -56,6 +56,30 @@ courriel n'est envoyé — puis le hub permet de former un salon et de lancer un
 
 ## Pièges à connaître
 
+**Ouvrir le port ne suffit pas : encore faut-il que la règle couvre la bonne interface.** Une
+règle créée pour le profil « Privé » reste sans effet si Windows a classé votre réseau comme
+« Public », ce qu'il fait par défaut. Le symptôme est déroutant : la règle existe, elle est
+active, le port écoute, la page répond depuis la machine elle-même — et aucun autre poste
+n'arrive à se connecter. Vérifiez le classement, et corrigez-le si le réseau vous appartient :
+
+```powershell
+Get-NetConnectionProfile | Select-Object InterfaceAlias, NetworkCategory
+Set-NetConnectionProfile -InterfaceAlias Ethernet -NetworkCategory Private
+```
+
+Ce second réglage ne fait pas qu'ouvrir un port : il déclare le réseau fiable et relâche
+d'autres protections pour lui. À réserver à un réseau personnel. Sur un réseau d'entreprise ou
+partagé, étendre la seule règle au profil public est plus prudent :
+`Set-NetFirewallRule -DisplayName '…' -Profile Private,Public`.
+
+Notez aussi qu'une règle « Privé » s'applique à **toutes** les interfaces ainsi classées, y
+compris un réseau privé virtuel du type Tailscale : le jeu peut devenir joignable par des
+personnes hors du LAN sans que ce soit voulu.
+
+**Tester depuis la machine hôte ne prouve rien.** Une requête d'un poste vers sa propre adresse
+ne traverse pas le pare-feu comme une requête venue de l'extérieur. La seule preuve qu'un joueur
+peut se connecter, c'est un second poste qui se connecte.
+
 **L'adresse est figée à la compilation.** `VITE_SUPABASE_URL` est intégrée au paquet par Vite.
 Si l'adresse de la machine change, il faut relancer `setup.mjs --host <nouvelle IP>` **puis**
 `pnpm build`, sinon les clients continueront de parler à l'ancienne adresse.
