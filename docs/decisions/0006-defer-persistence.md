@@ -1,8 +1,13 @@
 # ADR-0006 — Différer base de données et persistance de compte
 
-- Statut : **Accepté**
+- Statut : **Remplacé** par [ADR-0009 — Comptes Supabase et progression persistante](0009-account-persistence.md)
 - Date : 20 juillet 2026
 - Exigences : `REQ-PERSISTENCE-001`, `REQ-SCOPE-001`
+
+> Le contenu ci-dessous est conservé intact pour l'historique. Des comptes Supabase et une
+> progression persistante ont été livrés en juillet 2026 sans la décision produit explicite que
+> cet ADR exigeait au préalable. Le constat et ses conséquences sont consignés dans
+> [ADR-0009](0009-account-persistence.md), qui reste soumis à arbitrage humain.
 
 ## Contexte
 

@@ -609,3 +609,21 @@ l'un des mécanismes suivants :
 - remplacement explicitement indiqué dans ce document ;
 - ADR qui accepte, modifie ou abandonne une décision architecturale ;
 - décision produit datée pour les règles de gameplay.
+
+## 23. Écarts constatés au 31 juillet 2026
+
+Ce document reste normatif et n'est pas réécrit. Plusieurs de ses exigences sont toutefois
+contredites par le code livré fin juillet 2026, sans qu'aucun des mécanismes du chapitre 22 ait
+été employé au préalable. Les écarts sont consignés a posteriori pour qu'aucune exigence ne
+disparaisse en silence.
+
+| Exigence | Écart | Consigné dans |
+|---|---|---|
+| `REQ-STACK-002`, `REQ-NET-001`, `REQ-NET-002` | Aucun serveur autoritaire : la coopération est un lockstep pair-à-pair et chaque client décide de sa propre simulation | [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) |
+| `REQ-PERSISTENCE-001` | Comptes Supabase et progression persistante livrés sans décision produit préalable | [ADR-0009](../decisions/0009-account-persistence.md) |
+| `REQ-CONTENT-001`, `REQ-CONTENT-002` | Le contenu du jeu Tower n'a ni schéma ni validation, et une partie de son équilibrage vit dans le moteur | [Index ADR](../decisions/README.md) |
+| `REQ-DEBUG-001`, `REQ-TEST-004`, `REQ-PERF-001`, `REQ-PERF-002` | API de débogage, métriques et tests navigateur supprimés ou inopérants | [`traceability-matrix.md`](traceability-matrix.md) |
+| `REQ-GOV-002`, `REQ-WORK-002`, `REQ-DOC-003` | Ruptures majeures livrées sans validation humaine, sans note de refactoring préalable et sans mise à jour documentaire dans le même incrément | [`traceability-matrix.md`](traceability-matrix.md) |
+
+L'état exigence par exigence est tenu à jour dans
+[`traceability-matrix.md`](traceability-matrix.md).

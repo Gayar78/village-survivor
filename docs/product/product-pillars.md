@@ -2,6 +2,24 @@
 
 Statut : décisions humaines confirmées le 20 juillet 2026.
 
+> **Le jeu livré ne respecte plus ces piliers.** Depuis le 28 juillet 2026, le seul jeu
+> atteignable est un twin-stick shooter de survie sans fin : plus de cycle jour/nuit, plus
+> d'exploration, plus de ressources transportées, plus de disciplines, plus d'artefacts, plus de
+> mort définitive, et **aucune condition de victoire**. Une progression persiste par ailleurs
+> entre les parties, ce que le point n°13 de l'atelier interdit explicitement.
+>
+> Ce document n'est pas réécrit : il reste la trace des décisions humaines réellement prises, et
+> **aucune décision datée ne les a remplacées**. Les écarts sont recensés dans
+> [`../gameplay/current-rules.md`](../gameplay/current-rules.md) et dans
+> [`../requirements/traceability-matrix.md`](../requirements/traceability-matrix.md) ; leurs
+> conséquences techniques sont consignées dans
+> [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) et
+> [ADR-0009](../decisions/0009-account-persistence.md).
+>
+> Deux issues sont possibles et relèvent des porteurs du produit : ramener le jeu vers ces
+> piliers, ou les remplacer par une nouvelle décision datée. Tant qu'aucune n'est choisie, le
+> projet avance sans socle produit.
+
 Ce document décrit le socle fonctionnel qui fait autorité pour le nouveau jeu. Les
 fonctionnalités du prototype historique sont des sources d'inspiration ; elles ne
 remplacent pas ces décisions.

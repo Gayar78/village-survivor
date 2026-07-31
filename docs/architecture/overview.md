@@ -1,277 +1,238 @@
 # Vue d'ensemble de l'architecture
 
-Statut : **architecture locale M1 implémentée, architecture réseau planifiée**
-Date : 21 juillet 2026
+Statut : **relevé du code au 31 juillet 2026**
+Portée : le jeu « Tower », son lobby, sa coopération et sa persistance de compte.
 
-## 1. Objectif
+Ce document décrit l'architecture réellement implémentée. Là où elle s'écarte du
+[cadrage technique initial](../requirements/initial-technical-baseline.md), l'écart est signalé
+et renvoyé vers l'ADR qui le consigne.
 
-L'architecture permet de valider rapidement le jeu en solo local tout en conservant
-la même simulation et la même interface client lors du passage à un serveur
-multijoueur autoritaire.
+## 1. État actuel en une phrase
 
-Le cadrage normatif complet se trouve dans
-[`../requirements/initial-technical-baseline.md`](../requirements/initial-technical-baseline.md).
-Les règles fonctionnelles se trouvent dans
-[`../product/product-pillars.md`](../product/product-pillars.md).
+Un client web à deux pages exécute lui-même toute la simulation ; il n'existe aucun serveur de
+jeu, et Supabase fournit l'authentification, une progression de compte persistante et le bus de
+messages de la coopération.
 
-## 2. État actuel
-
-M1 livre le client Phaser dans `apps/client`, le port `GameSession` dans
-`packages/protocol`, le catalogue validé dans `packages/content`, la simulation à pas
-fixe dans `packages/game-core` et l'adaptateur `LocalSession` côté client. Les tests
-Vitest et Playwright ainsi que le pipeline GitHub Actions couvrent ce chemin local.
-
-Le serveur Colyseus, `NetworkSession`, la persistance et le déploiement public restent
-planifiés. Dans les diagrammes suivants, les liens en pointillés représentent ces
-capacités futures.
-
-## 3. Contexte du système
-
-```mermaid
-flowchart LR
-    Player["Joueur"] --> Browser["Client navigateur\nPhaser"]
-    Browser -->|"V1 : appels locaux"| Local["LocalSession"]
-    Local --> Core["Simulation partagée\ngame-core"]
-    Browser -.->|"Multijoueur futur : WebSocket"| Network["NetworkSession"]
-    Network -.-> Server["Serveur Colyseus\nautoritaire"]
-    Server -.-> Core
-    Server -.-> Persistence["Persistance future\nPostgreSQL"]
-```
-
-Les liens en pointillés représentent des capacités futures qui ne doivent pas être
-implémentées avant leur incrément.
-
-## 4. Principe central : ports et adaptateurs
-
-Le client de rendu dépend d'un port `GameSession`, jamais directement de la simulation
-ou de Colyseus.
+## 2. Composants
 
 ```mermaid
 flowchart TD
-    Input["Entrées clavier / souris"] --> Scene["Scènes et UI Phaser"]
-    Scene --> Session["Port GameSession"]
-    Session --> LocalAdapter["Adaptateur LocalSession"]
-    Session -.-> NetworkAdapter["Adaptateur NetworkSession"]
-    LocalAdapter --> Simulation["game-core"]
-    NetworkAdapter -.-> Protocol["protocol"]
-    Protocol -.-> Server["Serveur Colyseus"]
-    Server -.-> Simulation
-    Simulation --> PublicState["PublicGameState"]
-    PublicState --> Session
-    Session --> Rendering["Rendu / UI / audio"]
+    subgraph Navigateur
+      Lobby["index.html → main.ts\nauth, menu, hub, méta-build"]
+      Jeu["play.html → play.ts\npartie Tower"]
+      Jeu --> Port["Port TowerSession"]
+      Port --> Local["TowerLocalSession\n(solo)"]
+      Port --> Coop["Session lockstep P2P\n(coopération)"]
+      Local --> Core["TowerSimulation\ngame-core"]
+      Coop --> Core
+      Jeu --> Scene["TowerScene\nrendu Phaser"]
+    end
+    Lobby -->|"session, profils, or"| Supabase[("Supabase\nauth · Postgres · Realtime")]
+    Coop -->|"entrées + empreintes"| Supabase
+    Jeu -->|"or de fin de partie"| Supabase
 ```
 
-Cette frontière apporte trois garanties :
+| Composant | Responsabilité | Remarque |
+|---|---|---|
+| `apps/client` | entrées, rendu Phaser, UI, lobby, réseau, accès Supabase | contient aussi le netcode |
+| `packages/game-core` | `TowerSimulation` : état et règles déterministes à pas fixe | aucune dépendance navigateur |
+| `packages/protocol` | contrats sérialisables : entrées, état public, catalogue méta | aucune règle de jeu |
+| `packages/content` | catalogue partagé : armes, boutique, modules, quêtes, offres | **sans schéma ni validation** |
+| `supabase/migrations` | schéma Postgres, RLS et RPC | appliqué manuellement |
 
-1. Phaser reste remplaçable et ne devient pas propriétaire des règles du jeu ;
-2. la simulation locale est testable sans navigateur ;
-3. le passage au réseau remplace un adaptateur au lieu de réécrire le client.
+`apps/server` n'existe pas et n'est plus prévu à court terme — voir
+[ADR-0008](../decisions/0008-p2p-lockstep-coop.md).
 
-## 5. Composants et responsabilités
+## 3. Les deux pages
 
-| Composant | Responsabilité | Dépendances autorisées | Interdictions principales |
-|---|---|---|---|
-| `apps/client` | Entrées, scènes Phaser, rendu, UI, audio, debug de développement | `protocol`, port de session, assets | Règles de gameplay, décisions autoritaires |
-| `apps/server` | Rooms, connexions, validation réseau, orchestration autoritaire | `game-core`, `protocol`, contenu | Dépendance à Phaser ou au DOM |
-| `packages/game-core` | État et règles déterministes, systèmes, temps fixe, aléatoire | Bibliothèques pures strictement nécessaires, contenu validé | Phaser, navigateur, WebSocket, stockage externe |
-| `packages/protocol` | Commandes, événements, schémas et types publics | Validation/sérialisation minimale | Règles de gameplay et rendu |
-| `packages/content` | Définitions et équilibrage versionnés | Schémas de contenu | Accès réseau, rendu ou état mutable de partie |
-| `assets` | Sources et résultats graphiques/sonores avec provenance | Scripts d'assets | Logique de gameplay |
-| `tests` | Scénarios transverses, navigateur, performance et réseau | Interfaces publiques | Contournement des frontières de production |
+Le client est une application à **deux points d'entrée** déclarés dans
+[`apps/client/vite.config.ts`](../../apps/client/vite.config.ts). Cette séparation est
+structurante, notamment parce que les deux pages n'ont pas les mêmes prérequis.
 
-Les composants client, `protocol`, `content`, `game-core` et `tests` existent depuis
-M1. `apps/server` et les scripts d'assets seront créés avec leur premier incrément.
+**`index.html` → `src/main.ts` — le lobby.** Authentification, menu principal, profil,
+paramètres visuels, compendium, atelier de méta-build et hub multijoueur. **Cette page exige un
+projet Supabase configuré** : sans `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`, elle affiche
+un écran « Configuration requise » et rien d'autre n'est accessible.
 
-## 6. Direction des dépendances
+**`play.html` → `src/play.ts` — la partie.** Assemble la session, la scène de rendu, le HUD, la
+boutique de tourelle, l'écran de montée de niveau et la capture des entrées. **Cette page
+fonctionne sans Supabase** : ses appels au compte sont tardifs et enveloppés, si bien qu'une
+partie solo démarre et se termine normalement hors ligne. Le lobby lui transmet la graine par
+l'URL, et la configuration coopérative par `sessionStorage`.
 
-La direction autorisée est orientée vers les règles et les contrats stables :
+## 4. Frontière de session
 
-```text
-client ────────> protocol
-  │
-  └── LocalSession ──> game-core ──> contenu validé
+Le client dépend d'un port `TowerSession`, de même forme que le `GameSession` défini par
+[ADR-0003](../decisions/0003-game-session-boundary.md) :
 
-server ────────> protocol
-  └────────────> game-core ────────> contenu validé
+```typescript
+export interface TowerSession {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  sendInput(input: TowerInput): void;
+  subscribe(listener: (state: TowerGameState) => void): () => void;
+}
 ```
 
-`game-core` ne dépend jamais du client, du serveur, de Phaser ou de Colyseus.
-`protocol` ne dépend jamais de `game-core` : il décrit les échanges, pas les règles
-qui les interprètent.
+Deux implémentations le satisfont, toutes deux dans
+[`apps/client/src/net/towerSession.ts`](../../apps/client/src/net/towerSession.ts) :
+`TowerLocalSession` pour le solo, et une session lockstep pour la coopération. `TowerScene` ne
+connaît que le port : elle fonctionne à l'identique dans les deux modes. Le principe d'ADR-0003
+est donc respecté, et le jour où un serveur autoritaire apparaîtra, il remplacera un adaptateur.
 
-## 7. Modèle d'exécution de la simulation
+La session ajoute `getRenderAlpha()` — la fraction de progression vers le prochain tick, pour
+interpoler l'affichage — et `onConnectionIssue()`, qui remonte les incidents réseau sans coupler
+le netcode au DOM.
+
+## 5. Modèle d'exécution
 
 ### Temps
 
-- La simulation avance par ticks de durée fixe.
-- Le rendu peut interpoler entre deux états sans modifier l'état officiel.
-- Une accumulation de temps convertit le temps réel en zéro, un ou plusieurs ticks.
-- Un plafond empêche une accumulation incontrôlée après un long blocage du navigateur.
-- Les constantes temporelles utilisent une unité explicite.
+La simulation avance par ticks fixes de **50 ms (20 Hz)**, constante partagée entre le moteur et
+le netcode. Un accumulateur convertit le temps réel en zéro, un ou plusieurs ticks, avec un
+plafond d'avance par frame. Aucune règle ne lit l'horloge système.
 
-### Aléatoire
+### Déterminisme
 
-- Chaque partie possède une graine explicite.
-- Tout aléatoire de gameplay passe par une source injectée et contrôlée.
-- L'ordre d'itération susceptible d'influencer le résultat reste stable.
-- Les tests enregistrent la graine utilisée pour reproduire un échec.
+Le déterminisme n'est pas une commodité de test : le lockstep en dépend entièrement. Il est
+tenu et vérifiable — `packages/game-core/src` ne contient **aucun** appel à `Math.random`,
+`Date.now`, `performance.now`, ni aucun accès au DOM. Tout l'aléatoire de gameplay passe par
+`SeededRandom`, initialisé par la graine de la partie.
+
+Les éléments qui pourraient dériver sont dérivés de valeurs pures plutôt que tirés : la rotation
+des biomes, les offres du marchand et les offres de défense globale se calculent depuis la graine
+et le numéro de vague.
 
 ### État
 
-- L'état de référence est constitué de données sérialisables.
-- Les identifiants d'entités sont stables pendant la partie.
-- Les commandes décrivent des intentions ; les systèmes valident et appliquent leurs
-  effets.
-- `PublicGameState` ne révèle que les données nécessaires au client.
-- Les événements utiles au rendu sont distincts de l'état persistant d'un tick à
-  l'autre.
+`TowerGameState` est une projection immuable et sérialisable. L'avatar local y figure sous
+`player` et se retrouve toujours dans `players`. Les événements d'un tick sont distincts de
+l'état persistant. Les identifiants d'entités sont stables pendant la partie.
 
-Le déterminisme est recherché dans les limites raisonnables de JavaScript. Une
-reproductibilité vérifiée par tests prévaut sur une promesse théorique de déterminisme
-entre toutes les machines possibles.
+## 6. Coopération
 
-## 8. Flux local
+Modèle : **lockstep pair-à-pair déterministe**, transporté par un canal de diffusion Supabase
+Realtime. Chaque pair exécute la même simulation et n'échange que des entrées, jamais d'état.
+Les entrées partent avec deux ticks de retard, par lots de douze. Une empreinte d'état est
+comparée tous les vingt ticks pour détecter une divergence. Les arrivées et départs sont
+ordonnés par des événements planifiés à une frontière de tick explicite. Un pair peut rejoindre
+en cours de partie en rejouant la graine puis l'historique d'entrées.
 
-1. Le client construit une `LocalSession` avec un contenu validé et une graine.
-2. `LocalSession.start()` initialise la simulation et la boucle à pas fixe.
-3. Les entrées sont normalisées en `PlayerInput` puis envoyées avec `sendInput()`.
-4. La simulation valide les intentions et avance sans allouer d'état public.
-5. La session collecte les événements après chaque tick, car la simulation les remplace
-   au tick suivant.
-6. La session crée puis publie un `PublicGameState` immuable lorsqu'au moins un tick a
-   été traité, en y substituant les événements collectés.
-7. Phaser rend cet état sans recalculer les règles.
-8. `stop()` libère timers, abonnements et ressources.
+Toute donnée reçue du réseau est validée contre une grammaire fermée avant d'être appliquée, et
+les tailles de paquet, l'avance en ticks et les longueurs d'identifiant sont bornées.
 
-## 9. Flux réseau futur
+Ce modèle **remplace** le serveur Colyseus autoritaire décidé par ADR-0004, sans qu'aucun
+arbitrage humain n'ait eu lieu, et il n'offre aucune protection contre la triche. Le détail et
+les questions ouvertes sont dans [ADR-0008](../decisions/0008-p2p-lockstep-coop.md).
 
-1. Le client remplace `LocalSession` par `NetworkSession`.
-2. Les intentions séquencées sont validées puis transmises au serveur.
-3. La room Colyseus possède l'instance autoritaire de `game-core`.
-4. Le serveur publie des snapshots ou deltas d'état public.
-5. Le client interpole les états distants et pourra prédire son déplacement.
-6. Toute divergence est corrigée par l'état officiel du serveur.
+## 7. Compte et persistance
 
-Les dégâts, collisions, récompenses, morts et positions officielles restent calculés
-par le serveur. La reconnexion et la prédiction ne seront ajoutées qu'après la première
-room fonctionnelle.
+Supabase remplit trois rôles distincts :
 
-## 10. Contenu et équilibrage
+1. **authentification** — email/mot de passe, Google, GitHub, TOTP ;
+2. **persistance de compte** — or, profils de personnage, bénédictions, compétences, gemmes,
+   statistiques, amis ; quatre migrations dans `supabase/migrations` ;
+3. **transport temps réel** — présence, invitations, et le bus de messages de la coopération.
 
-Le contenu est traité comme une entrée de la simulation :
+La sécurité repose sur les politiques RLS : chaque compte ne lit et n'écrit que ses propres
+lignes, l'identité venant du JWT via `auth.uid()` et jamais d'un paramètre. Le client n'utilise
+que la clé publique `anon`.
 
-```mermaid
-flowchart LR
-    Sources["JSON ou TypeScript\nversionné"] --> Validation["Schémas et validation"]
-    Validation --> Catalog["Catalogue immuable typé"]
-    Catalog --> Core["game-core"]
-    Catalog --> Client["Libellés et représentation client"]
-```
+La limite connue : la simulation étant hébergée par le navigateur, **l'or crédité en fin de
+partie est déclaré par le client**. Voir [ADR-0009](../decisions/0009-account-persistence.md).
 
-Principes :
+## 8. Rendu
 
-- identifiants stables et uniques ;
-- relations entre contenus validées ;
-- unités visibles dans les noms ou types ;
-- aucune valeur d'équilibrage cachée dans une scène ;
-- paramètres de génération, perception, vagues, réparation, butin et montée en
-  puissance regroupés avec le catalogue par défaut ;
-- invariants métier validés au chargement, par exemple la garantie que le bois statique
-  couvre à lui seul le chemin obligatoire de victoire ;
-- erreurs de validation lisibles au démarrage et en CI ;
-- données de test minimales séparées du catalogue de production.
+`TowerScene` dessine le monde en **mode immédiat** dans des objets `Graphics` effacés et
+redessinés à chaque frame, plus une minimap fixée à l'écran. Les positions rendues sont
+interpolées entre deux états de simulation à l'aide de `getRenderAlpha()`. Aucun asset n'est
+chargé : tout est géométrique.
 
-Dans `game-core`, `GameSimulation` orchestre des systèmes séparés pour le mouvement,
-le combat, la construction, les phases et le ciblage. La projection sérialisable est
-isolée dans `snapshot.ts` et n'est pas exécutée par `step()`.
+Les couleurs sont paramétrables par le joueur (`apps/client/src/preferences`) et n'influencent
+jamais la simulation.
 
-## 11. Rendu et assets
+Le HUD, la boutique de tourelle, l'écran de niveau, le menu d'échappement et l'écran de fin sont
+du DOM classique, alimentés par le même état.
 
-Phaser traduit l'état public en objets visuels. Les objets Phaser peuvent être mis en
-pool et interpolés, mais ne définissent jamais la vérité du jeu.
+## 9. Contenu et équilibrage
 
-Le monde est actuellement dessiné en mode immédiat dans un `Graphics` unique, organisé
-en passes ordonnées : sol et grille, marquages au sol, ombres, corps triés par ordonnée
-croissante, barres de vie, puis dôme de barrière. Les ombres précèdent tous les corps et
-les barres de vie les suivent, ce qui garantit la lisibilité en cas de chevauchement. Le
-choix du mode immédiat et ses limites sont consignés dans
-[ADR-0007](../decisions/0007-immediate-mode-entity-rendering.md).
+Le contenu partagé entre le moteur et l'interface vit dans `packages/content/src/tower.ts` :
+armes, boutique de tourelle, modules, super-modules, priorités de ciblage, offres de défense
+globale, quêtes et rotations.
 
-Le client détient un état visuel transitoire que la simulation ne connaît pas :
-intensité résiduelle d'un impact et couleurs interpolées de la phase courante. Cet état
-est isolé dans `apps/client/src/render`, sans dépendance à Phaser, et testé hors
-navigateur. Il obéit à deux règles :
+Le reste du réglage — statistiques des joueurs, des tourelles et des monstres, courbe
+d'expérience, budget de vagues, raretés — vit dans
+`packages/game-core/src/tower/tuning.ts`, **à l'intérieur du moteur**.
 
-- il ne remonte jamais vers la simulation et n'influence aucune décision de gameplay ;
-- il n'est pas reproductible à partir d'une graine, contrairement à l'état officiel.
+C'est un écart assumé dans le code mais non arbitré : `REQ-CONTENT-001` demande que les
+paramètres d'équilibrage ne soient pas dispersés dans la simulation, et ADR-0005 exige un schéma
+explicite et une validation au chargement. Le catalogue Tower n'a ni schéma ni validation, alors
+que l'ancien contenu était validé par Zod.
 
-Les effets ponctuels déclenchés par les événements du tick — gerbes de particules, tirs
-et arcs de lame — utilisent des émetteurs et des objets créés au démarrage puis
-réutilisés, afin que la boucle de rendu n'alloue rien par entité et par frame.
+## 10. Observabilité
 
-Les premiers assets sont temporaires et standardisés. Tout asset conserve dans ses
-métadonnées sa source, son auteur, sa licence et les transformations effectuées. Les
-scripts vérifient progressivement dimensions, transparence, alignement et complétude.
+**Il n'existe aucune API de débogage.** L'ancienne `window.__VILLAGE_SURVIVOR_DEBUG__` a disparu
+avec l'ancien jeu ; plus aucun fichier source ne la définit. Les métriques de développement
+— FPS, durée de tick, nombre d'entités, graine, tick courant — ne sont plus exposées non plus.
 
-## 12. Observabilité et débogage
+Ce qui subsiste : les messages de console du netcode, et un bandeau d'état de synchronisation
+visible en coopération.
 
-Le mode développement expose une API `window.__VILLAGE_SURVIVOR_DEBUG__` qui permet à
-Playwright et aux développeurs d'inspecter l'état et de provoquer des situations
-contrôlées. Elle est éliminée ou rendue inaccessible dans le build de production.
+C'est la principale régression d'observabilité du projet. Elle explique aussi pourquoi les tests
+navigateur ne sont plus exécutables : ils pilotaient le jeu par cette API.
 
-Les métriques de développement incluent au minimum, quand les systèmes existent :
+## 11. Tests
 
-- FPS de rendu ;
-- durée du tick de simulation ;
-- nombre total et nombre actif d'entités ;
-- graine et numéro du tick courant ;
-- erreurs de contenu et commandes rejetées.
+| Niveau | Objet | Outil | État |
+|---|---|---|---|
+| Unitaire et simulation | règles Tower, déterminisme, roster, quêtes, atelier | Vitest | **couvert** |
+| Contrat de session | barrière de démarrage, roster lockstep | Vitest | **couvert** |
+| Services de compte | validation des profils, statistiques, temps réel | Vitest | **couvert** |
+| Interface | HUD, boutique, écran de méta-build | Vitest | **couvert** |
+| Performance | coût d'un tick sous charge, coût d'une projection | Vitest | **couvert** |
+| Smoke de production | le jeu démarre, pas d'API de débogage, pas d'injection par la graine | Playwright | **couvert** |
+| Lobby (bout en bout) | connexion, hub, lancement coopératif | Playwright | **absent** |
 
-## 13. Stratégie de tests par couche
+Le smoke test vise `play.html`, qui démarre sans projet Supabase : il est donc exécutable en
+intégration continue, où aucune clé n'existe. Le lobby, lui, n'a aucun test de bout en bout ;
+il en faudrait un mode invité ou un mock de l'authentification.
 
-| Niveau | Objet | Outil principal |
-|---|---|---|
-| Unitaire | Règles, calculs, validation, systèmes isolés | Vitest |
-| Simulation | Parties sans rendu, déterminisme, victoire/défaite | Vitest |
-| Contrat | Compatibilité session, commandes, événements, schémas | Vitest |
-| Navigateur | Démarrage, entrées, UI, console, assets, debug API | Playwright |
-| Réseau futur | Rooms, synchronisation, validation, déconnexion | Vitest et clients de test Colyseus |
-| Performance | Scénarios reproductibles de simulation et rendu | Scripts dédiés et Playwright |
+Le benchmark mesure le coût **par tick réellement simulé** et s'arrête à la défaite, de sorte
+que la mesure reste valable si l'équilibrage évolue. Ordre de grandeur observé : 220 µs par tick
+avec 200 monstres, 17 µs par projection d'état.
 
-## 14. Déploiement cible
+## 12. Dette structurelle
 
-- Le client Vite produit des fichiers statiques déployés sur Cloudflare Workers Static
-  Assets.
-- Le futur serveur est empaqueté dans une image Docker sans état local indispensable.
-- Les environnements local, preview/staging et production possèdent leurs propres
-  configurations.
-- GitHub Actions interdit tout déploiement si formatage, lint, types, tests ou build
-  échouent.
-- Les secrets ne sont présents ni dans le dépôt, ni dans les bundles du client.
+L'ancien jeu M1 — `GameScene`, `LocalSession`, `coopSession`, le module `render/`, les écrans
+d'inventaire et d'échange, `GameSimulation` et ses systèmes, l'ancien contenu validé par Zod et
+l'ancien protocole — **a été supprimé le 31 juillet 2026** : 38 fichiers et 7 612 lignes. Il
+reste consultable dans l'historique Git.
 
-Voir [`../deployment.md`](../deployment.md) pour le processus prévu et son état réel.
+Ce qui subsiste volontairement de l'ancien monde :
 
-## 15. Décisions architecturales associées
+- `ResourceType` dans `packages/protocol`, parce que la table `player_stats` a une colonne par
+  ressource et que l'écran de profil affiche encore ces compteurs ;
+- les tables `coffre_balances`, `unlocked_spells` et `account_items` de la migration `0001`, non
+  utilisées par le jeu actuel mais présentes dans les bases déjà déployées.
+
+## 13. Invariants encore tenus
+
+Malgré les ruptures, quatre garde-fous du cadrage initial tiennent et méritent d'être préservés :
+
+1. les règles restent hors de Phaser, dans `game-core` ;
+2. le client passe par un port de session et ignore l'implémentation ;
+3. le pas de simulation est fixe et la graine explicite ;
+4. le cœur ne dépend ni du navigateur, ni du réseau, ni du stockage.
+
+Le quatrième est aujourd'hui ce qui rend la coopération possible. Le relâcher casserait le
+lockstep avant de casser les tests.
+
+## 14. Décisions associées
 
 - [ADR-0001 — Monorepo pnpm](../decisions/0001-pnpm-monorepo.md)
 - [ADR-0002 — Simulation indépendante à pas fixe](../decisions/0002-headless-fixed-step-simulation.md)
 - [ADR-0003 — Frontière GameSession](../decisions/0003-game-session-boundary.md)
-- [ADR-0004 — Serveur multijoueur autoritaire](../decisions/0004-authoritative-multiplayer-server.md)
-- [ADR-0005 — Contenu piloté par les données](../decisions/0005-data-driven-content.md)
-- [ADR-0006 — Persistance différée](../decisions/0006-defer-persistence.md)
-- [ADR-0007 — Rendu des entités en mode immédiat](../decisions/0007-immediate-mode-entity-rendering.md)
-
-## 16. Garde-fous pour le premier MVP
-
-Le premier MVP peut réduire le nombre de cartes, ennemis, disciplines, bâtiments et
-ressources. Il ne peut pas contourner les invariants suivants :
-
-1. les règles restent hors de Phaser ;
-2. le client passe par `GameSession` ;
-3. le temps de simulation est fixe et la graine explicite ;
-4. le contenu est centralisé et validé ;
-5. les tests peuvent piloter le jeu sans interpréter uniquement des pixels ;
-6. le code local ne suppose pas que le client sera autoritaire en multijoueur ;
-7. les commandes racine et la CI restent la porte d'entrée commune.
-
-Tout assouplissement de ces invariants exige un ADR explicite avant l'implémentation.
+- [ADR-0005 — Contenu piloté par les données](../decisions/0005-data-driven-content.md) — non tenu par le contenu Tower
+- [ADR-0007 — Rendu en mode immédiat](../decisions/0007-immediate-mode-entity-rendering.md) — partiellement caduc
+- [ADR-0008 — Coopération en lockstep pair-à-pair](../decisions/0008-p2p-lockstep-coop.md)
+- [ADR-0009 — Comptes Supabase et progression persistante](../decisions/0009-account-persistence.md)

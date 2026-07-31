@@ -59,22 +59,35 @@ Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://sup
 
 ---
 
-## 3. Appliquer la migration SQL
+## 3. Appliquer les migrations SQL
 
-Le schéma de base de données (tables `profiles`, `player_stats`, `coffre_balances`, `unlocked_spells`, `account_items`, politiques RLS, trigger de création de profil à l'inscription, fonction RPC `record_game_result`) est défini dans :
+Le schéma est réparti en **quatre migrations**, dans `supabase/migrations/`. Elles doivent être
+appliquées **dans l'ordre** et **toutes** : le jeu utilise les quatre. Chacune est idempotente,
+donc rejouable sans dommage.
 
-```
-supabase/migrations/0001_init.sql
-```
+| Fichier | Contenu |
+|---|---|
+| `0001_init.sql` | tables `profiles`, `player_stats`, `coffre_balances`, `unlocked_spells`, `account_items` ; trigger de création de profil à l'inscription ; RPC `record_game_result` |
+| `0002_friends.sql` | codes amis, tables `friend_requests` et `friendships`, RPC `get_my_friend_code`, `send_friend_request`, `respond_friend_request`, `remove_friend`, `list_friends`, `list_incoming_requests` |
+| `0003_account_gold_wallet.sql` | table `account_gold_wallets`, RPC `credit_account_gold` |
+| `0004_meta_progression.sql` | tables `meta_character_profiles`, `meta_owned_skills`, `meta_owned_gems` et les RPC de profils, bénédictions, compétences et forge |
+
+Chaque migration installe aussi ses propres politiques RLS. Sauter l'une d'elles produit des
+erreurs du type `relation "..." does not exist` au premier usage de la fonctionnalité concernée
+— souvent bien après la connexion, ce qui rend le diagnostic pénible.
 
 ### Méthode A — SQL Editor (recommandée pour débuter)
 
 1. Dans le tableau de bord Supabase, ouvrez **SQL Editor** dans le menu latéral.
 2. Cliquez sur **New query**.
-3. Ouvrez le fichier `supabase/migrations/0001_init.sql` du dépôt dans un éditeur de texte, copiez tout son contenu.
+3. Ouvrez `supabase/migrations/0001_init.sql` dans un éditeur de texte et copiez tout son contenu.
 4. Collez-le dans le SQL Editor de Supabase.
-5. Cliquez sur **Run** (ou `Ctrl+Enter`).
-6. Vérifiez qu'aucune erreur n'apparaît, puis allez dans **Table Editor** pour confirmer que les tables `profiles`, `player_stats`, `coffre_balances`, `unlocked_spells` et `account_items` existent.
+5. Cliquez sur **Run** (ou `Ctrl+Enter`) et vérifiez qu'aucune erreur n'apparaît.
+6. **Répétez les étapes 2 à 5 pour `0002_friends.sql`, `0003_account_gold_wallet.sql` puis
+   `0004_meta_progression.sql`, dans cet ordre.**
+7. Allez dans **Table Editor** et confirmez la présence de `profiles`, `player_stats`,
+   `coffre_balances`, `unlocked_spells`, `account_items`, `friend_requests`, `friendships`,
+   `account_gold_wallets`, `meta_character_profiles`, `meta_owned_skills` et `meta_owned_gems`.
 
 ### Méthode B — CLI Supabase (utilisateurs avancés)
 
@@ -228,10 +241,16 @@ Le jeu propose la double authentification par application TOTP (Google Authentic
 3. Lancez le serveur de développement du client :
 
    ```bash
-   pnpm --filter @village-survivor/client dev
+   pnpm dev
    ```
 
-4. Ouvrez [http://localhost:5173](http://localhost:5173) dans votre navigateur.
+4. Ouvrez [http://127.0.0.1:5173](http://127.0.0.1:5173) dans votre navigateur. Le serveur
+   n'écoute que sur cette adresse ; si vous préférez `http://localhost:5173`, ajoutez les deux
+   formes aux **Redirect URLs** de l'étape 4.
+
+   > Ce guide ne concerne que le **lobby** : connexion, hub multijoueur et méta-progression. La
+   > page de jeu `http://127.0.0.1:5173/play.html` fonctionne en solo sans aucune configuration
+   > Supabase.
 5. Testez le flux complet :
    - créez un compte par email/mot de passe,
    - activez la double authentification (scannez le QR code avec votre application TOTP),
@@ -249,4 +268,5 @@ Le jeu propose la double authentification par application TOTP (Google Authentic
 | Le client Supabase lève une erreur au démarrage du type « supabaseUrl is required » ou « Invalid API key » | `VITE_SUPABASE_URL` ou `VITE_SUPABASE_ANON_KEY` absent(e) ou mal copié(e) dans `.env` | Relisez l'étape 2 : vérifiez que le fichier s'appelle bien `.env` (pas `.env.example`), qu'il est à la racine du dépôt, et que les valeurs ne contiennent pas d'espace ou de guillemets superflus. Redémarrez `pnpm --filter @village-survivor/client dev` après toute modification de `.env` (Vite ne recharge pas toujours les variables d'environnement à chaud) |
 | Le bouton « Se connecter avec Google » (ou GitHub) ne fait rien ou renvoie une erreur « provider is not enabled » | Le provider n'a pas été activé côté Supabase | Retournez dans **Authentication > Providers** et vérifiez que la bascule **Enable** est bien activée pour le provider concerné, puis **Save** |
 | L'inscription par email reste bloquée sur « vérifiez votre boîte mail », rien ne se passe ensuite en dev | L'option **Confirm email** est activée alors que vous testez en local sans vérifier vos emails | Soit consultez la boîte mail utilisée (y compris les spams) et cliquez sur le lien reçu, soit désactivez temporairement **Confirm email** pour le développement (étape 8), en la réactivant avant la mise en production |
-| Erreur liée aux tables manquantes (`relation "profiles" does not exist`, etc.) | La migration SQL n'a pas été appliquée | Reprenez l'étape 3 et exécutez `supabase/migrations/0001_init.sql` via le SQL Editor ou `supabase db push` |
+| Erreur liée aux tables manquantes (`relation "profiles" does not exist`, `relation "meta_character_profiles" does not exist`, etc.) | Une ou plusieurs migrations n'ont pas été appliquées | Reprenez l'étape 3 et exécutez **les quatre** fichiers de `supabase/migrations/` dans l'ordre, ou lancez `supabase db push` |
+| La page reste blanche ou le navigateur ne joint pas le serveur sur `http://localhost:5173` | Vite n'écoute que sur `127.0.0.1` ; `localhost` peut être résolu en IPv6 (`::1`) | Utilisez `http://127.0.0.1:5173`, et ajoutez cette forme aux **Redirect URLs** de Supabase si vous vous connectez depuis elle |

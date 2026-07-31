@@ -6,6 +6,160 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 
 ## [Non publié]
 
+Le dépôt contient deux jeux successifs. Le MVP « M1 » (exploration diurne, défense nocturne) a
+été livré du 20 au 26 juillet 2026, puis **remplacé** par le jeu « Tower » du 28 au 30 juillet.
+Les deux sont consignés ci-dessous, dans cet ordre.
+
+---
+
+## Déploiement LAN — 31 juillet 2026
+
+### Ajouté
+
+- **déploiement local complet, jouable en multijoueur sans internet** (`deploy/lan/`). Une
+  stack Docker héberge Postgres, GoTrue, PostgREST et Realtime ; un nginx sert le jeu et fait
+  passerelle vers ces trois services sur **une seule origine**, ce qui supprime toute question
+  de CORS. Ni Studio, ni Storage, ni Edge Functions : le jeu ne s'en sert pas ;
+- `setup.mjs` détecte l'adresse locale, écarte les interfaces virtuelles, génère le secret JWT
+  et les clés `anon` et `service_role` qui en dérivent, et écrit les deux fichiers
+  d'environnement ;
+- `apply-migrations.ps1` applique les quatre migrations du jeu après le démarrage de
+  l'authentification — elles ne peuvent pas être jouées à l'initialisation de Postgres, la
+  première référençant `auth.users`, table créée par GoTrue ;
+- `check-realtime.mjs` vérifie le transport de la coopération en faisant dialoguer deux pairs
+  sur un même canal, sans dépendance : c'est le contrôle qui distingue « le jeu démarre » de
+  « le multijoueur fonctionne » ;
+- ESLint connaît désormais les scripts d'exploitation Node de `deploy/`.
+
+### Corrigé
+
+- **la graine de partie n'est plus tirée avec `crypto.randomUUID`**, qui n'est exposée que dans
+  un contexte sécurisé et valait donc `undefined` dès que le jeu n'était plus servi depuis
+  `localhost` — le lancement d'une partie échouait sur toute adresse de réseau local. Les trois
+  points d'appel partagent maintenant un seul assistant reposant sur `crypto.getRandomValues`,
+  disponible dans tous les contextes.
+
+### Limites connues du déploiement LAN
+
+- tout circule en clair : ce déploiement vise un réseau local de confiance, pas internet ;
+- **les connexions Google et GitHub ne fonctionnent pas en LAN** : elles exigent un contexte
+  sécurisé et un fournisseur capable de rappeler l'adresse, ce qu'une adresse privée en HTTP
+  n'offre pas. La connexion par courriel et mot de passe fonctionne ;
+- l'adresse du serveur est figée dans le paquet à la compilation : en changer impose de
+  reconstruire le client.
+
+---
+
+## Nettoyage — 31 juillet 2026
+
+### Retiré
+
+- **suppression de l'ancien jeu M1** : 38 fichiers et 7 612 lignes inatteignables depuis les
+  points d'entrée du client — `GameScene`, `LocalSession`, `coopSession`, le module `render/`,
+  les écrans d'inventaire, d'échange et de menu, `GameSimulation` et ses systèmes, l'ancien
+  contenu validé par Zod, l'ancien protocole et leurs tests. La suite de tests passe de 167 à
+  100 cas, tous portant désormais sur le jeu réellement exécuté ;
+- la dépendance `zod` disparaît avec l'ancien contenu, seul à l'utiliser ;
+- le script `test:e2e` disparaît avec le scénario navigateur qu'il exécutait.
+
+### Ajouté
+
+- **smoke test de production rétabli et remis en intégration continue.** Il vise `play.html`,
+  qui démarre sans projet Supabase, et vérifie que le jeu se lance réellement, que le build
+  n'expose aucune API de débogage et que la graine reçue par l'URL n'est jamais interprétée
+  comme du HTML ;
+- **scénario de performance rétabli** sur le jeu Tower : coût par tick sous 200 monstres, coût
+  d'une projection d'état et contrôle de reproductibilité à graine identique. La mesure porte
+  sur les ticks réellement simulés et s'arrête à la défaite, pour rester valable si
+  l'équilibrage évolue.
+
+### Documentation
+
+- l'ensemble de la documentation décrivait encore le jeu M1 supprimé ; elle a été refaite à
+  partir du code ;
+- deux ADR consignent des décisions appliquées sans arbitrage préalable :
+  [0008](docs/decisions/0008-p2p-lockstep-coop.md) pour la coopération pair-à-pair et
+  [0009](docs/decisions/0009-account-persistence.md) pour la persistance de compte ; les ADR
+  0004 et 0006 passent en « Remplacé » sans que leur contenu soit modifié ;
+- la matrice de traçabilité recense onze exigences qui ne sont plus tenues.
+
+---
+
+## Jeu « Tower » — 27 au 30 juillet 2026
+
+### Ajouté
+
+- **Comptes et progression persistante** (27 juillet) : authentification Supabase par
+  email/mot de passe, Google et GitHub, double authentification TOTP, profil joueur et
+  statistiques de parties ;
+- **Hub multijoueur** (27 juillet) : amis, code ami, présence temps réel, invitations, salon par
+  code, chef de salon et lancement groupé ;
+- **Séparation du lobby et du jeu** (28 juillet) : `index.html` porte l'authentification et le
+  hub, `play.html` porte la partie ; les deux pages sont construites séparément ;
+- **Nouveau jeu Tower** (28 juillet) : contrat de protocole dédié, moteur `TowerSimulation`,
+  rendu, HUD et boutique de tourelle ; un Cœur, quatre tourelles fixes, des vagues sans fin, une
+  arme à feu et une visée à la souris ;
+- **Arsenal personnel** (29 juillet) : trois armes permutables — fusil, tromblon, longue-vue —
+  avec progression propre à chaque arme, et or de compte crédité en fin de partie ;
+- **Préférences visuelles** (30 juillet) : couleurs du joueur, des tourelles, des projectiles et
+  du HUD, modifiables et sans effet sur la simulation ;
+- **Arsenal de défense, Phase 3** (30 juillet) : modules uniques de tourelle, super-modules du
+  marchand, priorités de ciblage et améliorations globales du réseau défensif ;
+- **Méta-progression, Phase 4** (30 juillet) : jusqu'à trois profils de personnage, voies de
+  bénédiction, compétences de compte, gemmes sertissables et forge, tous payés en or de compte ;
+- **Monde vivant, Phase 5** (30 juillet) : quatre biomes en rotation déterministe, affinités
+  élémentaires, raretés de monstres et boss périodique ;
+- **Quêtes et marchand partagés** (30 juillet) : quête commune alimentée par les éliminations de
+  toute l'équipe, récompensée en ferraille, et rotation d'offres rares par vague ;
+- **Protection de l'atelier** (30 juillet) : un joueur dont l'atelier de tourelle est ouvert et
+  validé par la simulation est ignoré par les monstres.
+
+### Modifié
+
+- **La coopération est passée d'un modèle hôte-autoritaire à un lockstep pair-à-pair**
+  (30 juillet). Chaque navigateur exécute la même simulation et n'échange que des entrées ;
+  Supabase Realtime ne sert plus que de bus de messages. Ajoute l'ordonnancement du roster à une
+  frontière de tick, les empreintes d'état, et la réintégration d'un joueur en cours de partie.
+  Consigné dans [ADR-0008](docs/decisions/0008-p2p-lockstep-coop.md) ;
+- la partie n'a plus de condition de victoire : elle se termine uniquement par une défaite ;
+- la mort n'est plus définitive : en coopération, un avatar tombé se relève seul après trente
+  secondes ; en solo, elle reste une défaite immédiate ;
+- **la minification de production est désactivée** (27 juillet) car rolldown/oxc cassait le rendu
+  du canvas. Le paquet de la page de jeu pèse en conséquence 7,4 Mo non minifié.
+
+### Retiré
+
+- **les tests navigateur ont été retirés de la CI** (27 juillet) : l'authentification obligatoire
+  interpose un écran de connexion, et la CI n'a pas de clés Supabase. Les scénarios existants
+  n'ont jamais été adaptés et échouent aujourd'hui ;
+- **l'API de débogage `window.__VILLAGE_SURVIVOR_DEBUG__` a disparu** avec l'ancien point
+  d'entrée. Plus aucun fichier source ne la définit, alors que la documentation et les tests
+  Playwright la supposent présente ;
+- les métriques de développement — FPS, durée de tick, nombre d'entités — ne sont plus exposées ;
+- les pages de diagnostic `phasertest.html` et `gametest.html`, ajoutées le 27 juillet pour
+  isoler un problème de rendu, ont été supprimées après correction.
+
+### Sécurité
+
+- le schéma Supabase applique `row level security` sur toutes les tables exposées, avec des
+  fonctions `security definer` à `search_path` fixé et une identité prise du JWT via
+  `auth.uid()` ; aucun identifiant de compte n'est accepté en paramètre ;
+- les crédits d'or passent exclusivement par une RPC atomique et bornée, sans politique
+  d'écriture directe sur le portefeuille ;
+- seule la clé publique `anon` est utilisée par le client, et `.env` est ignoré par Git ;
+- **limite assumée** : la simulation étant hébergée par le navigateur, le montant d'or crédité
+  en fin de partie est déclaré par le client. Voir
+  [ADR-0009](docs/decisions/0009-account-persistence.md) ;
+- **limite assumée** : le lockstep pair-à-pair n'offre aucune protection contre la triche ; les
+  empreintes d'état détectent une divergence sans pouvoir l'arbitrer.
+
+---
+
+## MVP « M1 » — 20 au 26 juillet 2026 — remplacé
+
+Ce jalon a été entièrement livré, puis rendu inatteignable par le passage au jeu Tower. Son code
+subsiste dans le dépôt sans être exécuté ; sa suppression est en attente.
+
 ### Ajouté
 
 - premier MVP solo jouable avec carte issue d'une graine, cycles jour/nuit et vague
@@ -69,13 +223,14 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 - le rendu du monde est organisé en passes ordonnées, les ombres précédant tous les
   corps et les barres de vie les suivant, afin de rester lisible en cas de
   chevauchement ;
-
 - gagner un niveau n'interrompt plus l'action : les améliorations dues s'empilent, un
   rappel pulsé les signale et le joueur ouvre le panneau avec `F` quand il le peut,
   puis choisit à la souris ou avec `1`, `2` et `3` ;
 - un niveau gagné alors qu'un choix est déjà en attente ne suspend plus la
   progression, et chaque offre est tirée au moment d'être présentée pour qu'aucune
   amélioration ne soit proposée deux fois ;
+- une coopération hôte-autoritaire sur Supabase Realtime a été ajoutée le 28 juillet, avant
+  d'être remplacée avec le jeu lui-même.
 
 ### Corrigé
 
@@ -94,8 +249,8 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 
 ### Sécurité
 
-- l'API de débogage est limitée au développement et son absence du build est testée ;
-- les données issues de l'URL sont échappées avant affichage et couvertes par le smoke
+- l'API de débogage était limitée au développement et son absence du build était testée ;
+- les données issues de l'URL sont échappées avant affichage et étaient couvertes par le smoke
   test de production ;
 - la provenance et les droits des futurs assets deviennent une exigence explicite ;
 - la politique interdit les secrets dans Git et diffère toute télémétrie non validée.

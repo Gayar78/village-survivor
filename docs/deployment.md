@@ -1,132 +1,166 @@
 # Déploiement
 
-Statut : **build de production et CI configurés, hébergement non configuré**
-Dernière mise à jour : 21 juillet 2026
+Statut : **build de production fonctionnel, aucun hébergement configuré**
+Dernière mise à jour : 31 juillet 2026
 
-## 1. Objectifs
+## 1. État réel
 
-- rendre chaque changement vérifiable avant publication ;
-- séparer local, preview/staging et production ;
-- héberger le client statique à faible coût ;
-- conserver le futur serveur portable ;
-- empêcher toute publication de secret ;
-- permettre un retour à une version connue.
+Le client produit un site statique dans `apps/client/dist`, composé de deux pages :
+`index.html` (lobby) et `play.html` (partie). Le jeu n'est **hébergé nulle part** : ni compte
+Cloudflare, ni URL publique, ni pipeline de publication.
 
-## 2. État actuel
+Il n'existe aucun serveur de jeu à déployer — la simulation tourne dans le navigateur et la
+coopération est pair-à-pair. Le seul service externe est **Supabase**, qui n'est pas déployé par
+ce dépôt mais configuré à la main dans son tableau de bord.
 
-Le client M1 produit un site statique dans `apps/client/dist`. Le workflow GitHub
-Actions installe les dépendances avec le lockfile, contrôle formatage, lint, types,
-tests et build, puis exécute les scénarios Playwright sur le build de production et
-sur le serveur de développement. Le smoke test de production vérifie notamment que
-l'API de débogage n'est pas exposée.
+## 2. Intégration continue
 
-La configuration Cloudflare, l'URL publique et l'image Docker du futur serveur ne sont
-pas encore créées. M1 est donc déployable comme site statique, mais pas encore publié.
+Le workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) s'exécute sur `main`, sur
+les branches `codex/**` et sur chaque pull request :
 
-Le dépôt GitHub public est
-[HidaAkawa/village_survivor](https://github.com/HidaAkawa/village_survivor).
+1. checkout ;
+2. installation de pnpm 11.15.1 ;
+3. Node.js 24 avec cache pnpm ;
+4. `pnpm install --frozen-lockfile` ;
+5. `pnpm format:check` ;
+6. `pnpm lint` ;
+7. `pnpm typecheck` ;
+8. `pnpm test` ;
+9. `pnpm build` ;
+10. installation du navigateur Playwright ;
+11. `pnpm test:smoke`.
 
-## 3. Environnements cibles
+Les tests navigateur avaient été retirés le 27 juillet 2026, quand l'authentification
+obligatoire est apparue : l'application affichait d'abord l'écran de connexion, que les
+scénarios ne connaissaient pas, et la CI n'a pas de clés Supabase.
 
-| Environnement | Usage | Client | Serveur | Données persistantes |
-|---|---|---|---|---|
-| Local | Développement et tests | Vite local | Processus Node futur | Aucune |
-| Preview / staging | Validation d'une branche ou version candidate | Cloudflare, URL isolée | Déploiement Docker futur | Aucune en V1 |
-| Production | Version humaine validée | Cloudflare Workers Static Assets | Colyseus Cloud ou hôte Docker futur | Aucune en V1 |
+**Le smoke test a été rétabli le 31 juillet 2026** en le faisant viser `play.html` plutôt que
+`/`. Cette page démarre sans projet Supabase, ce qui rend le test exécutable partout, y compris
+en CI. Il vérifie que le jeu se lance réellement dans un navigateur, que le build n'expose
+aucune API de débogage et que la graine reçue par l'URL n'est jamais interprétée comme du HTML.
 
-Une preview ne doit pas partager par défaut des secrets ou ressources de production.
+**Ce qui n'est toujours pas couvert** : le lobby. Connexion, hub et lancement coopératif n'ont
+aucun test de bout en bout, faute de mode invité ou de mock d'authentification.
 
-## 4. Pipeline de contrôle
+Aucune étape de publication n'existe, donc aucune règle du type « un échec interdit le
+déploiement » ne s'applique encore.
 
-Le pipeline M1 suit cet ordre :
+## 3. Variables d'environnement
 
-1. checkout du commit ;
-2. installation de la version de pnpm verrouillée ;
-3. `pnpm install` avec lockfile non modifiable ;
-4. vérification du formatage ;
-5. `pnpm lint` ;
-6. `pnpm typecheck` ;
-7. `pnpm test` ;
-8. `pnpm build` ;
-9. smoke tests Playwright sur le build ;
-10. scénarios navigateur sur le serveur de développement.
+Le client lit exactement deux variables, chargées depuis un `.env` **à la racine du monorepo**
+(et non dans `apps/client` — voir le champ `envDir` de la configuration Vite) :
 
-La publication sera ajoutée uniquement pour les branches et environnements autorisés.
+| Variable | Rôle |
+|---|---|
+| `VITE_SUPABASE_URL` | adresse du projet Supabase |
+| `VITE_SUPABASE_ANON_KEY` | clé publique `anon` |
 
-Les étapes de déploiement dépendent des contrôles précédents. Un échec interdit la
-publication du commit concerné.
+Ces deux valeurs sont **intégrées au paquet JavaScript** et donc publiques. C'est le
+fonctionnement prévu de Supabase : la sécurité repose sur les politiques RLS, pas sur le secret
+de la clé `anon`.
 
-## 5. Client
+La clé `service_role`, elle, contourne toutes les politiques RLS. Elle ne doit jamais figurer
+dans un `.env` lu par Vite, ni dans le dépôt, ni dans un bundle. Aucun composant de ce projet
+n'en a besoin.
 
-### Cible
+Sans ces variables, `play.html` reste jouable en solo ; `index.html` affiche « Configuration
+requise ».
 
-Vite produit un bundle statique du client Phaser. Ce bundle est destiné à Cloudflare
-Workers Static Assets.
+## 4. Base de données
 
-### Contraintes
+Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — quatre fichiers SQL
+idempotents. **Leur application est manuelle** : éditeur SQL du tableau de bord, ou
+`supabase db push`. Aucun automatisme ne les applique, et rien ne vérifie qu'un environnement est
+à jour. Voir [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md).
 
-- aucune variable secrète ne doit être intégrée au bundle ;
-- les variables publiques sont explicitement préfixées et documentées ;
-- le build de production n'expose pas l'API de débogage ;
-- les assets utilisent des noms versionnés ou des règles de cache compatibles avec un
-  retour arrière ;
-- le chargement d'une route publique doit fonctionner sans état serveur en V1.
+Une mise à jour du client qui suppose une migration non appliquée casse silencieusement les
+fonctionnalités concernées.
 
-### Promotion envisagée
+## 5. Build de production
 
-- les branches ou pull requests peuvent produire une preview ;
-- `main` produit un artefact candidat ;
-- la promotion en production intervient après contrôles et validation humaine du
-  gameplay ;
-- l'URL et la stratégie exacte de promotion seront fixées lors de la configuration du
-  compte Cloudflare.
+```bash
+pnpm build
+```
 
-## 6. Serveur multijoueur futur
+Points à connaître :
 
-Le serveur sera empaqueté dans une image Docker :
+- **la minification est désactivée** dans la configuration Vite. Ce n'est pas un oubli : depuis
+  le 27 juillet 2026, rolldown/oxc cassait le rendu du canvas. Le paquet de la page de jeu pèse
+  en conséquence environ 7,2 Mo (1,3 Mo compressé) ;
+- **les sourcemaps sont produites et publiées**, ce qui expose le code source d'origine ;
+- deux points d'entrée sont construits, `index.html` et `play.html`.
 
-- processus non privilégié lorsque la plateforme le permet ;
-- configuration par variables d'environnement ;
-- endpoint de santé ;
-- arrêt propre des rooms ;
-- logs sur la sortie standard sans donnée sensible ;
-- aucune dépendance indispensable au disque local ;
-- image testée avant publication ;
-- version liée au commit Git et compatible avec la version du protocole.
+Ces trois points sont acceptables pour un projet non publié. Aucun ne l'est pour une mise en
+ligne publique.
 
-Le choix entre Colyseus Cloud et un hébergeur Docker simple sera effectué au moment où
-une room minimale existe, selon coût, observabilité et simplicité d'exploitation.
+## 6. Cible d'hébergement
 
-## 7. Secrets et autorisations
+La cible reste **Cloudflare Workers Static Assets** pour un site statique, décidée au cadrage et
+jamais remise en cause. Aucun serveur n'est à héberger.
 
-Les secrets de déploiement sont stockés dans les environnements GitHub ou dans le
-gestionnaire de secrets de l'hébergeur. Ils ne sont jamais :
+Le déploiement suppose, en plus de la mise en ligne des fichiers :
 
-- committés dans un fichier `.env` ;
-- écrits dans la documentation ;
-- injectés dans le JavaScript du client ;
-- affichés dans les logs ;
-- partagés entre preview et production sans nécessité explicite.
+- l'ajout de l'URL de production dans **Authentication > URL Configuration** du projet Supabase,
+  faute de quoi les connexions Google et GitHub échoueront ;
+- la mise à jour des URL de rappel dans les applications OAuth Google et GitHub ;
+- l'activation de la confirmation d'email, à garder active en production.
 
-L'ajout d'un nouveau secret doit documenter son propriétaire, sa portée, sa rotation
-et l'environnement qui l'utilise, sans révéler sa valeur.
+## 7. Environnements
 
-## 8. Retour arrière
+| Environnement | Client | Supabase | État |
+|---|---|---|---|
+| Local | `pnpm dev` sur `127.0.0.1:5173` | projet personnel du développeur | fonctionnel |
+| **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080` | stack Docker locale | **fonctionnel** |
+| Preview / staging | non configuré | non configuré | inexistant |
+| Production | non configuré | non configuré | inexistant |
 
-Pour le client statique, le retour arrière doit pouvoir republier un artefact validé
-d'un commit antérieur. Pour le serveur futur, les images sont identifiées par un tag
-immuable lié au commit. Aucune migration de base de données n'est concernée en V1.
+### Environnement LAN
 
-Un rollback ne remplace pas l'analyse de l'incident : la cause et la correction sont
-documentées avant une nouvelle promotion.
+Depuis le 31 juillet 2026, le jeu peut tourner en multijoueur sur un réseau local sans aucune
+dépendance à internet. Une stack Docker héberge Postgres, GoTrue, PostgREST et Realtime, et un
+nginx sert le client tout en faisant passerelle vers ces trois services **sur une seule
+origine** — ce qui supprime toute question de CORS.
 
-## 9. Prérequis non encore fournis
+Procédure complète, pièges et portée de sécurité : [`../deploy/lan/README.md`](../../deploy/lan/README.md).
 
-- compte et projet Cloudflare ;
-- URL ou domaine de production ;
+Trois points structurants en découlent :
+
+- **l'adresse du serveur est figée dans le paquet** par Vite, donc changer d'adresse impose de
+  reconstruire le client ;
+- **les migrations ne peuvent pas être jouées à l'initialisation de Postgres**, car la première
+  référence `auth.users`, table créée par GoTrue à son premier démarrage ;
+- **les connexions OAuth ne fonctionnent pas en LAN** : servi en HTTP clair, le navigateur
+  n'accorde pas de contexte sécurisé, et les fournisseurs ne peuvent pas rappeler une adresse
+  privée. La connexion par courriel et mot de passe, elle, fonctionne.
+
+Un environnement de preview partageant le projet Supabase de production partagerait aussi ses
+comptes et ses données. Si des previews sont mises en place, elles devront viser un projet
+Supabase distinct.
+
+## 8. Secrets
+
+Aucun secret n'est commité : `.env` et `.env.*` sont ignorés par Git, à l'exception de
+`.env.example` qui ne contient que des clés vides.
+
+Les secrets réels du projet ne vivent pas dans le dépôt mais dans le tableau de bord Supabase :
+identifiants OAuth Google et GitHub, mot de passe de la base, clé `service_role`. Leur
+propriétaire, leur rotation et leur périmètre ne sont documentés nulle part — c'est une lacune à
+combler avant toute mise en ligne.
+
+## 9. Retour arrière
+
+Pour le client statique, republier l'artefact d'un commit antérieur suffira lorsqu'un
+hébergement existera.
+
+Les migrations, en revanche, **n'ont pas de chemin de retour arrière** : elles ne comportent pas
+de section `down`, et rien n'articule une version du client avec une version du schéma. Un
+retour arrière du client après une migration appliquée n'est pas couvert.
+
+## 10. Prérequis non fournis
+
+- compte et projet Cloudflare, URL ou domaine de production ;
+- projet Supabase de production, distinct de celui de développement ;
 - politique de preview ;
-- secrets GitHub nécessaires ;
-- choix de l'hébergement serveur lorsque le multijoueur commencera ;
-- budgets de coût autorisés.
-
-Ces prérequis ne bloquent ni l'initialisation locale, ni le premier incrément jouable.
+- secrets GitHub nécessaires à une publication ;
+- budgets de coût autorisés ;
+- licence du dépôt public.
