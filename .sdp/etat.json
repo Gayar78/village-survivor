@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "version": "v1",
+  "phase": 1,
+  "phase_nom": "objectif",
+  "iteration": 1,
+  "profil": {
+    "code": "non",
+    "discipline_process": "moyenne",
+    "niveau_archi": "notion"
+  },
+  "type_projet": "web",
+  "origine": "existant",
+  "assurance": {
+    "niveau": null,
+    "motifs": [],
+    "reviser_si": []
+  },
+  "complexite": {
+    "multi_composants": null,
+    "asynchrone": null,
+    "api_exposee": null,
+    "donnees_persistantes": null
+  },
+  "observabilite": {
+    "niveau": null,
+    "unite_tracee": null,
+    "niveau_log_defaut": null
+  },
+  "hypotheses_ouvertes": [],
+  "verrouille": [],
+  "derogations": [],
+  "dernier_commit": "c7b0cb0",
+  "maj": "2026-07-31"
+}
