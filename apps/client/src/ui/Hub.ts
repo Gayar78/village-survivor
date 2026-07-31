@@ -10,6 +10,7 @@ import {
   type LaunchPayload,
   type PresenceStatus,
 } from '../hub/types.js';
+import { randomSeed } from '../randomSeed.js';
 import { FriendsPanel } from './FriendsPanel.js';
 import { Toasts } from './Toasts.js';
 
@@ -42,13 +43,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-/** Génère une graine de monde partagée (8 caractères hexadécimaux). */
-function randomSeed(): string {
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /** Deux initiales majuscules à partir d'un nom d'affichage. */

@@ -1,0 +1,172 @@
+# Village Survivor — déploiement LAN auto-hébergé.
+#
+# Stack réduite aux seuls services dont le jeu a besoin, dérivée de la configuration
+# officielle `supabase/docker` :
+#
+#   db       Postgres (image Supabase : rôles, extensions et schémas attendus)
+#   auth     GoTrue — comptes, sessions, TOTP
+#   rest     PostgREST — tables et RPC, sous politiques RLS
+#   realtime Realtime — présence du hub ET transport du lockstep coopératif
+#   web      nginx — sert le jeu ET fait passerelle vers les trois services ci-dessus
+#
+# Ni Studio, ni Storage, ni Edge Functions, ni Supavisor : le jeu ne s'en sert pas.
+#
+# `web` expose tout sur une seule origine (`http://<LAN_HOST>:<WEB_PORT>`), ce qui
+# supprime toute question de CORS : pour le navigateur, le jeu et l'API sont le même site.
+
+name: village-survivor-lan
+
+services:
+  db:
+    container_name: vs-db
+    image: supabase/postgres:17.6.1.136
+    restart: unless-stopped
+    ports:
+      # Exposé sur la boucle locale uniquement : utile pour psql et les migrations,
+      # jamais joignable depuis le LAN.
+      - '127.0.0.1:54322:5432'
+    volumes:
+      - vs-db-data:/var/lib/postgresql/data
+      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql
+      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql
+      # Migrations du jeu, montées mais **pas** jouées à l'initialisation : elles référencent
+      # `auth.users`, table créée par GoTrue à son premier démarrage, donc après Postgres.
+      # Elles sont appliquées ensuite par `deploy/lan/apply-migrations.ps1`.
+      - ../../supabase/migrations:/game-migrations:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres', '-h', 'localhost']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      # La première initialisation joue les migrations de l'image puis nos scripts : sans
+      # période de grâce, les services dépendants voient un conteneur « unhealthy » et
+      # abandonnent avant même que Postgres ait fini de se construire.
+      start_period: 60s
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: 3600
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+
+  auth:
+    container_name: vs-auth
+    image: supabase/gotrue:v2.189.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:9999/health']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${PUBLIC_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${PUBLIC_URL}
+      GOTRUE_URI_ALLOW_LIST: ${PUBLIC_URL},${PUBLIC_URL}/**
+      GOTRUE_DISABLE_SIGNUP: 'false'
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_ISSUER: ${PUBLIC_URL}/auth/v1
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_EXTERNAL_PHONE_ENABLED: 'false'
+      # Aucun serveur SMTP sur un LAN : sans auto-confirmation, aucune inscription
+      # ne pourrait jamais aboutir puisque le lien de validation n'arriverait nulle part.
+      GOTRUE_MAILER_AUTOCONFIRM: 'true'
+      # La double authentification TOTP du jeu passe par ce facteur.
+      GOTRUE_MFA_ENABLED: 'true'
+      GOTRUE_MFA_TOTP_ENROLL_ENABLED: 'true'
+      GOTRUE_MFA_TOTP_VERIFY_ENABLED: 'true'
+
+  rest:
+    container_name: vs-rest
+    image: postgrest/postgrest:v14.12
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'postgrest', '--ready']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+      PGRST_ADMIN_SERVER_PORT: 3001
+      PGRST_ADMIN_SERVER_HOST: localhost
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+
+  realtime:
+    # Ce nom de conteneur n'est pas cosmétique : Realtime déduit l'identifiant de son
+    # locataire du sous-domaine de l'en-tête `Host`. Le renommer casse le websocket,
+    # et donc toute la coopération.
+    container_name: realtime-dev.supabase-realtime
+    image: supabase/realtime:v2.102.3
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: postgres
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: '10000'
+      APP_NAME: realtime
+      # Crée le locataire `realtime-dev` au démarrage : sans cela, aucun canal n'existe.
+      SEED_SELF_HOST: 'true'
+      RUN_JANITOR: 'true'
+      DISABLE_HEALTHCHECK_LOGGING: 'true'
+
+  web:
+    container_name: vs-web
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_healthy
+    ports:
+      # Sur toutes les interfaces : c'est ce qui rend le jeu joignable depuis le LAN.
+      - '${WEB_PORT}:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../../apps/client/dist:/usr/share/nginx/html:ro
+
+volumes:
+  vs-db-data:

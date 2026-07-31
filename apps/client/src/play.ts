@@ -12,6 +12,7 @@ import { authService } from './account/authService.js';
 import { statsService } from './account/statsService.js';
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
+import { randomSeed } from './randomSeed.js';
 import { TowerScene } from './scenes/TowerScene.js';
 import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
@@ -103,7 +104,7 @@ function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
 }
 
 const parameters = new URLSearchParams(location.search);
-const seed = parameters.get('seed') ?? crypto.randomUUID().slice(0, 8);
+const seed = parameters.get('seed') ?? randomSeed();
 
 function goToLobby(): void {
   location.assign('index.html');

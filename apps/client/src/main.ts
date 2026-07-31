@@ -19,6 +19,7 @@ import type {
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
+import { randomSeed } from './randomSeed.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
@@ -307,10 +308,6 @@ metaBuildScreen.hide();
 
 const compendium = new Compendium(compendiumElement, showMenu);
 compendium.hide();
-
-function randomSeed(): string {
-  return crypto.randomUUID().slice(0, 8);
-}
 
 async function beginClassic(): Promise<void> {
   const seed = randomSeed();

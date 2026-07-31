@@ -26,4 +26,21 @@ export default tseslint.config(
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
+  {
+    // Scripts d'exploitation du déploiement LAN : ils s'exécutent dans Node, pas dans le
+    // navigateur, et écrivent volontairement sur la sortie standard.
+    files: ['deploy/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        WebSocket: 'readonly',
+      },
+    },
+  },
 );
