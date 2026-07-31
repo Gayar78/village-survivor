@@ -4,6 +4,19 @@
 **« Tower »** — vous défendez un Cœur au centre d'une plaine contre des vagues de monstres qui
 ne cessent jamais d'arriver.
 
+## Objectif
+
+Livrer un vrai jeu, pour de vrais joueurs — et le prouver d'abord en donnant à Gayar, Hida et
+Clem l'envie d'y revenir d'eux-mêmes.
+
+Le jeu existe et fonctionne ; ce qui n'est pas établi, c'est qu'il donne envie d'y revenir.
+La réussite se mesure donc sur un mois : les trois lancent chacun au moins trois parties de
+leur propre initiative, et le groupe écrit au moins cinq propositions d'amélioration.
+
+Le public est un cercle fermé de 5 à 20 personnes, par sessions de 2 à 4 joueurs. Pas
+d'ouverture publique, pas d'argent réel ou virtuel. Détail complet dans
+[`docs/objectif.md`](docs/objectif.md).
+
 ## État du projet
 
 Le jeu jouable est un **twin-stick shooter de survie**, solo ou coopératif jusqu'à dix joueurs.

@@ -11,7 +11,7 @@ Ce document est la porte d'entrée de la documentation. Le projet a été placé
 
 ## Lire d'abord
 
-1. [Objectif](objectif.md) — *à produire en phase 1*
+1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
 2. [Spécification non-fonctionnelle](spec-nf.md) — *à produire en phase 2*
 3. [Spécification fonctionnelle](spec-fonctionnelle.md) — *à produire en phase 3*
 4. [Feedback](feedback.md) — *à partir de la phase 5*
@@ -25,7 +25,7 @@ En attendant que ces documents existent, la navigation courante reste
 
 | Artefact | Statut | Pourquoi il existe | Dernière revue |
 |---|---|---|---|
-| Objectif | absent | cadrer le résultat attendu | — |
+| Objectif | approuvé | cadrer le résultat attendu | 31/07/2026 |
 | Spécification non-fonctionnelle | absent | qualité, architecture, observabilité | — |
 | Spécification fonctionnelle | absent | comportements et tests | — |
 | Règles de gameplay courantes | approuvé | photographie des règles réellement codées | 31/07/2026 |
@@ -51,7 +51,8 @@ clair, plutôt que de les soumettre à l'arbitrage.
 
 | ID | Décision provisoire | Impact | Validation attendue |
 |---|---|---|---|
-| — | *aucune à ce stade* | | |
+| HYP-001 | Le critère de réussite est mesuré sur trois personnes nommées, pas sur un échantillon plus large | Un résultat positif ne prouve pas l'intérêt pour un joueur extérieur | Premiers retours d'un joueur invité hors du groupe |
+| HYP-002 | Le jeu reste en réseau local ou en accès privé pendant la période d'observation | Aucune donnée d'usage venant d'inconnus ne sera collectée | Décision d'ouverture publique |
 
 ## Points ouverts hérités de l'état du produit
 
