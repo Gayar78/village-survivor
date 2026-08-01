@@ -125,7 +125,7 @@ dépendance à internet. Une stack Docker héberge Postgres, GoTrue, PostgREST e
 nginx sert le client tout en faisant passerelle vers ces trois services **sur une seule
 origine** — ce qui supprime toute question de CORS.
 
-Procédure complète, pièges et portée de sécurité : [`../deploy/lan/README.md`](../../deploy/lan/README.md).
+Procédure complète, pièges et portée de sécurité : [`deploy/lan/README.md`](../deploy/lan/README.md).
 
 Trois points structurants en découlent :
 

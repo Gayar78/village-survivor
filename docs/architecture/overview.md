@@ -131,7 +131,8 @@ Supabase remplit trois rôles distincts :
 
 1. **authentification** — email/mot de passe, Google, GitHub, TOTP ;
 2. **persistance de compte** — or, profils de personnage, bénédictions, compétences, gemmes,
-   statistiques, amis ; quatre migrations dans `supabase/migrations` ;
+   statistiques, amis ; cinq migrations dans `supabase/migrations`, la dernière exigeant la
+   double authentification pour toucher aux données de compte ;
 3. **transport temps réel** — présence, invitations, et le bus de messages de la coopération.
 
 La sécurité repose sur les politiques RLS : chaque compte ne lit et n'écrit que ses propres
@@ -198,7 +199,7 @@ intégration continue, où aucune clé n'existe. Le lobby, lui, n'a aucun test d
 il en faudrait un mode invité ou un mock de l'authentification.
 
 Le benchmark mesure le coût **par tick réellement simulé** et s'arrête à la défaite, de sorte
-que la mesure reste valable si l'équilibrage évolue. Ordre de grandeur observé : 220 µs par tick
+que la mesure reste valable si l'équilibrage évolue. Ordre de grandeur observé : 211 µs par tick
 avec 200 monstres, 17 µs par projection d'état.
 
 ## 12. Dette structurelle

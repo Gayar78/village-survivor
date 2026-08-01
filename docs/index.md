@@ -12,9 +12,13 @@ Ce document est la porte d'entrée de la documentation. Le projet a été placé
 ## Lire d'abord
 
 1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
-2. [Spécification non-fonctionnelle](spec-nf.md) — *à produire en phase 2*
-3. [Spécification fonctionnelle](spec-fonctionnelle.md) — *à produire en phase 3*
-4. [Feedback](feedback.md) — *à partir de la phase 5*
+2. `spec-nf.md` — spécification non-fonctionnelle, *à produire en phase 2*
+3. `spec-fonctionnelle.md` — spécification fonctionnelle, *à produire en phase 3*
+4. `feedback.md` — *à partir de la phase 5*
+
+Les trois derniers restent volontairement sans lien tant que le fichier n'existe pas : un lien
+mort dans la porte d'entrée de la documentation coûte plus qu'il ne rapporte. Ils deviendront
+cliquables à mesure que les phases les produiront.
 
 En attendant que ces documents existent, la navigation courante reste
 [README.md](README.md), et l'état réel du produit est décrit par

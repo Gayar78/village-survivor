@@ -66,7 +66,7 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 - `setup.mjs` détecte l'adresse locale, écarte les interfaces virtuelles, génère le secret JWT
   et les clés `anon` et `service_role` qui en dérivent, et écrit les deux fichiers
   d'environnement ;
-- `apply-migrations.ps1` applique les quatre migrations du jeu après le démarrage de
+- `apply-migrations.ps1` applique les migrations du jeu après le démarrage de
   l'authentification — elles ne peuvent pas être jouées à l'initialisation de Postgres, la
   première référençant `auth.users`, table créée par GoTrue ;
 - `check-realtime.mjs` vérifie le transport de la coopération en faisant dialoguer deux pairs

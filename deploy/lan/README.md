@@ -101,7 +101,7 @@ tout le multijoueur, en laissant le reste du jeu parfaitement fonctionnel.
 
 **Les migrations ne peuvent pas être jouées à l'initialisation de Postgres.** La migration
 `0001` référence `auth.users`, table que GoTrue crée à son premier démarrage. D'où l'étape 4,
-séparée. Les quatre fichiers sont idempotents : relancer le script est sans danger.
+séparée. Toutes les migrations sont idempotentes : relancer le script est sans danger.
 
 ## Vérifier
 
@@ -156,7 +156,7 @@ pas.
 | `docker-compose.yml` | les cinq services |
 | `nginx.conf` | passerelle : jeu, `/auth/v1`, `/rest/v1`, `/realtime/v1` |
 | `setup.mjs` | détection d'adresse, génération des secrets et des deux `.env` |
-| `apply-migrations.ps1` | applique les quatre migrations du jeu |
+| `apply-migrations.ps1` | applique les migrations du jeu |
 | `check-realtime.mjs` | contrôle du transport coopératif |
 | `volumes/db/*.sql` | initialisation Postgres, dérivée de `supabase/docker` |
 | `.env` | **secrets générés, jamais committés** |

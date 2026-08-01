@@ -44,7 +44,7 @@ Aucune ligne n'est supprimée. Une exigence qui n'est plus tenue reste présente
 | `REQ-TEST-003` | [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) | `apps/client/src/net/towerSession.test.ts` | Barrière de démarrage, roster | Partiellement tenu — pas de test multi-pairs réel |
 | `REQ-TEST-004` | Cadrage initial | `tests/smoke/production.spec.ts` | `pnpm test:smoke`, exécuté en CI | Partiellement tenu — le jeu est couvert, le lobby ne l'est pas |
 | `REQ-DEBUG-001` | [Vue d'architecture](../architecture/overview.md) | Aucune | — | **Non tenu** — l'API de débogage a disparu |
-| `REQ-PERF-001` | Cadrage initial | `packages/game-core/test/tower-performance.test.ts` | `pnpm benchmark` | Implémenté — 220 µs/tick à 200 monstres, 17 µs/projection |
+| `REQ-PERF-001` | Cadrage initial | `packages/game-core/test/tower-performance.test.ts` | `pnpm benchmark` | Implémenté — 211 µs/tick à 200 monstres, 17 µs/projection |
 | `REQ-PERF-002` | Cadrage initial | Aucune métrique exposée | — | **Non tenu** — FPS, tick et entités ne sont plus observables |
 | `REQ-CI-001` | [ADR-0001](../decisions/0001-pnpm-monorepo.md), [déploiement](../deployment.md) | `.github/workflows/ci.yml` | Pipeline en 11 étapes, smoke de production inclus | Implémenté |
 | `REQ-DEPLOY-001` | [Déploiement](../deployment.md) | `apps/client/dist`, `deploy/lan` | Build, stack Docker LAN vérifiée | Partiellement tenu — un environnement LAN existe, l'hébergement public non |
