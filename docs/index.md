@@ -4,10 +4,10 @@
 > Version du projet : v1
 > Propriétaire : l'équipe Village Survivor
 > Dernière revue : 31 juillet 2026
-> Niveau d'assurance : à classer *(classé en phase 2)*
+> Niveau d'assurance : **à confirmer en phase 2** — classement proposé ci-dessous
 
-Ce document est la porte d'entrée de la documentation. Le projet a été placé sous méthode le
-31 juillet 2026, alors qu'il existait déjà et tournait.
+Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,
+alors qu'il existait déjà et tournait.
 
 ## Lire d'abord
 
@@ -17,28 +17,74 @@ Ce document est la porte d'entrée de la documentation. Le projet a été placé
 4. `feedback.md` — *à partir de la phase 5*
 
 Les trois derniers restent volontairement sans lien tant que le fichier n'existe pas : un lien
-mort dans la porte d'entrée de la documentation coûte plus qu'il ne rapporte. Ils deviendront
-cliquables à mesure que les phases les produiront.
+mort dans la porte d'entrée coûte plus qu'il ne rapporte. Ils deviendront cliquables à mesure
+que les phases les produiront.
 
-En attendant que ces documents existent, la navigation courante reste
-[README.md](README.md), et l'état réel du produit est décrit par
-[gameplay/current-rules.md](gameplay/current-rules.md) et
-[architecture/overview.md](architecture/overview.md).
+En attendant, l'état réel du produit est décrit par [`gameplay/current-rules.md`](gameplay/current-rules.md)
+et [`architecture.md`](architecture.md).
 
-## Artefacts applicables
+## Niveau d'assurance proposé
 
-| Artefact | Statut | Pourquoi il existe | Dernière revue |
-|---|---|---|---|
-| Objectif | approuvé | cadrer le résultat attendu | 31/07/2026 |
-| Spécification non-fonctionnelle | absent | qualité, architecture, observabilité | — |
-| Spécification fonctionnelle | absent | comportements et tests | — |
-| Règles de gameplay courantes | approuvé | photographie des règles réellement codées | 31/07/2026 |
-| Vue d'architecture | approuvé | composants et flux réels | 31/07/2026 |
-| Décisions d'architecture (ADR) | approuvé | choix structurants et écarts constatés | 31/07/2026 |
-| Matrice de traçabilité | approuvé | état réel de chaque exigence | 31/07/2026 |
-| Déploiement | approuvé | intégration continue et environnements | 31/07/2026 |
+**`renforce`**, sous réserve de confirmation en phase 2. Trois déclencheurs objectifs sont
+réunis, et le plus élevé l'emporte :
 
-## Décisions de la phase 0
+- le produit est **partagé** avec d'autres personnes que son auteur ;
+- il **dépend d'un service extérieur** (Supabase) pour l'authentification et la coopération ;
+- il **traite des données de tiers** — les adresses e-mail des joueurs invités.
+
+Le niveau `critique` n'est pas retenu : aucune réglementation, aucune donnée sensible, aucun
+argent réel ou virtuel — exclusion assumée de l'objectif — et des conséquences explicitement
+acceptées par le propriétaire du projet.
+
+Ce classement détermine quels artefacts sont attendus. Les tableaux ci-dessous s'y conforment.
+
+## Artefacts de la méthode
+
+| Artefact | Emplacement | Statut |
+|---|---|---|
+| Index | `index.md` | à jour |
+| Objectif | [`objectif.md`](objectif.md) | approuvé |
+| Spécification non-fonctionnelle | `spec-nf.md` | **absent** — phase 2 |
+| Spécification fonctionnelle | `spec-fonctionnelle.md` | **absent** — phase 3 |
+| Feedback | `feedback.md` | **absent** — phase 5 |
+| Architecture | [`architecture.md`](architecture.md) | approuvé |
+| Décisions | [`decisions/`](decisions/README.md) — 9 ADR | approuvé |
+| Observabilité | `observabilite.md` | **absent** — phase 2 |
+| Stratégie de tests | `qualite/strategie-tests.md` | **absent** — phase 2 |
+| Rapport de tests | `qualite/rapport-tests.md` | **absent** — phase 5 |
+| Runbooks | `runbooks/` | **absent** — au premier incident traité |
+| Releases | `releases/v<N>.md` | **absent** — phase 7 |
+
+La traçabilité des exigences ([`qualite/traceabilite.md`](qualite/traceabilite.md)) est un
+artefact du niveau `critique`. Elle existait avant la mise sous méthode et rend de vrais
+services : elle est conservée, et rangée à l'emplacement que la méthode lui donnerait.
+
+## Documents propres au projet
+
+Hors taxonomie de la méthode, mais nécessaires au produit. Ils ne sont ni des doublons des
+documents cœur, ni des artefacts que la méthode prescrirait.
+
+| Document | Rôle |
+|---|---|
+| [`gameplay/current-rules.md`](gameplay/current-rules.md) | photographie des règles réellement codées |
+| [`deployment.md`](deployment.md) | intégration continue, environnements, prérequis |
+| [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md) | procédure de configuration du service externe |
+| [`../deploy/lan/README.md`](../deploy/lan/README.md) | déploiement LAN auto-hébergé |
+
+## Documents historiques
+
+Conservés intacts. Ils portent des décisions humaines datées, que le code contredit aujourd'hui
+sur plusieurs points. **Ils ne sont pas réécrits** : les écarts sont recensés ailleurs et les
+documents se référencent mutuellement.
+
+| Document | Nature | État |
+|---|---|---|
+| [`product/product-pillars.md`](product/product-pillars.md) | piliers produit du 20 juillet 2026 | contredit par le code, non remplacé |
+| [`product/decisions/2026-07-20-product-workshop.md`](product/decisions/2026-07-20-product-workshop.md) | compte rendu d'atelier | historique |
+| [`requirements/initial-technical-baseline.md`](requirements/initial-technical-baseline.md) | cadrage technique initial, exigences `REQ-*` | normatif, écarts consignés au chapitre 23 |
+| [`product/legacy-analysis/`](product/legacy-analysis/functional-inventory.md) | analyse du prototype de `Gayar78` | lecture seule |
+
+## Décisions de structure
 
 **La méthode est appliquée en place, sur le dépôt existant.** La phase 0 prévoit soit un dépôt
 neuf, soit l'ouverture d'un projet existant en lecture seule pour en reconstruire un autre à
@@ -50,6 +96,11 @@ c'est lui qu'il faut mettre sous méthode. `origine` vaut donc `existant`, aucun
 ligne une ou deux fois, et spécifiait parfois avant de construire. En conséquence, l'agent
 tranche les décisions techniques et annonce leur coût, leur délai et leur risque en langage
 clair, plutôt que de les soumettre à l'arbitrage.
+
+**Les ADR gardent leur en-tête propre.** La méthode demande statut, version, propriétaire et
+date de dernière revue sur chaque document. Un ADR est une décision datée et non un document
+vivant : il porte son statut et sa date, et n'est jamais révisé après coup. Lui ajouter une
+« dernière revue » suggérerait l'inverse. Même raisonnement pour les documents historiques.
 
 ## Contrainte de publication
 
@@ -65,7 +116,7 @@ clair, plutôt que de les soumettre à l'arbitrage.
 > 2. **les faiblesses de sécurité assumées**, décrites précisément — le jeu croit le navigateur
 >    du joueur sur parole, et l'or de compte est déclaré par le client. Écrit pour l'équipe,
 >    c'est une information utile ; publié, c'est un mode d'emploi ;
-> 3. **les écarts et anomalies** relevés par l'audit, qui décrivent où le produit est faible.
+> 3. **les écarts et anomalies** relevés par les audits, qui décrivent où le produit est faible.
 >
 > Cette contrainte tombe si le dépôt passe en privé — réglage qui appartient à ses
 > propriétaires, et que l'agent ne modifie pas.
@@ -79,21 +130,27 @@ clair, plutôt que de les soumettre à l'arbitrage.
 
 ## Points ouverts hérités de l'état du produit
 
-Ces questions préexistent à la mise sous méthode. Elles sont détaillées dans
-[../ROADMAP.md](../ROADMAP.md) et seront reprises par les phases 1 et 2.
+Antérieurs à la mise sous méthode, détaillés dans [`../ROADMAP.md`](../ROADMAP.md) et repris par
+les phases 2 et 3.
 
-- le jeu livré n'a **aucune condition de victoire** et fait **persister la progression entre
-  les parties**, alors que les piliers produit du 20 juillet 2026 exigeaient l'inverse sur les
-  deux points, sans qu'aucune décision datée ne les ait remplacés ;
+- le jeu livré n'a **aucune condition de victoire** et fait **persister la progression entre les
+  parties**, alors que les piliers produit du 20 juillet 2026 exigeaient l'inverse sur les deux
+  points, sans qu'aucune décision datée ne les ait remplacés ;
 - la coopération et la persistance de compte ont été livrées sans arbitrage préalable
-  ([ADR-0008](decisions/0008-p2p-lockstep-coop.md),
-  [ADR-0009](decisions/0009-account-persistence.md)) ;
-- il n'existe **aucune télémétrie** : ni trace, ni métrique, ni API de débogage.
+  ([ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md),
+  [ADR-0009](decisions/ADR-0009-account-persistence.md)) ;
+- il n'existe **aucune télémétrie** : ni trace, ni métrique, ni API de débogage. C'est l'objet
+  principal de la phase 2.
 
-## Releases
+## Autres références
 
-- *aucune release figée à ce jour*
+- [`../ROADMAP.md`](../ROADMAP.md) — ce qui est livré, ce qui reste, ce qui est à arbitrer ;
+- [`../CHANGELOG.md`](../CHANGELOG.md) — changements livrés.
 
-## Documents historiques
+## Fidélité à l'état réel
 
-- *aucun document migré*
+- **normatif** ou **accepté** pour une décision à respecter ;
+- **cible** ou **planifié** pour un élément non encore implémenté ;
+- **implémenté** uniquement lorsqu'un chemin de code et une vérification existent ;
+- **constaté** pour un comportement présent dans le code sans décision qui l'autorise ;
+- **non tenu** pour une exigence que le code contredit.

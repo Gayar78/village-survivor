@@ -1,7 +1,10 @@
-# Déploiement
+# Village Survivor — Déploiement
 
-Statut : **déploiement LAN auto-hébergé fonctionnel, aucun hébergement public**
-Dernière mise à jour : 31 juillet 2026
+> Statut : approuvé
+> Version du projet : v1
+> Propriétaire : l'équipe Village Survivor
+> Dernière revue : 31 juillet 2026
+> État : déploiement LAN auto-hébergé fonctionnel, aucun hébergement public
 
 ## 1. État réel
 

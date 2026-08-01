@@ -98,14 +98,16 @@ Pendant que l'atelier d'une tourelle est ouvert, votre avatar est ignoré par le
 
 | Sujet | Document |
 |---|---|
+| **Porte d'entrée de la documentation** | [`docs/index.md`](docs/index.md) |
+| Objectif du projet | [`docs/objectif.md`](docs/objectif.md) |
 | Règles réellement implémentées | [`docs/gameplay/current-rules.md`](docs/gameplay/current-rules.md) |
-| Architecture réelle | [`docs/architecture/overview.md`](docs/architecture/overview.md) |
+| Architecture réelle | [`docs/architecture.md`](docs/architecture.md) |
 | Décisions d'architecture | [`docs/decisions/README.md`](docs/decisions/README.md) |
 | Configuration de Supabase | [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md) |
 | Déploiement et intégration continue | [`docs/deployment.md`](docs/deployment.md) |
 | Déploiement LAN auto-hébergé | [`deploy/lan/README.md`](deploy/lan/README.md) |
 | Cadrage technique d'origine | [`docs/requirements/initial-technical-baseline.md`](docs/requirements/initial-technical-baseline.md) |
-| Traçabilité des exigences | [`docs/requirements/traceability-matrix.md`](docs/requirements/traceability-matrix.md) |
+| Traçabilité des exigences | [`docs/qualite/traceabilite.md`](docs/qualite/traceabilite.md) |
 | Piliers produit de juillet 2026 | [`docs/product/product-pillars.md`](docs/product/product-pillars.md) |
 | Feuille de route | [`ROADMAP.md`](ROADMAP.md) |
 | Historique des changements | [`CHANGELOG.md`](CHANGELOG.md) |

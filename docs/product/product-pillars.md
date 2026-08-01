@@ -11,10 +11,10 @@ Statut : décisions humaines confirmées le 20 juillet 2026.
 > Ce document n'est pas réécrit : il reste la trace des décisions humaines réellement prises, et
 > **aucune décision datée ne les a remplacées**. Les écarts sont recensés dans
 > [`../gameplay/current-rules.md`](../gameplay/current-rules.md) et dans
-> [`../requirements/traceability-matrix.md`](../requirements/traceability-matrix.md) ; leurs
+> [`../qualite/traceabilite.md`](../qualite/traceabilite.md) ; leurs
 > conséquences techniques sont consignées dans
-> [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) et
-> [ADR-0009](../decisions/0009-account-persistence.md).
+> [ADR-0008](../decisions/ADR-0008-p2p-lockstep-coop.md) et
+> [ADR-0009](../decisions/ADR-0009-account-persistence.md).
 >
 > Deux issues sont possibles et relèvent des porteurs du produit : ramener le jeu vers ces
 > piliers, ou les remplacer par une nouvelle décision datée. Tant qu'aucune n'est choisie, le

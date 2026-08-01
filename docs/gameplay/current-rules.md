@@ -1,7 +1,10 @@
-# Règles de gameplay courantes
+# Village Survivor — Règles de gameplay courantes
 
-Statut : **règles implémentées, relevées dans le code au 31 juillet 2026**
-Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client.
+> Statut : approuvé
+> Version du projet : v1
+> Propriétaire : l'équipe Village Survivor
+> Dernière revue : 31 juillet 2026
+> Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client
 
 Ce document décrit ce que le code fait réellement. Les valeurs proviennent de
 [`packages/game-core/src/tower/tuning.ts`](../../packages/game-core/src/tower/tuning.ts) et de
@@ -188,12 +191,12 @@ revenir : il reçoit un refus explicite et la partie continue sans lui. Le corre
 des points de reprise périodiques, qui rendraient le rejeu proportionnel au temps écoulé depuis
 le dernier d'entre eux — est consigné dans la feuille de route.
 
-Voir [ADR-0008](../decisions/0008-p2p-lockstep-coop.md) pour la décision et ses limites.
+Voir [ADR-0008](../decisions/ADR-0008-p2p-lockstep-coop.md) pour la décision et ses limites.
 
 ## Méta-progression (hors partie)
 
 Elle vit sur le compte, pas dans la partie, et **persiste entre les parties**. Elle exige un
-compte Supabase — voir [ADR-0009](../decisions/0009-account-persistence.md).
+compte Supabase — voir [ADR-0009](../decisions/ADR-0009-account-persistence.md).
 
 L'accès aux données de compte exige une **double authentification satisfaite** : un compte
 créé par courriel doit avoir validé son second facteur, faute de quoi la base refuse aussi bien
@@ -218,7 +221,7 @@ sont listés ici pour qu'aucun ne disparaisse silencieusement.
 1. **Aucune condition de victoire.** Les piliers produit en exigent une (niveau ultime du Cœur,
    phase d'activation, vague finale). Le code n'en implémente aucune.
 2. **La progression persiste entre les parties.** Le pilier produit n°13 impose l'inverse.
-   Constaté par [ADR-0009](../decisions/0009-account-persistence.md), pas validé par une décision
+   Constaté par [ADR-0009](../decisions/ADR-0009-account-persistence.md), pas validé par une décision
    produit datée.
 3. **Il n'y a plus de mort définitive ni d'état à terre relevable** — seulement une réapparition
    automatique après 30 secondes en coopération.

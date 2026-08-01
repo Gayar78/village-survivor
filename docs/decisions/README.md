@@ -1,6 +1,14 @@
-# Décisions d'architecture
+# Village Survivor — Décisions d'architecture
+
+> Statut : approuvé
+> Version du projet : v1
+> Propriétaire : l'équipe Village Survivor
+> Dernière revue : 31 juillet 2026
 
 Les Architecture Decision Records (ADR) conservent les choix structurants du projet.
+Chaque fichier suit le nommage `ADR-<NNNN>-<titre>.md`. Un ADR porte sa propre date et son
+propre statut : c'est une décision datée, pas un document vivant, et il n'est donc jamais
+révisé après coup.
 Ils complètent le
 [`cadrage technique initial`](../requirements/initial-technical-baseline.md) sans le
 dupliquer.
@@ -18,15 +26,15 @@ dupliquer.
 
 | ADR | Statut | Décision |
 |---|---|---|
-| [0001](0001-pnpm-monorepo.md) | Accepté | Organiser le projet en monorepo avec workspaces pnpm |
-| [0002](0002-headless-fixed-step-simulation.md) | Accepté | Isoler une simulation à pas fixe exécutable sans rendu |
-| [0003](0003-game-session-boundary.md) | Accepté | Faire dépendre le client d'une frontière `GameSession` |
-| [0004](0004-authoritative-multiplayer-server.md) | Remplacé par [0008](0008-p2p-lockstep-coop.md) | Utiliser un serveur Colyseus autoritaire en multijoueur |
-| [0005](0005-data-driven-content.md) | Accepté, **non tenu** par le contenu Tower | Piloter le contenu et l'équilibrage par des données validées |
-| [0006](0006-defer-persistence.md) | Remplacé par [0009](0009-account-persistence.md) | Différer base de données et persistance de compte |
-| [0007](0007-immediate-mode-entity-rendering.md) | Accepté, **partiellement caduc** | Rendre les entités en mode immédiat trié par profondeur |
-| [0008](0008-p2p-lockstep-coop.md) | Constaté | Coopération en lockstep pair-à-pair sans serveur |
-| [0009](0009-account-persistence.md) | Constaté | Comptes Supabase et progression persistante |
+| [0001](ADR-0001-pnpm-monorepo.md) | Accepté | Organiser le projet en monorepo avec workspaces pnpm |
+| [0002](ADR-0002-headless-fixed-step-simulation.md) | Accepté | Isoler une simulation à pas fixe exécutable sans rendu |
+| [0003](ADR-0003-game-session-boundary.md) | Accepté | Faire dépendre le client d'une frontière `GameSession` |
+| [0004](ADR-0004-authoritative-multiplayer-server.md) | Remplacé par [0008](ADR-0008-p2p-lockstep-coop.md) | Utiliser un serveur Colyseus autoritaire en multijoueur |
+| [0005](ADR-0005-data-driven-content.md) | Accepté, **non tenu** par le contenu Tower | Piloter le contenu et l'équilibrage par des données validées |
+| [0006](ADR-0006-defer-persistence.md) | Remplacé par [0009](ADR-0009-account-persistence.md) | Différer base de données et persistance de compte |
+| [0007](ADR-0007-immediate-mode-entity-rendering.md) | Accepté, **partiellement caduc** | Rendre les entités en mode immédiat trié par profondeur |
+| [0008](ADR-0008-p2p-lockstep-coop.md) | Constaté | Coopération en lockstep pair-à-pair sans serveur |
+| [0009](ADR-0009-account-persistence.md) | Constaté | Comptes Supabase et progression persistante |
 
 ### Notes sur les statuts particuliers
 

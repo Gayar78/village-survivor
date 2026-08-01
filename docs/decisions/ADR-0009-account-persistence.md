@@ -2,12 +2,12 @@
 
 - Statut : **Constaté** — implémenté et livré, arbitrage humain non effectué
 - Date de constat : 31 juillet 2026
-- Remplace : [ADR-0006 — Différer base de données et persistance de compte](0006-defer-persistence.md)
+- Remplace : [ADR-0006 — Différer base de données et persistance de compte](ADR-0006-defer-persistence.md)
 - Exigences concernées : `REQ-PERSISTENCE-001`, `REQ-SCOPE-001`, `REQ-SEC-001`, `REQ-NET-001`
 
 ## Nature de cet ADR
 
-Comme [ADR-0008](0008-p2p-lockstep-coop.md), ce document **consigne une décision déjà appliquée**
+Comme [ADR-0008](ADR-0008-p2p-lockstep-coop.md), ce document **consigne une décision déjà appliquée**
 plutôt qu'il n'en propose une. L'ADR-0006 interdisait toute base de données, tout compte joueur et
 toute progression persistante « avant une décision produit explicite ». Cette décision produit
 n'existe pas : le code l'a devancée.
@@ -98,4 +98,4 @@ soigné :
    d'exécuter des tests navigateur.
 3. Quelle politique de rétention et de suppression des données de compte, et qui en répond ?
 4. L'or déclaré par le client est-il assumé, ou faut-il une autorité serveur pour le valider —
-   ce qui rejoint la question posée par [ADR-0008](0008-p2p-lockstep-coop.md) ?
+   ce qui rejoint la question posée par [ADR-0008](ADR-0008-p2p-lockstep-coop.md) ?

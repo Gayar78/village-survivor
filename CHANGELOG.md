@@ -121,8 +121,8 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 - l'ensemble de la documentation décrivait encore le jeu M1 supprimé ; elle a été refaite à
   partir du code ;
 - deux ADR consignent des décisions appliquées sans arbitrage préalable :
-  [0008](docs/decisions/0008-p2p-lockstep-coop.md) pour la coopération pair-à-pair et
-  [0009](docs/decisions/0009-account-persistence.md) pour la persistance de compte ; les ADR
+  [0008](docs/decisions/ADR-0008-p2p-lockstep-coop.md) pour la coopération pair-à-pair et
+  [0009](docs/decisions/ADR-0009-account-persistence.md) pour la persistance de compte ; les ADR
   0004 et 0006 passent en « Remplacé » sans que leur contenu soit modifié ;
 - la matrice de traçabilité recense onze exigences qui ne sont plus tenues.
 
@@ -163,7 +163,7 @@ Les deux sont consignés ci-dessous, dans cet ordre.
   (30 juillet). Chaque navigateur exécute la même simulation et n'échange que des entrées ;
   Supabase Realtime ne sert plus que de bus de messages. Ajoute l'ordonnancement du roster à une
   frontière de tick, les empreintes d'état, et la réintégration d'un joueur en cours de partie.
-  Consigné dans [ADR-0008](docs/decisions/0008-p2p-lockstep-coop.md) ;
+  Consigné dans [ADR-0008](docs/decisions/ADR-0008-p2p-lockstep-coop.md) ;
 - la partie n'a plus de condition de victoire : elle se termine uniquement par une défaite ;
 - la mort n'est plus définitive : en coopération, un avatar tombé se relève seul après trente
   secondes ; en solo, elle reste une défaite immédiate ;
@@ -192,7 +192,7 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 - seule la clé publique `anon` est utilisée par le client, et `.env` est ignoré par Git ;
 - **limite assumée** : la simulation étant hébergée par le navigateur, le montant d'or crédité
   en fin de partie est déclaré par le client. Voir
-  [ADR-0009](docs/decisions/0009-account-persistence.md) ;
+  [ADR-0009](docs/decisions/ADR-0009-account-persistence.md) ;
 - **limite assumée** : le lockstep pair-à-pair n'offre aucune protection contre la triche ; les
   empreintes d'état détectent une divergence sans pouvoir l'arbitrer.
 

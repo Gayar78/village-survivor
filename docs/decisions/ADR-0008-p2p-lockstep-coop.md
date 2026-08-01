@@ -2,7 +2,7 @@
 
 - Statut : **Constaté** — implémenté et livré, arbitrage humain non effectué
 - Date de constat : 31 juillet 2026
-- Remplace : [ADR-0004 — Serveur Colyseus autoritaire](0004-authoritative-multiplayer-server.md)
+- Remplace : [ADR-0004 — Serveur Colyseus autoritaire](ADR-0004-authoritative-multiplayer-server.md)
 - Exigences concernées : `REQ-STACK-002`, `REQ-NET-001`, `REQ-NET-002`, `REQ-SEC-001`
 
 ## Nature de cet ADR
@@ -85,4 +85,4 @@ empreintes d'état.
 2. Si accepté : que devient `REQ-NET-001` ? Doit-il être explicitement remplacé, et la triche
    assumée pour un jeu coopératif sans classement ?
 3. Si l'or de compte continue d'être crédité depuis le navigateur, il faut trancher séparément
-   la question posée dans [ADR-0009](0009-account-persistence.md).
+   la question posée dans [ADR-0009](ADR-0009-account-persistence.md).

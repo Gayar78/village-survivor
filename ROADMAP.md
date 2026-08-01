@@ -178,9 +178,9 @@ produit. Chacune est détaillée dans l'ADR indiqué.
    produit du 20 juillet doivent être remplacés par une décision datée, et non simplement
    contredits par le code.
 2. **La progression persistante de compte est-elle acceptée ?** Elle contredit le pilier n°13
-   (partie one-shot) — [ADR-0009](docs/decisions/0009-account-persistence.md).
+   (partie one-shot) — [ADR-0009](docs/decisions/ADR-0009-account-persistence.md).
 3. **Le lockstep pair-à-pair est-il la cible, ou une étape avant un serveur autoritaire ?**
-   [ADR-0008](docs/decisions/0008-p2p-lockstep-coop.md).
+   [ADR-0008](docs/decisions/ADR-0008-p2p-lockstep-coop.md).
 4. **La triche est-elle assumée ?** Le client déclare son or de compte et exécute sa propre
    simulation. Sans classement ni économie payante, c'est peut-être acceptable — c'est à dire
    explicitement.

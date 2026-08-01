@@ -1,10 +1,15 @@
-# Vue d'ensemble de l'architecture
+# Village Survivor — Architecture
 
-Statut : **relevé du code au 31 juillet 2026**
-Portée : le jeu « Tower », son lobby, sa coopération et sa persistance de compte.
+> Statut : approuvé
+> Version du projet : v1
+> Propriétaire : l'équipe Village Survivor
+> Dernière revue : 31 juillet 2026
+> Portée : le jeu « Tower », son lobby, sa coopération et sa persistance de compte
+
+Relevé du code, et non de l'intention.
 
 Ce document décrit l'architecture réellement implémentée. Là où elle s'écarte du
-[cadrage technique initial](../requirements/initial-technical-baseline.md), l'écart est signalé
+[cadrage technique initial](requirements/initial-technical-baseline.md), l'écart est signalé
 et renvoyé vers l'ADR qui le consigne.
 
 ## 1. État actuel en une phrase
@@ -41,12 +46,12 @@ flowchart TD
 | `supabase/migrations` | schéma Postgres, RLS et RPC | appliqué manuellement |
 
 `apps/server` n'existe pas et n'est plus prévu à court terme — voir
-[ADR-0008](../decisions/0008-p2p-lockstep-coop.md).
+[ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md).
 
 ## 3. Les deux pages
 
 Le client est une application à **deux points d'entrée** déclarés dans
-[`apps/client/vite.config.ts`](../../apps/client/vite.config.ts). Cette séparation est
+[`apps/client/vite.config.ts`](../apps/client/vite.config.ts). Cette séparation est
 structurante, notamment parce que les deux pages n'ont pas les mêmes prérequis.
 
 **`index.html` → `src/main.ts` — le lobby.** Authentification, menu principal, profil,
@@ -63,7 +68,7 @@ l'URL, et la configuration coopérative par `sessionStorage`.
 ## 4. Frontière de session
 
 Le client dépend d'un port `TowerSession`, de même forme que le `GameSession` défini par
-[ADR-0003](../decisions/0003-game-session-boundary.md) :
+[ADR-0003](decisions/ADR-0003-game-session-boundary.md) :
 
 ```typescript
 export interface TowerSession {
@@ -75,7 +80,7 @@ export interface TowerSession {
 ```
 
 Deux implémentations le satisfont, toutes deux dans
-[`apps/client/src/net/towerSession.ts`](../../apps/client/src/net/towerSession.ts) :
+[`apps/client/src/net/towerSession.ts`](../apps/client/src/net/towerSession.ts) :
 `TowerLocalSession` pour le solo, et une session lockstep pour la coopération. `TowerScene` ne
 connaît que le port : elle fonctionne à l'identique dans les deux modes. Le principe d'ADR-0003
 est donc respecté, et le jour où un serveur autoritaire apparaîtra, il remplacera un adaptateur.
@@ -123,7 +128,7 @@ les tailles de paquet, l'avance en ticks et les longueurs d'identifiant sont bor
 
 Ce modèle **remplace** le serveur Colyseus autoritaire décidé par ADR-0004, sans qu'aucun
 arbitrage humain n'ait eu lieu, et il n'offre aucune protection contre la triche. Le détail et
-les questions ouvertes sont dans [ADR-0008](../decisions/0008-p2p-lockstep-coop.md).
+les questions ouvertes sont dans [ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md).
 
 ## 7. Compte et persistance
 
@@ -140,7 +145,7 @@ lignes, l'identité venant du JWT via `auth.uid()` et jamais d'un paramètre. Le
 que la clé publique `anon`.
 
 La limite connue : la simulation étant hébergée par le navigateur, **l'or crédité en fin de
-partie est déclaré par le client**. Voir [ADR-0009](../decisions/0009-account-persistence.md).
+partie est déclaré par le client**. Voir [ADR-0009](decisions/ADR-0009-account-persistence.md).
 
 ## 8. Rendu
 
@@ -230,10 +235,10 @@ lockstep avant de casser les tests.
 
 ## 14. Décisions associées
 
-- [ADR-0001 — Monorepo pnpm](../decisions/0001-pnpm-monorepo.md)
-- [ADR-0002 — Simulation indépendante à pas fixe](../decisions/0002-headless-fixed-step-simulation.md)
-- [ADR-0003 — Frontière GameSession](../decisions/0003-game-session-boundary.md)
-- [ADR-0005 — Contenu piloté par les données](../decisions/0005-data-driven-content.md) — non tenu par le contenu Tower
-- [ADR-0007 — Rendu en mode immédiat](../decisions/0007-immediate-mode-entity-rendering.md) — partiellement caduc
-- [ADR-0008 — Coopération en lockstep pair-à-pair](../decisions/0008-p2p-lockstep-coop.md)
-- [ADR-0009 — Comptes Supabase et progression persistante](../decisions/0009-account-persistence.md)
+- [ADR-0001 — Monorepo pnpm](decisions/ADR-0001-pnpm-monorepo.md)
+- [ADR-0002 — Simulation indépendante à pas fixe](decisions/ADR-0002-headless-fixed-step-simulation.md)
+- [ADR-0003 — Frontière GameSession](decisions/ADR-0003-game-session-boundary.md)
+- [ADR-0005 — Contenu piloté par les données](decisions/ADR-0005-data-driven-content.md) — non tenu par le contenu Tower
+- [ADR-0007 — Rendu en mode immédiat](decisions/ADR-0007-immediate-mode-entity-rendering.md) — partiellement caduc
+- [ADR-0008 — Coopération en lockstep pair-à-pair](decisions/ADR-0008-p2p-lockstep-coop.md)
+- [ADR-0009 — Comptes Supabase et progression persistante](decisions/ADR-0009-account-persistence.md)

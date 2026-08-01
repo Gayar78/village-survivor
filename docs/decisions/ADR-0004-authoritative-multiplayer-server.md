@@ -1,13 +1,13 @@
 # ADR-0004 — Utiliser un serveur Colyseus autoritaire en multijoueur
 
-- Statut : **Remplacé** par [ADR-0008 — Coopération en lockstep pair-à-pair](0008-p2p-lockstep-coop.md)
+- Statut : **Remplacé** par [ADR-0008 — Coopération en lockstep pair-à-pair](ADR-0008-p2p-lockstep-coop.md)
 - Date : 20 juillet 2026
 - Exigences : `REQ-STACK-002`, `REQ-NET-001`, `REQ-NET-002`, `REQ-SEC-001`
 
 > Le contenu ci-dessous est conservé intact pour l'historique. La coopération livrée le
 > 30 juillet 2026 utilise un lockstep pair-à-pair, c'est-à-dire précisément l'option que cet
 > ADR rejetait. Aucun serveur Colyseus n'existe dans le dépôt. Le constat et ses conséquences
-> sont consignés dans [ADR-0008](0008-p2p-lockstep-coop.md), qui reste soumis à arbitrage humain.
+> sont consignés dans [ADR-0008](ADR-0008-p2p-lockstep-coop.md), qui reste soumis à arbitrage humain.
 
 ## Contexte
 

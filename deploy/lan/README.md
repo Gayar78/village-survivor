@@ -145,8 +145,8 @@ Ce déploiement est prévu pour **un réseau local de confiance**, et rien d'aut
 
 Les limites de confiance du jeu lui-même — client autoritaire sur sa simulation et sur l'or
 crédité à son compte — sont décrites dans
-[ADR-0008](../../docs/decisions/0008-p2p-lockstep-coop.md) et
-[ADR-0009](../../docs/decisions/0009-account-persistence.md). Le déploiement LAN ne les change
+[ADR-0008](../../docs/decisions/ADR-0008-p2p-lockstep-coop.md) et
+[ADR-0009](../../docs/decisions/ADR-0009-account-persistence.md). Le déploiement LAN ne les change
 pas.
 
 ## Fichiers
