@@ -3,8 +3,8 @@
 > Statut : en construction
 > Version du projet : v1
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
-> Niveau d'assurance : **à confirmer en phase 2** — classement proposé ci-dessous
+> Dernière revue : 1er août 2026
+> Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
 
 Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,
 alors qu'il existait déjà et tournait.
@@ -23,10 +23,10 @@ que les phases les produiront.
 En attendant, l'état réel du produit est décrit par [`gameplay/current-rules.md`](gameplay/current-rules.md)
 et [`architecture.md`](architecture.md).
 
-## Niveau d'assurance proposé
+## Niveau de garantie requis
 
-**`renforce`**, sous réserve de confirmation en phase 2. Trois déclencheurs objectifs sont
-réunis, et le plus élevé l'emporte :
+**`renforce`**, confirmé le 1er août 2026. Trois déclencheurs objectifs sont réunis, et le plus
+élevé l'emporte :
 
 - le produit est **partagé** avec d'autres personnes que son auteur ;
 - il **dépend d'un service extérieur** (Supabase) pour l'authentification et la coopération ;
@@ -36,7 +36,21 @@ Le niveau `critique` n'est pas retenu : aucune réglementation, aucune donnée s
 argent réel ou virtuel — exclusion assumée de l'objectif — et des conséquences explicitement
 acceptées par le propriétaire du projet.
 
+**À réviser si** le jeu s'ouvre à des inconnus, si de l'argent réel ou virtuel apparaît, si des
+données personnelles s'ajoutent à l'adresse e-mail, ou si un classement introduit une compétition
+entre joueurs. Chacun de ces faits ferait basculer le projet en `critique`.
+
 Ce classement détermine quels artefacts sont attendus. Les tableaux ci-dessous s'y conforment.
+
+### Complexité constatée
+
+Elle impose des artefacts sans relever la criticité. Les quatre déclencheurs sont présents :
+plusieurs services (base, authentification, temps réel, passerelle), de l'asynchrone (canal de
+diffusion et lots d'entrées), une API exposée au navigateur, et des données persistantes.
+
+Conséquence directe pour la suite : le tracing devra être **distribué**, et la boucle de jeu à
+20 ticks par seconde interdit de tracer chaque tick — il faudra des métriques agrégées et des
+spans aux seules frontières significatives.
 
 ## Artefacts de la méthode
 
@@ -58,6 +72,9 @@ Ce classement détermine quels artefacts sont attendus. Les tableaux ci-dessous 
 La traçabilité des exigences ([`qualite/traceabilite.md`](qualite/traceabilite.md)) est un
 artefact du niveau `critique`. Elle existait avant la mise sous méthode et rend de vrais
 services : elle est conservée, et rangée à l'emplacement que la méthode lui donnerait.
+
+Les artefacts marqués **absent** ne sont pas des oublis : chacun appartient à une phase qui n'a
+pas encore eu lieu. Les créer d'avance produirait des documents vides.
 
 ## Documents propres au projet
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "version": "v1",
   "phase": 2,
   "phase_nom": "spec-non-fonctionnelle",
@@ -11,16 +11,25 @@
   },
   "type_projet": "web",
   "origine": "existant",
-  "assurance": {
-    "niveau": null,
-    "motifs": [],
-    "reviser_si": []
+  "garantie_requise": {
+    "niveau": "renforce",
+    "motifs": [
+      "produit partagé avec des personnes autres que son auteur",
+      "dépendance à un service extérieur pour l'authentification et la coopération",
+      "traitement de données de tiers : adresses e-mail des joueurs invités"
+    ],
+    "reviser_si": [
+      "ouverture publique du jeu à des inconnus",
+      "introduction d'argent réel ou virtuel",
+      "collecte de données personnelles au-delà de l'adresse e-mail",
+      "apparition d'un classement ou d'une compétition entre joueurs"
+    ]
   },
   "complexite": {
-    "multi_composants": null,
-    "asynchrone": null,
-    "api_exposee": null,
-    "donnees_persistantes": null
+    "multi_composants": true,
+    "asynchrone": true,
+    "api_exposee": true,
+    "donnees_persistantes": true
   },
   "observabilite": {
     "niveau": null,
@@ -47,6 +56,6 @@
   ],
   "verrouille": ["objectif"],
   "derogations": [],
-  "dernier_commit": "dae35ea",
-  "maj": "2026-07-31"
+  "dernier_commit": "7569115",
+  "maj": "2026-08-01"
 }
