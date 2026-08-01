@@ -2,7 +2,7 @@
 
 > Statut : approuvé
 > Version du projet : v1
-> Propriétaire : l'équipe Village Survivor
+> Propriétaire : Gayar
 > Dernière revue : 31 juillet 2026
 
 Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://supabase.com) sur le jeu (front Vite/TypeScript, 100 % navigateur). Il s'adresse à quelqu'un qui n'a jamais utilisé Supabase.

@@ -2,7 +2,7 @@
 
 > Statut : en construction
 > Version du projet : v1
-> Propriétaire : l'équipe Village Survivor
+> Propriétaire : Gayar
 > Dernière revue : 31 juillet 2026
 > Niveau d'assurance : **à confirmer en phase 2** — classement proposé ci-dessous
 

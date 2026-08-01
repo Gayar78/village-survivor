@@ -2,16 +2,17 @@
 
 > Statut : approuvé
 > Version du projet : v1
-> Propriétaire : l'équipe Village Survivor
+> Propriétaire : Gayar
 > Dernière revue : 31 juillet 2026
 
-Les Architecture Decision Records (ADR) conservent les choix structurants du projet.
-Chaque fichier suit le nommage `ADR-<NNNN>-<titre>.md`. Un ADR porte sa propre date et son
-propre statut : c'est une décision datée, pas un document vivant, et il n'est donc jamais
-révisé après coup.
-Ils complètent le
-[`cadrage technique initial`](../requirements/initial-technical-baseline.md) sans le
+Les Architecture Decision Records (ADR) conservent les choix structurants du projet. Ils
+complètent le [cadrage technique initial](../requirements/initial-technical-baseline.md) sans le
 dupliquer.
+
+Chaque fichier suit le nommage `ADR-<NNNN>-<titre>.md` et porte sa propre date et son propre
+statut. Un ADR est une décision datée, pas un document vivant : il n'est jamais révisé après
+coup, et ne reçoit donc pas la date de dernière revue que la méthode demande aux documents
+courants.
 
 ## Statuts
 

@@ -2,7 +2,7 @@
 
 > Statut : approuvé
 > Version du projet : v1
-> Propriétaire : l'équipe Village Survivor
+> Propriétaire : Gayar
 > Dernière revue : 31 juillet 2026
 
 Relevée sur le code. Révision précédente : 21 juillet 2026, après livraison de M1.

@@ -2,7 +2,7 @@
 
 > Statut : approuvé
 > Version du projet : v1
-> Propriétaire : l'équipe Village Survivor
+> Propriétaire : Gayar
 > Dernière revue : 31 juillet 2026
 > Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client
 

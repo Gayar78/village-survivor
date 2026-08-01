@@ -2,7 +2,7 @@
 
 > Statut : approuvé
 > Version du projet : v1
-> Propriétaire : l'équipe Village Survivor (Gayar, Hida, Clem)
+> Propriétaire : Gayar
 > Dernière revue : 31 juillet 2026
 
 ## En une phrase
