@@ -32,12 +32,26 @@ périmètre courant.
 
 Sur une période d'**un mois** :
 
-1. **Gayar, Hida et Clem lancent chacun au moins trois parties de leur propre initiative** —
-   c'est-à-dire sans que quiconque ait organisé la session ;
+1. **Gayar, Hida et Clem lancent chacun au moins cinq parties de leur propre initiative** ;
 2. le groupe produit au moins **cinq propositions d'amélioration écrites**.
 
 Les deux conditions doivent être remplies. La première se constate par la télémétrie de
 parties, la seconde par le dépôt.
+
+**« De sa propre initiative »** signifie : avoir lancé une partie solo, ou avoir créé soi-même
+un salon coopératif. Rejoindre l'invitation d'un autre joueur ne compte pas. Chacun peut donc
+satisfaire le critère sans devoir héberger, et l'on distingue celui qui a envie de jouer de
+celui qui répond présent.
+
+> **Modification du 1er août 2026.** Le seuil est passé de trois à cinq parties, et la
+> répartition dans le temps a été explicitement écartée : les cinq parties peuvent avoir lieu
+> le même jour. Cette décision appartient au propriétaire, et elle durcit le critère plutôt
+> qu'elle ne l'allège. Elle a toutefois une conséquence à assumer à la lecture des résultats :
+> le critère mesure désormais un **volume de jeu**, et non un retour étalé dans le temps. Cinq
+> parties enchaînées un même samedi le valideraient.
+>
+> La décision précédente reste consultable dans l'historique Git. Le reste de l'objectif est
+> inchangé et demeure verrouillé.
 
 Ce critère mesure **cette version**, pas la finalité. Trois personnes qui redemandent à jouer
 sont le premier signal crédible qu'un joueur extérieur y prendrait plaisir ; ce n'en est pas la

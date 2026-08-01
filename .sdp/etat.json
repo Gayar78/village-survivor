@@ -76,6 +76,22 @@
       "impact": "Une panne silencieuse ferait perdre des mesures sans alerte",
       "confiance": "moyenne",
       "validation_attendue": "Écart constaté entre parties jouées et parties enregistrées"
+    },
+    {
+      "id": "HYP-006",
+      "decision": "Une partie « de sa propre initiative » est une partie solo lancée depuis le menu, ou un salon créé par le joueur ; rejoindre une invitation ne compte pas",
+      "raison": "Distinguer celui qui a envie de jouer de celui qui répond présent, sans obliger chacun à héberger",
+      "impact": "Un joueur qui ne fait que répondre aux invitations n'atteindra pas le critère, même en jouant beaucoup",
+      "confiance": "moyenne",
+      "validation_attendue": "Première lecture des mesures de la campagne d'observation"
+    },
+    {
+      "id": "HYP-007",
+      "decision": "Aucune durée minimale n'est exigée pour qu'une partie soit comptée",
+      "raison": "Toute règle de durée serait arbitraire avant d'avoir observé des parties réelles",
+      "impact": "Une partie lancée puis quittée en dix secondes compte comme les autres",
+      "confiance": "faible",
+      "validation_attendue": "Écart visible entre parties comptées et parties réellement jouées"
     }
   ],
   "verrouille": ["objectif", "spec-nf"],

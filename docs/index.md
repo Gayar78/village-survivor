@@ -13,12 +13,11 @@ alors qu'il existait déjà et tournait.
 
 1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
 2. [Spécification non-fonctionnelle](spec-nf.md) — **approuvée le 1er août 2026**
-3. `spec-fonctionnelle.md` — spécification fonctionnelle, *à produire en phase 3*
+3. [Spécification fonctionnelle](spec-fonctionnelle.md) — **en revue**, en attente de validation
 4. `feedback.md` — *à partir de la phase 5*
 
-Les deux derniers restent volontairement sans lien tant que le fichier n'existe pas : un lien
-mort dans la porte d'entrée coûte plus qu'il ne rapporte. Ils deviendront cliquables à mesure
-que les phases les produiront.
+Le dernier reste volontairement sans lien tant que le fichier n'existe pas : un lien mort dans
+la porte d'entrée coûte plus qu'il ne rapporte.
 
 En attendant, l'état réel du produit est décrit par [`gameplay/current-rules.md`](gameplay/current-rules.md)
 et [`architecture.md`](architecture.md).
@@ -59,7 +58,7 @@ spans aux seules frontières significatives.
 | Index | `index.md` | à jour |
 | Objectif | [`objectif.md`](objectif.md) | approuvé |
 | Spécification non-fonctionnelle | [`spec-nf.md`](spec-nf.md) | approuvée |
-| Spécification fonctionnelle | `spec-fonctionnelle.md` | **absent** — phase 3 |
+| Spécification fonctionnelle | [`spec-fonctionnelle.md`](spec-fonctionnelle.md) | **en revue** |
 | Feedback | `feedback.md` | **absent** — phase 5 |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
 | Décisions | [`decisions/`](decisions/README.md) — 9 ADR | approuvé |
