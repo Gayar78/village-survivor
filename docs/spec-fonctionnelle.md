@@ -1,6 +1,6 @@
 # Village Survivor — Spécification fonctionnelle
 
-> Statut : **en revue** — en attente de validation des comportements par le propriétaire
+> Statut : approuvé — comportements validés par le propriétaire le 1er août 2026
 > Version du projet : v1
 > Propriétaire : Gayar
 > Dernière revue : 1er août 2026

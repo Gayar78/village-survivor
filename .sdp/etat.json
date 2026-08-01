@@ -1,8 +1,8 @@
 {
   "schema_version": 3,
   "version": "v1",
-  "phase": 3,
-  "phase_nom": "spec-fonctionnelle",
+  "phase": 4,
+  "phase_nom": "developpement",
   "iteration": 1,
   "profil": {
     "code": "non",
@@ -94,8 +94,8 @@
       "validation_attendue": "Écart visible entre parties comptées et parties réellement jouées"
     }
   ],
-  "verrouille": ["objectif", "spec-nf"],
+  "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "be4ab1c",
+  "dernier_commit": "1b6948d",
   "maj": "2026-08-01"
 }
