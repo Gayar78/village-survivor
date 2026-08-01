@@ -12,11 +12,11 @@ alors qu'il existait déjà et tournait.
 ## Lire d'abord
 
 1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
-2. `spec-nf.md` — spécification non-fonctionnelle, *à produire en phase 2*
+2. [Spécification non-fonctionnelle](spec-nf.md) — **approuvée le 1er août 2026**
 3. `spec-fonctionnelle.md` — spécification fonctionnelle, *à produire en phase 3*
 4. `feedback.md` — *à partir de la phase 5*
 
-Les trois derniers restent volontairement sans lien tant que le fichier n'existe pas : un lien
+Les deux derniers restent volontairement sans lien tant que le fichier n'existe pas : un lien
 mort dans la porte d'entrée coûte plus qu'il ne rapporte. Ils deviendront cliquables à mesure
 que les phases les produiront.
 
@@ -58,15 +58,15 @@ spans aux seules frontières significatives.
 |---|---|---|
 | Index | `index.md` | à jour |
 | Objectif | [`objectif.md`](objectif.md) | approuvé |
-| Spécification non-fonctionnelle | `spec-nf.md` | **absent** — phase 2 |
+| Spécification non-fonctionnelle | [`spec-nf.md`](spec-nf.md) | approuvée |
 | Spécification fonctionnelle | `spec-fonctionnelle.md` | **absent** — phase 3 |
 | Feedback | `feedback.md` | **absent** — phase 5 |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
 | Décisions | [`decisions/`](decisions/README.md) — 9 ADR | approuvé |
-| Observabilité | `observabilite.md` | **absent** — phase 2 |
-| Stratégie de tests | `qualite/strategie-tests.md` | **absent** — phase 2 |
+| Observabilité | [`observabilite.md`](observabilite.md) | approuvée |
+| Stratégie de tests | [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | approuvée |
 | Rapport de tests | `qualite/rapport-tests.md` | **absent** — phase 5 |
-| Runbooks | `runbooks/` | **absent** — au premier incident traité |
+| Runbooks | `runbooks/` | **absent** — au premier incident réellement rencontré |
 | Releases | `releases/v<N>.md` | **absent** — phase 7 |
 
 La traçabilité des exigences ([`qualite/traceabilite.md`](qualite/traceabilite.md)) est un
@@ -156,8 +156,9 @@ les phases 2 et 3.
 - la coopération et la persistance de compte ont été livrées sans arbitrage préalable
   ([ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md),
   [ADR-0009](decisions/ADR-0009-account-persistence.md)) ;
-- il n'existe **aucune télémétrie** : ni trace, ni métrique, ni API de débogage. C'est l'objet
-  principal de la phase 2.
+- il n'existe **aucune télémétrie** dans le code : ni trace, ni métrique, ni API de débogage. Sa
+  conception est arrêtée depuis le 1er août 2026 ([`observabilite.md`](observabilite.md)) ; son
+  implémentation appartient à la phase 4 et conditionne la campagne d'observation d'un mois.
 
 ## Autres références
 

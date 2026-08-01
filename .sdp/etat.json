@@ -1,8 +1,8 @@
 {
   "schema_version": 3,
   "version": "v1",
-  "phase": 2,
-  "phase_nom": "spec-non-fonctionnelle",
+  "phase": 3,
+  "phase_nom": "spec-fonctionnelle",
   "iteration": 1,
   "profil": {
     "code": "non",
@@ -32,9 +32,9 @@
     "donnees_persistantes": true
   },
   "observabilite": {
-    "niveau": null,
-    "unite_tracee": null,
-    "niveau_log_defaut": null
+    "niveau": "distribue",
+    "unite_tracee": "une partie, du lancement à sa fin ; jamais un tick",
+    "niveau_log_defaut": "info"
   },
   "hypotheses_ouvertes": [
     {
@@ -52,10 +52,34 @@
       "impact": "Aucune donnée d'usage venant d'inconnus ne sera collectée",
       "confiance": "haute",
       "validation_attendue": "Décision d'ouverture publique"
+    },
+    {
+      "id": "HYP-003",
+      "decision": "Aucune sauvegarde de la base n'est mise en place",
+      "raison": "La perte des comptes et de la progression est explicitement assumée par le propriétaire",
+      "impact": "Une panne disque effacerait toute la progression des joueurs",
+      "confiance": "haute",
+      "validation_attendue": "Première plainte réelle de perte, ou décision d'ouverture publique"
+    },
+    {
+      "id": "HYP-004",
+      "decision": "Sept jours de rétention de télémétrie suffisent",
+      "raison": "La campagne d'observation dure un mois mais s'analyse session par session",
+      "impact": "Une question posée plus de sept jours après une session restera sans réponse",
+      "confiance": "moyenne",
+      "validation_attendue": "Première analyse rétrospective rendue impossible par la purge"
+    },
+    {
+      "id": "HYP-005",
+      "decision": "Un seul collecteur de télémétrie, sans redondance ni surveillance",
+      "raison": "Le volume est négligeable et l'indisponibilité sans conséquence",
+      "impact": "Une panne silencieuse ferait perdre des mesures sans alerte",
+      "confiance": "moyenne",
+      "validation_attendue": "Écart constaté entre parties jouées et parties enregistrées"
     }
   ],
-  "verrouille": ["objectif"],
+  "verrouille": ["objectif", "spec-nf"],
   "derogations": [],
-  "dernier_commit": "7569115",
+  "dernier_commit": "be4ab1c",
   "maj": "2026-08-01"
 }

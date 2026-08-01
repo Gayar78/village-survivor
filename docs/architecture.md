@@ -177,6 +177,11 @@ que l'ancien contenu était validé par Zod.
 
 ## 10. Observabilité
 
+> Conception arrêtée le 1er août 2026 dans [`observabilite.md`](observabilite.md) :
+> tracing distribué OpenTelemetry, unité tracée = une partie, export OTLP vers un collecteur de
+> la pile locale. La section ci-dessous décrit l'état **avant** cette implémentation, qui
+> appartient à la phase 4.
+
 **Il n'existe aucune API de débogage.** L'ancienne `window.__VILLAGE_SURVIVOR_DEBUG__` a disparu
 avec l'ancien jeu ; plus aucun fichier source ne la définit. Les métriques de développement
 — FPS, durée de tick, nombre d'entités, graine, tick courant — ne sont plus exposées non plus.
