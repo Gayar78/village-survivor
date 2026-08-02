@@ -17,6 +17,7 @@ import {
   TowerRejoinHistoryReceiver,
   TowerRosterController,
   towerLocalRenderLead,
+  towerBuildMismatchMessage,
   TOWER_MAX_RENDER_LEAD_TICKS,
   type TowerRosterControlEvent,
   type TowerInputBatchMessage,
@@ -289,6 +290,30 @@ describe('empreintes d’intégrité', () => {
     expect(monitor.accept({ senderId: 'outsider', tick: 40, fingerprint: 'evil' })).toEqual({
       status: 'ignored',
     });
+  });
+});
+
+describe('contrôle de construction entre pairs', () => {
+  it('signale deux constructions différentes', () => {
+    // Le 2 août 2026, deux postes ont joué une build périmée servie par leur cache pendant
+    // qu'une build corrigée était déployée. Aucun signal ne l'a dit, et la session de test a
+    // mesuré autre chose que ce qu'elle croyait mesurer.
+    const message = towerBuildMismatchMessage('mfhk2z8', 'mfhk9qa');
+
+    expect(message).not.toBeNull();
+    expect(message).toContain('Ctrl+Maj+R');
+  });
+
+  it('ne dit rien quand les constructions concordent', () => {
+    expect(towerBuildMismatchMessage('mfhk2z8', 'mfhk2z8')).toBeNull();
+  });
+
+  it('reste muet devant un pair qui n’annonce pas sa construction', () => {
+    // Compatibilité avec une version antérieure au contrôle : mieux vaut ne rien dire qu'alerter
+    // à tort et apprendre aux joueurs à ignorer le bandeau.
+    expect(towerBuildMismatchMessage(undefined, 'mfhk2z8')).toBeNull();
+    expect(towerBuildMismatchMessage('', 'mfhk2z8')).toBeNull();
+    expect(towerBuildMismatchMessage(42, 'mfhk2z8')).toBeNull();
   });
 });
 

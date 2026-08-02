@@ -11,6 +11,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { SpanStatusCode, type Span } from '@opentelemetry/api';
 
 import { supabase } from '../account/supabaseClient.js';
+import { BUILD_ID } from '../buildId.js';
 import { HUB_CAPACITY } from '../hub/types.js';
 import { createLogger } from '../observability/logger.js';
 import {
@@ -156,6 +157,12 @@ export interface TowerCoopConfig {
 
 export interface TowerReadyMessage {
   senderId: string;
+  /**
+   * Construction exécutée par l'émetteur. Le lockstep exige que tous les pairs exécutent le
+   * **même code** ; rien ne le vérifiait avant le 2 août 2026. Optionnel pour rester compatible
+   * avec un pair d'une version antérieure, qui ne l'enverra pas.
+   */
+  build?: string;
 }
 
 export interface TowerInputFrame {
@@ -494,12 +501,35 @@ export class TowerRosterController {
   }
 }
 
-export function towerReadyBroadcast(senderId: string): TowerBroadcast {
+export function towerReadyBroadcast(senderId: string, build: string = BUILD_ID): TowerBroadcast {
   return {
     type: 'broadcast',
     event: TOWER_LOCKSTEP_EVENTS.ready,
-    payload: { senderId },
+    payload: { senderId, build },
   };
+}
+
+/**
+ * Compare la construction d'un pair à la nôtre.
+ *
+ * Renvoie `null` quand il n'y a rien à signaler — même build, ou pair antérieur à ce contrôle,
+ * qui n'annonce rien. Sinon, le message à afficher.
+ *
+ * Ce contrôle ne répare rien : deux builds différentes divergeront quand même. Il transforme une
+ * divergence inexplicable, constatée après deux minutes de jeu, en un avertissement compréhensible
+ * avant de commencer.
+ */
+export function towerBuildMismatchMessage(
+  remoteBuild: unknown,
+  localBuild: string = BUILD_ID,
+): string | null {
+  if (!isBoundedNonEmptyString(remoteBuild, MAX_ACTION_ID_LENGTH) || remoteBuild === localBuild) {
+    return null;
+  }
+  return (
+    'Versions du jeu différentes entre les joueurs : la partie divergera. ' +
+    'Rechargez la page avec Ctrl+Maj+R sur chaque poste, puis relancez.'
+  );
 }
 
 export function towerInputBatchBroadcast(payload: TowerInputBatchMessage): TowerBroadcast {
@@ -1301,6 +1331,14 @@ class TowerLockstepSession implements TowerRenderableSession {
       'broadcast',
       { event: TOWER_LOCKSTEP_EVENTS.ready },
       (message) => {
+        const mismatch = towerBuildMismatchMessage(message.payload?.build);
+        if (mismatch !== null) {
+          this.log.error('constructions différentes entre pairs', {
+            'vs.build.local': BUILD_ID,
+            'vs.build.remote': String(message.payload?.build),
+          });
+          this.reportIssue(mismatch);
+        }
         if (this.barrier.accept(message.payload)) {
           this.tryStartSimulation();
         }

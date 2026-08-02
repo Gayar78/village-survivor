@@ -14,6 +14,8 @@ import {
   ATTR_TELEMETRY_SDK_LANGUAGE,
 } from '@opentelemetry/semantic-conventions';
 
+import { BUILD_ID } from '../buildId.js';
+
 import { readTelemetryConfig, type TelemetryConfig } from './config.js';
 
 /**
@@ -64,19 +66,25 @@ export function initTelemetry(): TelemetryConfig {
       [ATTR_SERVICE_NAME]: config.serviceName,
       [ATTR_SERVICE_VERSION]: config.serviceVersion,
       [ATTR_TELEMETRY_SDK_LANGUAGE]: 'webjs',
+      // Deux pairs d'une même partie doivent exécuter la même construction. L'attacher aux
+      // mesures permet de répondre après coup à la question « jouaient-ils le même code ? »,
+      // restée sans réponse le 2 août 2026.
+      'service.build_id': BUILD_ID,
       // Attribut normalisé de l'environnement de déploiement : distingue `lan` de `dev` dans une
       // vue commune, sans quoi deux postes de développement pollueraient les mesures réelles.
       'deployment.environment.name': config.environment,
     });
-    const headers = { 'content-type': 'application/json' };
-
+    // **Ne jamais fixer `Content-Type` ici.** Chaque exportateur pose déjà le sien. En ajouter un
+    // second, ne serait-ce qu'avec une casse différente, produit un en-tête `application/json,
+    // application/json` une fois les deux fusionnés par `fetch` — et le collecteur refuse ce type
+    // de média par un 415. Mesuré le 2 août 2026 : les lots partaient et étaient rejetés en
+    // silence, l'export étant conçu pour ne jamais remonter d'erreur au jeu.
     const tracerProvider = new WebTracerProvider({
       resource,
       spanProcessors: [
         new BatchSpanProcessor(
           new OTLPTraceExporter({
             url: `${config.endpoint}/v1/traces`,
-            headers,
             timeoutMillis: EXPORT_TIMEOUT_MS,
           }),
           // File bornée : au-delà, les spans les plus anciens sont abandonnés. C'est le
@@ -93,7 +101,6 @@ export function initTelemetry(): TelemetryConfig {
         new PeriodicExportingMetricReader({
           exporter: new OTLPMetricExporter({
             url: `${config.endpoint}/v1/metrics`,
-            headers,
             timeoutMillis: EXPORT_TIMEOUT_MS,
           }),
           exportIntervalMillis: METRIC_EXPORT_INTERVAL_MS,
@@ -111,7 +118,6 @@ export function initTelemetry(): TelemetryConfig {
         new BatchLogRecordProcessor({
           exporter: new OTLPLogExporter({
             url: `${config.endpoint}/v1/logs`,
-            headers,
             timeoutMillis: EXPORT_TIMEOUT_MS,
           }),
           maxQueueSize: 512,

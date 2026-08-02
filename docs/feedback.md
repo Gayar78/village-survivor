@@ -200,6 +200,47 @@ d'état compare *tout* l'état en pleine précision, et ces mesures ne couvrent 
 La cause établie est supprimée et l'accord est vérifié entre les deux postes ; s'il existait une
 seconde cause, seule une partie réelle la révélera.
 
+## Session du 2 août 2026 — test invalidé par le cache
+
+**Rapporté** : performances toujours mauvaises, correctes pour le propriétaire, mauvaises pour
+son fils dès le début ; jeu quasiment injouable après la mort et la réapparition de ce dernier.
+
+**Ce que la télémétrie a montré : rien.** Aucune requête `/otel` n'est parvenue à la passerelle
+pendant la partie. La recherche de la cause a établi un fait plus gênant :
+
+**Aucun des deux navigateurs n'a demandé le jeu au serveur.** Le journal de la passerelle montre,
+pour la fenêtre de la partie, des appels à l'authentification, à l'API et au websocket temps réel
+— mais **pas une seule requête pour `play.html` ni pour un paquet**. Les deux postes ont servi la
+page et le code depuis leur cache local, sans même revalider.
+
+**Ils ont donc joué une construction périmée** : ni la prédiction de rendu, ni l'instrumentation
+n'en faisaient partie. Le ressenti rapporté porte sur le code d'avant les correctifs. Il reste
+un fait — le jeu était injouable — mais il ne dit rien de ce qui a été livré depuis.
+
+**Cause** : les pages étaient servies **sans en-tête `Cache-Control`**. Faute de consigne
+explicite, un navigateur applique une heuristique de fraîcheur et peut resservir une page ancienne
+sans interroger le serveur. Cette faiblesse était **déjà consignée** comme cause candidate de la
+désynchronisation du 1er août, puis écartée au motif qu'il faudrait qu'un navigateur ait gardé en
+cache à la fois la page et son paquet. C'est précisément ce qui s'est produit : ce n'est pas un
+cas rare, c'est le comportement ordinaire d'un cache.
+
+**Leçon de méthode** : la page de diagnostic, elle, portait `Cache-Control: no-store` et était donc
+toujours fraîche. Les relevés d'arithmétique du 2 août sont valides ; c'est la partie qui ne
+l'était pas. Un contrôle qui se rafraîchit alors que le produit ne se rafraîchit pas donne
+l'illusion de tester la version qu'on croit.
+
+### Correctifs du 2 août 2026
+
+- **les pages sont désormais revalidées à chaque chargement** (`Cache-Control: no-cache`), et les
+  paquets — dont le nom porte une empreinte du contenu — mis en cache définitivement
+  (`immutable`). Une page ne peut plus référencer un paquet périmé ;
+- **les pairs échangent l'identifiant de leur construction** à la jonction coopérative. S'il
+  diffère, un message le dit **avant** la partie au lieu d'une divergence inexplicable après deux
+  minutes. L'identifiant part aussi dans la télémétrie, pour que la question « jouaient-ils le
+  même code ? » ait désormais une réponse ;
+- **une bascule reste nécessaire une fois** : un navigateur qui tient déjà la page en cache ne
+  demandera pas le nouvel en-tête. Il faut un rechargement forcé (Ctrl+Maj+R) sur chaque poste.
+
 ### Ce que cette session valide
 
 Elle confirme la priorité décidée en phase 2 et 3 : **instrumenter avant de faire évoluer le
