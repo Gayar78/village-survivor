@@ -72,8 +72,10 @@ roster et les empreintes d'état.
 > [`../../ROADMAP.md`](../../ROADMAP.md).
 >
 > **Correctif appliqué le même jour.** Les vingt-huit appels ont été remplacés par des opérations
-> exactement spécifiées, et une garde de lint interdit leur retour. L'hypothèse de l'ADR redevient
-> tenable ; il reste à le constater en partie réelle.
+> exactement spécifiées, et une garde de lint interdit leur retour. L'accord entre moteurs a été
+> **vérifié par mesure le 2 août 2026** sur les deux postes qui jouent et deux moteurs de
+> contrôle. L'hypothèse de l'ADR redevient tenable pour l'arithmétique ; il reste à constater en
+> partie réelle qu'aucune autre cause de divergence ne subsiste.
 
 ## Conséquences
 

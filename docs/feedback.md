@@ -3,7 +3,7 @@
 > Statut : en cours
 > Version du projet : v1
 > Propriétaire : Gayar
-> Dernière revue : 1er août 2026
+> Dernière revue : 2 août 2026
 
 Ce document est normalement ouvert en phase 5. Il l'est ici plus tôt : une session de jeu
 réelle a eu lieu pendant la phase 4, avant l'incrément d'observabilité. Perdre ce retour aurait
@@ -168,8 +168,37 @@ La page de diagnostic vérifie maintenant les deux côtés : les fonctions du mo
 différer d'un navigateur à l'autre, et leurs remplaçants, qui **doivent** concorder partout.
 C'est le contrôle à faire avant la prochaine partie à plusieurs postes.
 
-**Ce que cela ne prouve pas** : que la coopération est désormais sans divergence. La cause
-établie est supprimée ; seule une partie réelle dira s'il en existait une autre.
+### Correctif vérifié le 2 août 2026
+
+Relevé sur les **deux postes qui jouent**, plus deux moteurs de contrôle :
+
+| Fonction | Firefox 153 | Edge 150 | Chromium 148 | Node 24 (V8 13.6) |
+|---|---|---|---|---|
+| `Math.hypot` | `e28fa4b0…` | `f7f3f676…` | `f7f3f676…` | `f7f3f676…` |
+| `Math.atan2` | `297ed15f…` | `c15c5453…` | `297ed15f…` | `297ed15f…` |
+| `Math.cos` | `a8631c79…` | `c836e13d…` | `547d5fdb…` | `709d0e69…` |
+| `Math.sin` | `06b8429d…` | `b9fee274…` | `fc8960a3…` | `fd7f0bf3…` |
+| **`exactLength`** | `e9a279fcfad73017` | `e9a279fcfad73017` | — | `e9a279fcfad73017` |
+| **`exactCos`** | `8f1b7d6a9d60c48d` | `8f1b7d6a9d60c48d` | — | `8f1b7d6a9d60c48d` |
+| **`exactSin`** | `289f59c496e56674` | `289f59c496e56674` | — | `289f59c496e56674` |
+
+**Les trois remplaçants concordent exactement**, sur trois moteurs et sur les deux machines qui
+vont jouer ensemble. C'est la propriété que le lockstep exige.
+
+`Math.cos` et `Math.sin` donnent, eux, **quatre valeurs différentes sur quatre moteurs**. Le
+quatrième relevé enfonce le clou : Node 24 embarque V8, comme Chromium 148 et Edge 150, et ne
+s'accorde avec aucun des deux. Le critère n'est décidément pas la famille de moteur mais le build
+exact.
+
+Un détail vaut d'être noté : le relevé Node emploie **le module réellement embarqué dans le jeu**
+(`packages/game-core/dist/exact-math.js`), tandis que les navigateurs exécutaient la copie inline
+de la page de diagnostic. Les deux donnent la même empreinte, donc la page contrôle bien ce que
+le jeu exécute — un diagnostic qui aurait dérivé de son sujet ne servirait à rien.
+
+**Ce que cela ne prouve toujours pas** : qu'une partie coopérative ne divergera plus. L'empreinte
+d'état compare *tout* l'état en pleine précision, et ces mesures ne couvrent que l'arithmétique.
+La cause établie est supprimée et l'accord est vérifié entre les deux postes ; s'il existait une
+seconde cause, seule une partie réelle la révélera.
 
 ### Ce que cette session valide
 

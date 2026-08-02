@@ -154,9 +154,14 @@ Ces trois conditions ne suffisent pas, et une divergence réelle l'a montré.
 > garde de lint la fait respecter — c'est elle qui a trouvé le cas de l'opérateur de puissance,
 > que la recherche manuelle avait manqué.
 >
-> **Ce que le correctif ne prouve pas** : que la coopération est désormais sans divergence. Il
-> supprime la cause établie ; il reste à le constater en partie réelle, ce que la page de
-> diagnostic permet de vérifier avant de jouer.
+> **Accord vérifié le 2 août 2026** sur les deux postes qui jouent, plus deux moteurs de
+> contrôle : les fonctions de remplacement donnent la même empreinte partout, alors que
+> `Math.cos` et `Math.sin` en donnent quatre différentes sur quatre moteurs. Relevés dans
+> [`feedback.md`](feedback.md).
+>
+> **Ce que cela ne prouve pas** : qu'une partie coopérative ne divergera plus. L'empreinte d'état
+> compare tout l'état en pleine précision ; ces mesures ne couvrent que l'arithmétique. S'il
+> existait une seconde cause, seule une partie réelle la révélera.
 
 Les éléments qui pourraient dériver sont dérivés de valeurs pures plutôt que tirés : la rotation
 des biomes, les offres du marchand et les offres de défense globale se calculent depuis la graine
