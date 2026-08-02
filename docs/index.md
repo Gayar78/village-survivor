@@ -1,7 +1,7 @@
 # Village Survivor — Documentation
 
 > Statut : en construction
-> Version du projet : v1
+> Version du projet : v2 — la v1 est figée par [`releases/v1.md`](releases/v1.md)
 > Propriétaire : Gayar
 > Dernière revue : 2 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
