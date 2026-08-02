@@ -55,8 +55,26 @@ divergente — a produit cette désynchronisation. Les deux sont réelles et suf
 aujourd'hui ne permet de les départager, et c'est le premier objectif de diagnostic assigné à
 l'incrément d'observabilité.
 
-Le contexte rend la première plausible : le client a été reconstruit plusieurs fois le jour même
-de la session.
+**Éléments qui affaiblissent l'hypothèse des versions différentes**, précisés par le propriétaire
+après coup :
+
+- les deux postes venaient d'être démarrés, et la pile Docker de même ; aucune reconstruction du
+  client n'a eu lieu entre le démarrage et la partie, donc tous les pairs téléchargeaient les
+  mêmes fichiers ;
+- un des joueurs découvrait le jeu : son navigateur n'avait aucun cache le concernant ;
+- surtout, **une page périmée ne produirait pas une divergence discrète**. Les noms de fichiers
+  produits par l'outil de construction contiennent une empreinte du contenu, et le dossier de
+  sortie est vidé à chaque construction : une page ancienne référencerait un paquet supprimé et
+  échouerait visiblement, au lieu de jouer une partie divergente. Il faudrait qu'un navigateur
+  ait conservé en cache **à la fois** la page et le paquet correspondants.
+
+Un redémarrage de poste ne vide toutefois pas le cache disque d'un navigateur : l'hypothèse est
+affaiblie, pas éliminée.
+
+**La seconde hypothèse devient donc la plus probable**, sans être démontrée. Elle se vérifie sans
+développement : faire calculer à chaque poste une empreinte des mêmes opérations mathématiques
+et comparer les résultats. Si les valeurs diffèrent d'un poste à l'autre, la cause est établie ;
+si elles concordent, il faut chercher ailleurs.
 
 ### Ce que cette session valide
 
@@ -70,7 +88,10 @@ manque que l'incrément doit combler.
 Le propriétaire a demandé que ces deux points soient traités lors des prochaines itérations,
 avant toute évolution fonctionnelle. Ils sont inscrits dans [`../ROADMAP.md`](../ROADMAP.md).
 
-Deux précautions immédiates, sans développement :
+Précaution immédiate, sans développement : garder l'onglet du jeu au premier plan, comme
+l'interface le demande déjà.
 
-1. **s'assurer que tous les joueurs rechargent la page** après une reconstruction du client ;
-2. garder l'onglet du jeu au premier plan, comme l'interface le demande déjà.
+**Prochaine étape de diagnostic**, avant tout correctif : établir laquelle des deux causes est
+la bonne. La plus probable se vérifie en quelques lignes — comparer, d'un poste à l'autre, le
+résultat des fonctions mathématiques employées par la simulation. Corriger sans avoir tranché
+reviendrait à remplacer une partie du cœur de simulation sur une intuition.
