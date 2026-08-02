@@ -15,6 +15,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 
 import { BUILD_ID } from '../buildId.js';
+import { randomSeed } from '../randomSeed.js';
 
 import { readTelemetryConfig, type TelemetryConfig } from './config.js';
 
@@ -39,6 +40,20 @@ const METRIC_EXPORT_INTERVAL_MS = 15_000;
 /** Au-delà, l'export est abandonné : mieux vaut perdre une mesure que retenir une requête. */
 const EXPORT_TIMEOUT_MS = 5_000;
 const SCOPE_NAME = 'village-survivor';
+
+/**
+ * Identifiant de **cette exécution**, tiré au hasard à l'ouverture de l'onglet.
+ *
+ * Sans lui, deux postes d'une même partie écrivent dans la même série de mesures : les valeurs
+ * instantanées appartiennent à l'un des deux sans qu'on sache lequel, et toute évolution dans le
+ * temps devient illisible — deux producteurs sur une série cumulative produisent des sauts que
+ * `rate()` interprète de travers. Constaté le 2 août 2026 sur la première partie mesurée.
+ *
+ * **Il ne désigne ni un compte, ni une personne, ni une machine.** Il distingue deux exécutions,
+ * change à chaque rechargement de page, et ne peut être rapproché d'aucune autre donnée. C'est
+ * exactement ce que le diagnostic exige, et rien de plus.
+ */
+const INSTANCE_ID = randomSeed();
 
 let currentConfig: TelemetryConfig | undefined;
 let shutdown: (() => Promise<void>) | undefined;
@@ -70,6 +85,9 @@ export function initTelemetry(): TelemetryConfig {
       // mesures permet de répondre après coup à la question « jouaient-ils le même code ? »,
       // restée sans réponse le 2 août 2026.
       'service.build_id': BUILD_ID,
+      // Attribut normalisé : ce qui distingue deux exécutions du même service. Sans lui, les
+      // deux postes d'une partie sont indiscernables dans les mesures.
+      'service.instance.id': INSTANCE_ID,
       // Attribut normalisé de l'environnement de déploiement : distingue `lan` de `dev` dans une
       // vue commune, sans quoi deux postes de développement pollueraient les mesures réelles.
       'deployment.environment.name': config.environment,

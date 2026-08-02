@@ -36,9 +36,12 @@ de sortie « une exécution réelle tracée de bout en bout » est tenu.
 > mesures** : aucun attribut ne les distingue depuis le retrait de l'identifiant de compte. Les
 > valeurs instantanées restent exploitables, mais elles appartiennent à un pair sans qu'on sache
 > lequel, et toute évolution dans le temps est faussée — deux producteurs sur une série cumulative
-> produisent des sauts que `rate()` interprète de travers. Correctif proposé : un identifiant de
-> session tiré au hasard à l'ouverture de l'onglet, sans lien avec le compte. Il distingue deux
-> exécutions, et rien de plus.
+> produisent des sauts que `rate()` interprète de travers.
+>
+> **Corrigé le même jour** : chaque exécution porte un `service.instance.id` tiré au hasard à
+> l'ouverture de l'onglet. Il ne désigne ni un compte, ni une personne, ni une machine — il
+> distingue deux exécutions, change à chaque rechargement, et ne peut être rapproché d'aucune
+> autre donnée. C'est ce que le diagnostic exige, et rien de plus.
 
 ## Objectif de diagnostic
 
@@ -95,7 +98,7 @@ noierait le signal. La boucle est suivie par des métriques agrégées.
 ### Attributs du span racine d'une partie
 
 `vs.seed`, `vs.mode` (`solo` ou `coop`), `vs.players.count`, `service.version`,
-`deployment.environment.name`.
+`service.build_id`, `service.instance.id`, `deployment.environment.name`.
 
 **Aucun identifiant de joueur n'est émis.** Il n'était nécessaire que pour compter les parties
 par personne, finalité retirée du périmètre. Le diagnostic n'en a pas besoin : une divergence ou

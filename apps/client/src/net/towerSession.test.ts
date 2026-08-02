@@ -17,6 +17,7 @@ import {
   TowerRejoinHistoryReceiver,
   TowerRosterController,
   towerLocalRenderLead,
+  towerDueLocalTick,
   towerBuildMismatchMessage,
   TOWER_MAX_RENDER_LEAD_TICKS,
   type TowerRosterControlEvent,
@@ -290,6 +291,31 @@ describe('empreintes d’intégrité', () => {
     expect(monitor.accept({ senderId: 'outsider', tick: 40, fingerprint: 'evil' })).toEqual({
       status: 'ignored',
     });
+  });
+});
+
+describe('horloge de capture des entrées', () => {
+  it('déduit le tick dû du temps réel, jamais d’un compte de déclenchements', () => {
+    // C'est toute la correction du 2 août 2026 : une horloge qui rattrape ce qu'elle a manqué.
+    expect(towerDueLocalTick(3, 0)).toBe(3);
+    expect(towerDueLocalTick(3, 49)).toBe(3);
+    expect(towerDueLocalTick(3, 50)).toBe(4);
+    expect(towerDueLocalTick(3, 1_000)).toBe(23);
+  });
+
+  it('rattrape une interruption au lieu de perdre les ticks', () => {
+    // Un onglet bloqué 500 ms doit produire les dix entrées manquantes d'un coup. L'ancienne
+    // capture, à un tick par déclenchement de minuteur, les perdait définitivement — et la
+    // partie prenait 11 secondes de retard en deux minutes et demie.
+    const avant = towerDueLocalTick(100, 5_000);
+    const apres = towerDueLocalTick(100, 5_500);
+
+    expect(apres - avant).toBe(10);
+  });
+
+  it('ne réclame jamais un tick antérieur à son origine', () => {
+    // `performance.now()` peut reculer d'une fraction de milliseconde entre deux lectures.
+    expect(towerDueLocalTick(42, -12)).toBe(42);
   });
 });
 

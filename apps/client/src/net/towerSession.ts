@@ -122,6 +122,18 @@ export interface TowerRenderableSession extends TowerSession {
 export const TOWER_MAX_RENDER_LEAD_TICKS = 4;
 
 /**
+ * Tick d'entrée que le temps écoulé réclame, depuis l'origine de l'horloge de capture.
+ *
+ * Fonction du **temps réel**, jamais d'un nombre de déclenchements de minuteur. C'est toute la
+ * différence entre une horloge qui rattrape ce qu'elle a manqué et une horloge qui perd
+ * définitivement chaque déclenchement tardif — mesuré le 2 août 2026 : 54,1 ms par tick au lieu
+ * de 50, soit 11 secondes de retard en deux minutes et demie de jeu.
+ */
+export function towerDueLocalTick(baseTick: number, elapsedMs: number): number {
+  return baseTick + Math.max(0, Math.floor(elapsedMs / TOWER_LOCKSTEP_TICK_MS));
+}
+
+/**
  * Avance de rendu de l'avatar local, en ticks, à partir des seules entrées déjà émises.
  *
  * `captureFraction` est l'âge de la dernière entrée capturée, rapporté à la durée d'un tick.
@@ -1289,6 +1301,9 @@ class TowerLockstepSession implements TowerRenderableSession {
   private nextLocalTick = 0;
   /** Horodatage de la dernière entrée capturée : horloge de la prédiction de rendu. */
   private lastCaptureAt = 0;
+  /** Origine de l'horloge de capture, et tick correspondant. Voir `startCaptureClock`. */
+  private captureEpochMs = 0;
+  private captureBaseTick = 0;
   private connectionIssue: string | undefined;
   private readonly log = createLogger('coop');
   private readonly telemetry: {
@@ -1588,23 +1603,52 @@ class TowerLockstepSession implements TowerRenderableSession {
     for (let tick = 0; tick < TOWER_INPUT_DELAY_TICKS; tick += 1) {
       this.addLocalFrame(tick, idleInput());
     }
+    // Une entrée immédiate en plus des ticks de retard : c'est elle qui constitue la réserve de
+    // trois ticks sur laquelle vit la prédiction de rendu.
     this.nextLocalTick = TOWER_INPUT_DELAY_TICKS;
-    this.captureNextLocalFrame();
-    this.inputHandle = window.setInterval(
-      () => this.captureNextLocalFrame(),
-      TOWER_LOCKSTEP_TICK_MS,
-    );
+    this.captureOneLocalFrame();
+    this.startCaptureClock();
     this.lastTimestamp = performance.now();
     this.frameHandle = requestAnimationFrame(this.onFrame);
   }
 
-  private captureNextLocalFrame(): void {
-    if (!this.running || !this.simulationStarted) {
-      return;
-    }
-    if (this.nextLocalTick > this.inputBuffer.nextTick + MAX_FUTURE_INPUT_TICKS) {
-      return;
-    }
+  /**
+   * Démarre l'horloge de capture des entrées.
+   *
+   * Cette horloge est **absolue** : le nombre d'entrées à avoir produites se déduit du temps
+   * écoulé depuis cet instant, et non du nombre de fois qu'un minuteur s'est déclenché.
+   *
+   * La distinction n'est pas théorique. Jusqu'au 2 août 2026, la capture avançait d'un tick par
+   * déclenchement de `setInterval` : un déclenchement tardif ou fusionné par le navigateur était
+   * perdu définitivement, alors que la simulation, elle, avance sur un accumulateur qui ne perd
+   * jamais de temps. Les deux horloges dérivaient donc l'une de l'autre, la réserve de trois ticks
+   * qui les sépare se vidait sans jamais se reconstituer, et la partie finissait par n'avancer
+   * qu'au rythme du minuteur le plus lent du groupe. Mesuré sur une partie réelle : 54,1 ms par
+   * tick au lieu de 50, soit 11 secondes de retard accumulé en deux minutes et demie, sur des
+   * machines occupées à 4 %.
+   */
+  private startCaptureClock(): void {
+    this.captureEpochMs = performance.now();
+    this.captureBaseTick = this.nextLocalTick;
+    this.lastCaptureAt = this.captureEpochMs;
+    // Le minuteur reste le moteur de secours : contrairement à `requestAnimationFrame`, il
+    // continue de se déclencher — plus lentement — dans un onglet en arrière-plan. Comme la
+    // capture vise une cible absolue, un déclenchement tardif rattrape simplement plusieurs ticks.
+    this.inputHandle = window.setInterval(
+      () => this.captureDueLocalFrames(),
+      TOWER_LOCKSTEP_TICK_MS,
+    );
+  }
+
+  /**
+   * Produit toutes les entrées que le temps réel réclame, et pas seulement la suivante.
+   *
+   * Idempotente : elle compare l'état à une cible calculée, donc l'appeler trop souvent ne produit
+   * rien de plus. C'est ce qui permet de l'appeler depuis deux moteurs — le minuteur et la boucle
+   * d'affichage — sans double comptage.
+   */
+  /** Une entrée, tout de suite : sert à amorcer la réserve au démarrage et après un rejeu. */
+  private captureOneLocalFrame(): void {
     const action = this.pendingActions.shift();
     const input =
       action === undefined ? this.latestInput : withDiscreteAction(this.latestInput, action);
@@ -1612,6 +1656,33 @@ class TowerLockstepSession implements TowerRenderableSession {
     this.nextLocalTick += 1;
     this.lastCaptureAt = performance.now();
     this.broadcastRecentInputs();
+  }
+
+  private captureDueLocalFrames(): void {
+    if (!this.running || !this.simulationStarted) {
+      return;
+    }
+    const wanted = towerDueLocalTick(this.captureBaseTick, performance.now() - this.captureEpochMs);
+    let captured = 0;
+    while (this.nextLocalTick < wanted && captured < MAX_STEPS_PER_FRAME) {
+      // Garde d'origine : ne jamais courir trop loin devant une simulation bloquée, faute de quoi
+      // la mémoire et les paquets d'entrées croîtraient sans fin.
+      if (this.nextLocalTick > this.inputBuffer.nextTick + MAX_FUTURE_INPUT_TICKS) {
+        break;
+      }
+      const action = this.pendingActions.shift();
+      const input =
+        action === undefined ? this.latestInput : withDiscreteAction(this.latestInput, action);
+      this.addLocalFrame(this.nextLocalTick, input);
+      this.nextLocalTick += 1;
+      captured += 1;
+    }
+    if (captured > 0) {
+      this.lastCaptureAt = performance.now();
+      // Une seule diffusion pour tout le lot : le protocole envoie de toute façon une fenêtre
+      // glissante des derniers ticks, donc en émettre une par entrée serait du gaspillage pur.
+      this.broadcastRecentInputs();
+    }
   }
 
   private addLocalFrame(tick: number, input: TowerInput): void {
@@ -1656,6 +1727,10 @@ class TowerLockstepSession implements TowerRenderableSession {
     const rawDeltaMs = Math.max(0, Math.min(250, timestamp - this.lastTimestamp));
     this.lastTimestamp = timestamp;
     this.accumulatorMs += rawDeltaMs;
+    // Capturer avant de consommer, et depuis la boucle d'affichage plutôt que d'attendre le
+    // prochain minuteur : à 60 images par seconde, une entrée due est produite dans les 16 ms
+    // au lieu de 50. L'appel est idempotent, il ne double donc pas celui du minuteur.
+    this.captureDueLocalFrames();
     let processed = 0;
     while (this.accumulatorMs >= TOWER_LOCKSTEP_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
       const inputs = this.inputBuffer.takeNextTick();
@@ -2012,11 +2087,8 @@ class TowerLockstepSession implements TowerRenderableSession {
     this.inputBuffer.advanceTo(replayedUntil === undefined ? 0 : replayedUntil + 1);
     this.simulationStarted = true;
     this.nextLocalTick = this.inputBuffer.nextTick + TOWER_INPUT_DELAY_TICKS;
-    this.captureNextLocalFrame();
-    this.inputHandle = window.setInterval(
-      () => this.captureNextLocalFrame(),
-      TOWER_LOCKSTEP_TICK_MS,
-    );
+    this.captureOneLocalFrame();
+    this.startCaptureClock();
     this.lastTimestamp = performance.now();
     this.accumulatorMs = TOWER_LOCKSTEP_TICK_MS * MAX_STEPS_PER_FRAME;
     this.frameHandle = requestAnimationFrame(this.onFrame);

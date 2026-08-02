@@ -228,12 +228,13 @@ Ce qui n'est **pas** corrigé, et reste ouvert :
    Mesurer avant de choisir : la part du retard constant et celle des gels intermittents ne sont
    pas connues.
 
-## Correctifs proposés après la mesure du 2 août 2026 — À arbitrer
+## Correctifs issus de la mesure du 2 août 2026
 
-Établis par la télémétrie, détaillés dans [`docs/feedback.md`](docs/feedback.md). **Aucun n'est
-implémenté** : ils demandent un arbitrage, et le troisième touche le modèle lui-même.
+Établis par la télémétrie, détaillés dans [`docs/feedback.md`](docs/feedback.md). Les deux
+premiers sont **livrés** sur décision du propriétaire ; les deux suivants restent à arbitrer, et
+le dernier touche le modèle lui-même.
 
-### 1. Aligner l'horloge de capture sur celle de la simulation — *corriger un défaut*
+### 1. Aligner l'horloge de capture sur celle de la simulation — **Livré**, à vérifier en jeu
 
 La capture des entrées avance sur un `setInterval` qui perd un tick à chaque déclenchement tardif
 ou fusionné ; la simulation avance sur un accumulateur qui n'en perd aucun. La réserve de trois
@@ -243,14 +244,19 @@ ticks entre les deux se vide et ne se reconstitue jamais.
 ticks d'entrée que le temps réel en réclame, au lieu d'un par déclenchement de minuteur. La
 réserve redevient alors auto-stabilisée.
 
-Portée : `towerSession.ts` seul, une trentaine de lignes. Aucun changement de protocole, aucun
-effet sur le déterminisme — les entrées produites sont les mêmes, seule leur cadence de production
-change. **Risque faible, bénéfice attendu élevé** : c'est ce qui rétablit à la fois la cadence de
-20 Hz et le fonctionnement de la prédiction de rendu.
+Portée : `towerSession.ts` seul. Aucun changement de protocole, aucun effet sur le déterminisme —
+les entrées produites sont les mêmes, seule leur cadence de production change.
 
-À faire en premier, et à mesurer avant d'aller plus loin. Il est possible que cela suffise.
+**Livré le 2 août 2026.** La capture vise désormais un tick calculé depuis le temps écoulé, et
+non depuis un compte de déclenchements ; elle est appelée à la fois par le minuteur — qui survit
+à un onglet en arrière-plan — et par la boucle d'affichage, qui réagit en 16 ms au lieu de 50.
+Un blocage de 500 ms produit les dix entrées manquantes d'un coup au lieu de les perdre.
 
-### 2. Distinguer les pairs dans la télémétrie — *rendre la mesure exploitable*
+**Ce qui reste à prouver** : que la cadence effective revient à 50 ms par tick en partie réelle.
+La mesure du prochain test le dira, et c'est le seul juge — le correctif ne se vérifie pas en
+solo, où cette horloge n'existe pas.
+
+### 2. Distinguer les pairs dans la télémétrie — **Livré**
 
 Les deux postes écrivent dans la même série : aucune évolution temporelle n'est lisible, et on ne
 sait pas de quel pair viennent les valeurs.
@@ -259,10 +265,11 @@ sait pas de quel pair viennent les valeurs.
 ressources OpenTelemetry. Il ne désigne ni le compte ni la personne — il distingue deux
 exécutions, ce qui est exactement le besoin, et rien de plus.
 
-Portée : quelques lignes dans `observability/telemetry.ts`. Sans lui, la prochaine session sera
-aussi difficile à lire que celle-ci.
+**Livré le 2 août 2026** : un identifiant tiré au hasard à l'ouverture de l'onglet, porté par
+l'attribut normalisé `service.instance.id`. Il change à chaque rechargement et ne peut être
+rapproché d'aucune autre donnée.
 
-### 3. Rendre l'avance d'entrée adaptative — *atténuer, sans changer de modèle*
+### 3. Rendre l'avance d'entrée adaptative — *atténuer, sans changer de modèle* — À arbitrer
 
 Le retard d'entrée est figé à deux ticks. Trop court, la réserve se vide au moindre à-coup ; trop
 long, le jeu répond moins bien pour tout le monde.
@@ -274,7 +281,7 @@ déjà et garantit que tous les pairs changent au même tick.
 Portée : moyenne, et elle touche le protocole. À n'entreprendre que si le correctif 1 ne suffit
 pas.
 
-### 4. Découpler la simulation du temps réel des autres — *changer de modèle*
+### 4. Découpler la simulation du temps réel des autres — *changer de modèle* — À arbitrer
 
 C'est la remise en cause de fond, et elle est proposée sans être recommandée aujourd'hui.
 
@@ -302,9 +309,10 @@ Deux sorties existent, toutes deux importantes :
   ouverte. Il rouvre en revanche l'hébergement, son coût et son exploitation — que l'objectif
   écarte aujourd'hui.
 
-**Recommandation** : appliquer 1 et 2, remesurer, et ne trancher entre 3 et 4 qu'avec ces
-chiffres en main. Décider aujourd'hui reviendrait à choisir une architecture sur une seule partie
-de deux minutes.
+**Décision du propriétaire, 2 août 2026** : 1 et 2 sont appliqués, une nouvelle partie sera
+mesurée, puis l'arbitrage entre le modèle actuel et un retour au client-serveur sera pris **avec
+son fils**, qui joue. C'est le bon ordre : la question n'est pas seulement technique, et elle se
+décide sur des chiffres et sur un ressenti, pas sur une intuition d'architecture.
 
 ## Dette à résorber — Prochain
 
