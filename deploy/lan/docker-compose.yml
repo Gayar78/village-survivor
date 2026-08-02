@@ -167,6 +167,9 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ../../apps/client/dist:/usr/share/nginx/html:ro
+      # Outils de diagnostic du déploiement, servis à part : ils ne font pas partie du jeu et
+      # ne doivent donc jamais entrer dans son paquet ni disparaître à la reconstruction.
+      - ./diagnostics:/usr/share/nginx/diagnostics:ro
 
 volumes:
   vs-db-data:

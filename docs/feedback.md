@@ -71,10 +71,30 @@ après coup :
 Un redémarrage de poste ne vide toutefois pas le cache disque d'un navigateur : l'hypothèse est
 affaiblie, pas éliminée.
 
-**La seconde hypothèse devient donc la plus probable**, sans être démontrée. Elle se vérifie sans
-développement : faire calculer à chaque poste une empreinte des mêmes opérations mathématiques
-et comparer les résultats. Si les valeurs diffèrent d'un poste à l'autre, la cause est établie ;
-si elles concordent, il faut chercher ailleurs.
+**La seconde hypothèse devient donc la plus probable**, et un fait la renforce nettement : les
+deux joueurs utilisaient **des moteurs JavaScript différents** — Firefox d'un côté, Edge de
+l'autre. C'est exactement le cas de figure où des fonctions approximées par l'implémentation
+peuvent diverger.
+
+### Diagnostic en cours
+
+Une page de contrôle a été ajoutée au déploiement, hors du paquet du jeu :
+`http://<adresse>:8080/diagnostics/math-check.html`. Elle évalue 200 000 fois les quatre
+fonctions concernées sur des entrées générées par arithmétique entière — donc rigoureusement
+identiques d'un moteur à l'autre — et publie une empreinte par fonction.
+
+Référence relevée sur moteur Chromium le 1er août 2026 :
+
+```text
+Math.hypot : f7f3f67607b620e6
+Math.atan2 : 297ed15f72ad7f79
+Math.cos   : 547d5fdb55663325
+Math.sin   : fc8960a37b3a400b
+```
+
+Résultat attendu depuis Firefox. Empreintes différentes : cause établie, et l'on saura même
+quelle fonction est fautive. Empreintes identiques : l'arithmétique est hors de cause et il faut
+chercher ailleurs.
 
 ### Ce que cette session valide
 
