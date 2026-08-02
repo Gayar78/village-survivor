@@ -59,6 +59,14 @@ Les autres joueurs ouvrent alors l'adresse affichée par `setup.mjs`, par exempl
 `http://192.168.1.24:8080`. Chacun crée un compte — l'inscription est auto-confirmée, aucun
 courriel n'est envoyé — puis le hub permet de former un salon et de lancer une partie.
 
+**Jouer ne demande que le port 8080.** L'interface de télémétrie écoute sur 3001 et reste
+joignable depuis la machine hôte sans rien ouvrir ; n'ajoutez une règle pour ce port que si vous
+voulez la consulter depuis un autre poste :
+
+```powershell
+New-NetFirewallRule -DisplayName 'Village Survivor télémétrie (3001)' -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Allow -Profile Private
+```
+
 ## Pièges à connaître
 
 **Ouvrir le port ne suffit pas : encore faut-il que la règle couvre la bonne interface.** Une
