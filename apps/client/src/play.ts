@@ -12,6 +12,7 @@ import { authService } from './account/authService.js';
 import { statsService } from './account/statsService.js';
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
+import { gameUrl } from './gameUrl.js';
 import { randomSeed } from './randomSeed.js';
 import { createLogger } from './observability/logger.js';
 import { describeError } from './observability/redact.js';
@@ -120,7 +121,7 @@ function goToLobby(): void {
 }
 function restartGame(): void {
   sessionStorage.removeItem(NETCODE_KEY);
-  location.assign('play.html');
+  location.assign(gameUrl());
 }
 
 const coopConfig = readCoopConfig();

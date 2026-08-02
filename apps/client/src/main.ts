@@ -20,6 +20,7 @@ import type {
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
+import { gameUrl } from './gameUrl.js';
 import { randomSeed } from './randomSeed.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
@@ -328,7 +329,7 @@ async function beginClassic(): Promise<void> {
     console.warn('Build méta indisponible : démarrage avec les statistiques de base.', error);
     sessionStorage.removeItem('vs-solo-meta-build');
   }
-  location.assign(`play.html?seed=${encodeURIComponent(seed)}&players=1`);
+  location.assign(gameUrl({ seed, players: '1' }));
 }
 
 function beginLaunch(payload: LaunchPayload): void {
@@ -357,12 +358,10 @@ function beginLaunch(payload: LaunchPayload): void {
         ),
       }),
     );
-    location.assign('play.html');
+    location.assign(gameUrl());
     return;
   }
-  location.assign(
-    `play.html?seed=${encodeURIComponent(payload.seed)}&players=${String(payload.playerCount)}`,
-  );
+  location.assign(gameUrl({ seed: payload.seed, players: String(payload.playerCount) }));
 }
 
 async function openMultiplayer(): Promise<void> {

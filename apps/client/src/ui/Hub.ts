@@ -13,6 +13,7 @@ import {
 import { randomSeed } from '../randomSeed.js';
 import { FriendsPanel } from './FriendsPanel.js';
 import { Toasts } from './Toasts.js';
+import { gameUrl } from '../gameUrl.js';
 
 /** Session minimale nécessaire à l'écran hub. */
 interface HubSession {
@@ -370,7 +371,7 @@ export class Hub {
         rejoin: true,
       }),
     );
-    location.assign('play.html');
+    location.assign(gameUrl());
   }
 
   private copyCode(): void {
