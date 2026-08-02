@@ -115,6 +115,11 @@ et suppose, elle, un projet Supabase hébergé.
   par [ADR-0010](docs/decisions/ADR-0010-local-render-prediction.md), est un écart d'affichage
   entre l'avatar et le monde autour de lui, **à juger en jouant**. Les gels dus à un pair en
   retard, eux, ne sont pas corrigés : ils appartiennent au modèle lockstep.
+- **Le jeu est enfin observable.** Traces d'une partie, mesures de performance et journaux
+  corrélés partent du navigateur vers un collecteur de la pile LAN, consultable sur
+  `http://<adresse>:3001`. C'est ce qui permettra, à la prochaine session, de départager le
+  retard constant des gels au lieu d'en discuter. Détail dans
+  [`docs/observabilite.md`](docs/observabilite.md).
 
 ## Dette résorbée le 31 juillet 2026
 
@@ -227,26 +232,23 @@ Ce qui n'est **pas** corrigé, et reste ouvert :
 
 Ces travaux ne demandent aucune décision produit.
 
-1. **Rétablir une observabilité.** Il n'existe plus d'API de débogage ni de métriques de
-   développement (FPS, durée de tick, nombre d'entités), ce qui empêche tout pilotage automatisé
-   du jeu et interdit un vrai test de bout en bout.
-2. **Enregistrer les résultats de partie.** `statsService.recordGameResult` existe et la RPC
+1. **Enregistrer les résultats de partie.** `statsService.recordGameResult` existe et la RPC
    `record_game_result` est en base, mais **rien ne les appelle** : l'écran de profil lit une
    table que le jeu n'écrit jamais, et affiche donc des statistiques éternellement à zéro. Le
    correctif suppose de redéfinir ce qu'est un résultat de partie pour Tower — il n'y a plus ni
    victoire ni ressources.
-3. **Tester le lobby de bout en bout.** Un mode invité, ou un mock d'authentification, est le
+2. **Tester le lobby de bout en bout.** Un mode invité, ou un mock d'authentification, est le
    préalable.
-4. **Ajouter un `.gitattributes`.** Sans lui, `pnpm format:check` échoue sur toute machine
+3. **Ajouter un `.gitattributes`.** Sans lui, `pnpm format:check` échoue sur toute machine
    Windows où Git convertit les fins de ligne.
-5. **Réactiver la minification.** Elle est désactivée depuis le 27 juillet parce que rolldown/oxc
+4. **Réactiver la minification.** Elle est désactivée depuis le 27 juillet parce que rolldown/oxc
    cassait le rendu du canvas ; le paquet de jeu pèse 7,2 Mo non minifié. À reprendre quand la
    chaîne de build le permettra.
-6. **Valider le contenu Tower.** ADR-0005 exige un schéma explicite et une validation au
+5. **Valider le contenu Tower.** ADR-0005 exige un schéma explicite et une validation au
    chargement ; le catalogue Tower n'en a aucun, et une partie du réglage vit dans le moteur.
-7. **Nettoyer le schéma Supabase.** Les tables `coffre_balances`, `unlocked_spells` et
+6. **Nettoyer le schéma Supabase.** Les tables `coffre_balances`, `unlocked_spells` et
    `account_items` de la migration `0001` ne sont référencées par aucun code.
-8. **Points de reprise pour la reconnexion.** Tant que le rejeu part du premier tick, la fenêtre
+7. **Points de reprise pour la reconnexion.** Tant que le rejeu part du premier tick, la fenêtre
    de reconnexion restera bornée par le temps de rejeu. Des instantanés périodiques de l'état de
    simulation la rendraient indépendante de la durée de la partie — condition nécessaire pour
    des sessions longues, qui sont précisément ce que vise un jeu de survie sans fin.

@@ -14,14 +14,15 @@ sont pas du tout. Ce document dit quoi ajouter et pourquoi.
 
 | Domaine | État | Volume |
 |---|---|---|
-| Logique métier de la simulation | **couvert** | 137 tests Vitest |
+| Logique métier de la simulation | **couvert** | 159 tests Vitest |
 | Contrat de session et roster coopératif | **couvert** | inclus ci-dessus |
 | Interface (HUD, boutique, méta-build) | **couvert** | inclus ci-dessus |
 | Démarrage du jeu dans un navigateur réel | **couvert** | 1 smoke Playwright, en intégration continue |
 | Performance de la simulation | **couvert** | 1 scénario, hors navigateur |
 | **Accès non autorisés** | **absent** | — |
 | **Dépendance externe indisponible** | **absent** | — |
-| **Contrat d'observabilité** | **absent** | — |
+| **Contrat d'observabilité** | **couvert** | trace réelle exportée et inspectée, données interdites, seuil de journalisation |
+| **Garde d'architecture du moteur** | **couvert** | dépendances, imports, horloge, aléatoire, navigateur |
 | Parcours du lobby de bout en bout | **absent** | — |
 
 La couverture mesurée, 86 % des instructions, ne porte que sur `game-core` et `content`. Les

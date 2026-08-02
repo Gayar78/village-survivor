@@ -1,10 +1,36 @@
 # Village Survivor — Observabilité
 
-> Statut : approuvé
+> Statut : approuvé — **implémenté le 1er août 2026**
 > Version du projet : v1
 > Propriétaire : Gayar
 > Dernière revue : 1er août 2026
 > Niveau : `distribue`
+
+## Ce qui est en place
+
+L'instrumentation est livrée. Ce document reste la spécification ; ce paragraphe dit où en est sa
+réalisation.
+
+| Élément | État | Où |
+|---|---|---|
+| SDK, export OTLP/HTTP, propagation W3C | livré | `apps/client/src/observability/telemetry.ts` |
+| Span racine d'une partie | livré | `gameTelemetry.ts` |
+| Frontières `coop.channel.join`, `coop.start.barrier`, `coop.rejoin.replay`, `account.gold.credit` | livré | `net/towerSession.ts`, `play.ts` |
+| Frontières `game.session.start` et `game.session.end` | non livré — le span racine porte déjà ces instants | — |
+| Métriques de performance et de santé coopérative | livré | `gameTelemetry.ts` |
+| Journaux corrélés, seuil surchargeable | livré | `observability/logger.ts` |
+| Collecteur et interface de consultation | livré | service `otel`, `http://<adresse>:3001` |
+| Spans du lobby, de l'atelier et du lancement coopératif | **non livré** | voir « Reste à instrumenter » |
+
+**Reste à instrumenter** : `lobby.signin`, `meta.build.edit` et `hub.launch`, c'est-à-dire les
+trois unités d'exécution qui ne sont pas la partie elle-même. Elles sont spécifiées plus bas et
+délibérément différées : le diagnostic demandé portait sur la partie, et instrumenter
+l'authentification demande d'abord de décider ce qu'on a le droit d'en écrire.
+
+**Chaîne vérifiée de bout en bout le 1er août 2026** : émission depuis la passerelle, réception
+par le collecteur, trace relue dans Tempo avec ses attributs (`vs.mode`, `vs.seed`,
+`vs.players.count`). Ce qui n'est **pas** encore vérifié : une partie réelle jouée à plusieurs,
+qui reste le gate de sortie de la phase.
 
 ## Objectif de diagnostic
 
@@ -12,8 +38,9 @@ Trois questions doivent trouver réponse, et elles ne sont pas de même nature.
 
 **Diagnostiquer.** Devant une partie qui s'est mal passée, retrouver en moins de dix minutes ce
 qui a échoué : quel pair a divergé, quelle reconnexion a été refusée, quel appel au compte a
-échoué, quelle image a décroché. Aujourd'hui, rien de tout cela n'est observable — il n'existe ni
-trace, ni métrique, ni interface de débogage.
+échoué, quelle image a décroché. Rien de tout cela n'était observable avant le 1er août 2026 : il
+n'existait ni trace, ni métrique, ni interface de débogage. C'est ce manque que l'incrément
+comble.
 
 **Extrapoler.** Mesurer le coût réel d'une partie à deux, trois et quatre joueurs afin de prévoir
 ce qui tiendra ou non, plutôt que de l'optimiser au jugé. Le benchmark hors ligne mesure
@@ -192,8 +219,8 @@ production publique, ce qui correspond exactement au périmètre.
 - **Redaction** : le code de salon coopératif n'est émis que **haché**. Il donne accès au canal
   temps réel, où l'identité est déclarative : le publier en clair dans la télémétrie
   reviendrait à distribuer une clé d'entrée.
-- **Pseudonymat** : seul l'identifiant technique de compte circule. Il permet de compter par
-  personne sans révéler qui elle est à quiconque n'a pas déjà accès à la base.
+- **Aucune identité** : ni identifiant de compte, ni pseudonyme. Le retrait des mesures d'usage a
+  supprimé le seul besoin qui les justifiait ; le diagnostic se fait par la graine et le tick.
 - **Accès** : l'interface du backend n'est exposée que sur le réseau local, jamais publiée.
 - **Rétention** : 7 jours, puis purge.
 - **Protection contre l'altération** : aucune. Assumé — la télémétrie sert au diagnostic et à la
@@ -222,14 +249,16 @@ conséquence à une indisponibilité, et un engagement que personne ne surveille
 fiction. En revanche, des budgets de performance ont un sens, parce qu'ils servent à décider
 d'optimiser ou non.
 
-| Indicateur | Budget | Aujourd'hui |
+| Indicateur | Budget | Mesuré par |
 |---|---|---|
-| Durée d'un tick de simulation | < 1 ms sous 200 monstres | 210 µs hors navigateur |
-| Durée d'une image | < 16 ms pour tenir 60 images par seconde | non mesuré |
-| Ticks rattrapés par image | 1 en régime normal | non mesuré |
-| Retard d'entrée en coopération | < 4 ticks, soit 200 ms | non mesuré |
+| Durée d'un tick de simulation | < 1 ms sous 200 monstres | `vs.simulation.tick.duration` — 210 µs hors navigateur |
+| Durée d'une image | < 16 ms pour tenir 60 images par seconde | `vs.render.frame.duration` |
+| Ticks rattrapés par image | 1 en régime normal | `vs.simulation.catchup.ticks` |
+| Retard d'entrée en coopération | < 4 ticks, soit 200 ms | `vs.coop.input.delay` |
 
-Trois lignes sur quatre ne sont pas mesurées : c'est précisément ce que cette phase corrige.
+Les quatre indicateurs sont désormais instrumentés dans le navigateur. **Aucun n'a encore de
+relevé en partie réelle** : un budget instrumenté n'est pas un budget tenu, et c'est la première
+session à plusieurs qui le dira.
 
 ## Runbooks et validation
 

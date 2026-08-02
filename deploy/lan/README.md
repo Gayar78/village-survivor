@@ -16,9 +16,14 @@ ligne impose donc d'héberger soi-même l'authentification et le temps réel.
 | `auth` | comptes, sessions, TOTP | `supabase/gotrue` |
 | `rest` | tables et RPC sous politiques RLS | `postgrest/postgrest` |
 | `realtime` | présence du hub **et** transport du lockstep | `supabase/realtime` |
-| `web` | sert le jeu et fait passerelle vers les trois autres | `nginx` |
+| `otel` | reçoit traces, métriques et journaux du navigateur, et les affiche | `grafana/otel-lgtm` |
+| `web` | sert le jeu et fait passerelle vers les quatre autres | `nginx` |
 
 Ni Studio, ni Storage, ni Edge Functions, ni pooler : le jeu ne s'en sert pas.
+
+**`otel` n'est pas nécessaire pour jouer.** Arrêté, absent ou en panne, les parties se déroulent
+à l'identique et les mesures sont simplement perdues : la télémétrie n'est jamais sur le chemin
+critique d'une partie.
 
 `web` expose tout sur **une seule origine**. Pour le navigateur, le jeu et l'API sont le même
 site : aucune question de CORS ne se pose.
@@ -115,7 +120,32 @@ par l'une parvient à l'autre — exactement le mécanisme qui transporte les lo
 partie coopérative. C'est le contrôle qui compte : si le jeu se lance mais que ce script échoue,
 le multijoueur ne marchera pas.
 
+Deux contrôles complètent le tableau :
+
+- **arithmétique identique d'un poste à l'autre** — ouvrir `http://<adresse>:8080/diagnostics/`
+  sur chaque navigateur qui jouera. Les fonctions du moteur peuvent différer, leurs remplaçants
+  déterministes doivent concorder partout. C'est la condition du mode coopératif ;
+- **télémétrie reçue** — la route de la passerelle doit répondre :
+
+  ```powershell
+  Invoke-WebRequest 'http://<adresse>:8080/otel/v1/traces' -Method POST `
+    -ContentType 'application/json' -Body '{"resourceSpans":[]}'
+  ```
+
+  Une réponse `200 {"partialSuccess":{}}` signifie que le collecteur reçoit.
+
 ## Exploitation
+
+**Consulter la télémétrie** : `http://<adresse>:3001` — traces d'une partie (Tempo), mesures de
+performance (Prometheus) et journaux corrélés (Loki), sans mot de passe puisque l'interface n'est
+exposée que sur le réseau local.
+
+Pour élever le niveau de journalisation d'un poste **sans reconstruire le jeu**, dans la console
+du navigateur :
+
+```javascript
+localStorage.setItem('vs.log.level', 'trace'); // puis recharger la page
+```
 
 ```powershell
 # Journaux
@@ -153,8 +183,8 @@ pas.
 
 | Fichier | Rôle |
 |---|---|
-| `docker-compose.yml` | les cinq services |
-| `nginx.conf` | passerelle : jeu, `/auth/v1`, `/rest/v1`, `/realtime/v1` |
+| `docker-compose.yml` | les six services |
+| `nginx.conf` | passerelle : jeu, `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/otel`, `/diagnostics` |
 | `setup.mjs` | détection d'adresse, génération des secrets et des deux `.env` |
 | `apply-migrations.ps1` | applique les migrations du jeu |
 | `check-realtime.mjs` | contrôle du transport coopératif |

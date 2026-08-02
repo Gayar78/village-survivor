@@ -100,6 +100,23 @@ export default tseslint.config(
             "Le cœur de simulation ne lit jamais l'horloge : le temps avance par ticks de durée fixe.",
         },
       ],
+      /**
+       * Le moteur ne connaît pas la télémétrie. Une bibliothèque qui horodate, mesure et appelle
+       * le réseau introduirait exactement ce que le lockstep interdit. La mesure entoure `step()`
+       * depuis la couche client, sans que `step()` ne sache qu'il est mesuré.
+       */
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@opentelemetry/*'],
+              message:
+                "Le cœur de simulation reste hors de portée de l'instrumentation : mesurer depuis apps/client, jamais depuis game-core.",
+            },
+          ],
+        },
+      ],
     },
   },
   {

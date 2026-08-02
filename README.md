@@ -127,7 +127,7 @@ Enchaîne formatage, lint, types, tests unitaires et build. C'est ce que vérifi
 | Commande | Portée |
 |---|---|
 | `pnpm format:check`, `pnpm lint`, `pnpm typecheck` | formatage, règles et types |
-| `pnpm test` | 137 tests unitaires, de simulation et de contrat |
+| `pnpm test` | 159 tests unitaires, de simulation, de contrat et d'observabilité |
 | `pnpm build` | build de production des deux pages |
 | `pnpm test:smoke` | Playwright sur le build : le jeu démarre, aucune API de débogage, aucune erreur console |
 | `pnpm benchmark` | coût d'un tick sous 200 monstres et coût d'une projection d'état |

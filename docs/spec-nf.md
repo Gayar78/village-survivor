@@ -85,10 +85,10 @@ acceptées. Elles sont détaillées dans [`qualite/traceabilite.md`](qualite/tra
 **Profondeur : `renforce`** — logique métier, modes d'erreur, accès non autorisés et
 dépendances.
 
-L'état actuel couvre bien la logique métier (137 tests) mais laisse trois trous que cette phase
-rend obligatoires à combler : **les accès non autorisés** ne sont testés nulle part, **le
-comportement en cas de panne de la dépendance externe** non plus, et **le contrat
-d'observabilité** n'existe pas encore.
+L'état actuel couvre la logique métier (159 tests) et, depuis le 1er août 2026, **le contrat
+d'observabilité** ainsi que **la garde d'architecture du moteur**. Deux trous demeurent, tous
+deux rendus obligatoires par cette phase : **les accès non autorisés** ne sont testés nulle part,
+et **le comportement en cas de panne de la dépendance externe** non plus.
 
 Le détail vit dans [`qualite/strategie-tests.md`](qualite/strategie-tests.md).
 

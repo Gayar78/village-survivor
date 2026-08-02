@@ -159,10 +159,17 @@ function upsertEnv(path, values) {
 }
 
 // Vite lit le `.env` de la racine du monorepo (voir `envDir` dans vite.config.ts) et fige
-// ces deux valeurs dans le paquet : le client doit donc être reconstruit après ce script.
+// ces valeurs dans le paquet : le client doit donc être reconstruit après ce script.
+//
+// L'endpoint de télémétrie est **relatif** : il désigne la passerelle qui sert déjà le jeu, donc
+// la même origine. C'est ce qui évite toute question de partage entre origines. Le vider
+// désactive proprement l'export, sans rien casser.
 const rootEnvBackup = upsertEnv(join(repoRoot, '.env'), {
   VITE_SUPABASE_URL: publicUrl,
   VITE_SUPABASE_ANON_KEY: anonKey,
+  VITE_OTEL_EXPORTER_OTLP_ENDPOINT: '/otel',
+  VITE_OTEL_ENVIRONMENT: 'lan',
+  VITE_APP_LOG_LEVEL: 'info',
 });
 
 console.log(`Adresse retenue : ${publicUrl}`);

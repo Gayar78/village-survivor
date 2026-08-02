@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { recordFrameDuration } from '../observability/gameTelemetry.js';
 import {
   getVisualPreferences,
   subscribeVisualPreferences,
@@ -185,10 +186,14 @@ export class TowerScene extends Phaser.Scene {
     if (state === undefined) {
       return;
     }
+    // Mesurer le dessin séparément du tick de simulation est ce qui permet, devant une partie
+    // qui rame, de savoir laquelle des deux moitiés coûte cher — sans quoi on optimise au jugé.
+    const startedAt = performance.now();
     this.computeInterpolation(state);
     this.renderWorld(state);
     this.updateCamera(state, delta);
     this.renderMinimap(state);
+    recordFrameDuration(performance.now() - startedAt, state.monsters.length);
   }
 
   /**

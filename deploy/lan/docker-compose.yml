@@ -152,6 +152,30 @@ services:
       RUN_JANITOR: 'true'
       DISABLE_HEALTHCHECK_LOGGING: 'true'
 
+  otel:
+    # Collecteur et backend de télémétrie en un seul conteneur : réception OTLP, stockage des
+    # traces, des journaux et des métriques, et interface de consultation. Pour un usage local
+    # de diagnostic, c'est exactement le bon compromis — une pile complète coûterait quatre
+    # conteneurs et une configuration à maintenir.
+    #
+    # Le jeu ne dépend pas de lui : s'il est arrêté, les parties se déroulent à l'identique et
+    # les mesures sont simplement perdues.
+    container_name: vs-otel
+    image: grafana/otel-lgtm:0.11.14
+    restart: unless-stopped
+    ports:
+      # Interface Grafana, sur le LAN : c'est là qu'on lit les traces et les mesures.
+      - '${OTEL_UI_PORT:-3001}:3000'
+    environment:
+      # Sept jours de rétention : assez pour diagnostiquer une session, insuffisant pour une
+      # analyse à long terme — c'est l'arbitrage assumé par la spécification (HYP-004).
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      ENABLE_LOGS_ALL: 'true'
+    volumes:
+      - vs-otel-data:/data
+
   web:
     container_name: vs-web
     image: nginx:1.29-alpine
@@ -173,3 +197,4 @@ services:
 
 volumes:
   vs-db-data:
+  vs-otel-data:

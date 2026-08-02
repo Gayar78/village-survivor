@@ -8,9 +8,23 @@ import type {
   Vector2,
 } from '@village-survivor/protocol';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { SpanStatusCode, type Span } from '@opentelemetry/api';
 
 import { supabase } from '../account/supabaseClient.js';
 import { HUB_CAPACITY } from '../hub/types.js';
+import { createLogger } from '../observability/logger.js';
+import {
+  recordCatchupTicks,
+  recordEntities,
+  recordFingerprintMismatch,
+  recordInputDelay,
+  recordPeerChange,
+  recordRejoin,
+  recordTickDuration,
+  recordWave,
+} from '../observability/gameTelemetry.js';
+import { describeError } from '../observability/redact.js';
+import { getTracer } from '../observability/telemetry.js';
 
 /** Doit correspondre au tick fixe interne de TowerSimulation. */
 export const TOWER_LOCKSTEP_TICK_MS = 50;
@@ -1101,6 +1115,9 @@ export class TowerLocalSession implements TowerRenderableSession {
   private frameHandle: number | undefined;
   private lastTimestamp = 0;
   private accumulatorMs = 0;
+  /** Population du dernier instantané connu : sert d'attribut aux mesures du tick suivant. */
+  private lastMonsterCount = 0;
+  private lastWave = 0;
 
   public constructor(options: { seed: string; metaBuild?: Partial<MetaBuildModifiers> }) {
     this.simulation = new TowerSimulation(options.seed, {
@@ -1169,19 +1186,40 @@ export class TowerLocalSession implements TowerRenderableSession {
     this.accumulatorMs += rawDeltaMs;
     let processed = 0;
     while (this.accumulatorMs >= TOWER_LOCKSTEP_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
+      // La mesure entoure `step` sans que `step` ne sache qu'il est mesuré : c'est la frontière
+      // qui protège le déterminisme du cœur de simulation.
+      const startedAt = performance.now();
       this.simulation.step({ 'player-1': this.currentInput });
+      recordTickDuration(performance.now() - startedAt, {
+        mode: 'solo',
+        playersCount: 1,
+        monsters: this.lastMonsterCount,
+      });
       this.currentInput = persistentInput(this.currentInput);
       this.accumulatorMs -= TOWER_LOCKSTEP_TICK_MS;
       processed += 1;
     }
     if (processed > 0) {
       const snapshot = this.simulation.createSnapshot();
+      recordCatchupTicks(processed);
+      this.observeSnapshot(snapshot);
       for (const listener of this.listeners) {
         listener(snapshot);
       }
     }
     this.frameHandle = requestAnimationFrame(this.onFrame);
   };
+
+  private observeSnapshot(snapshot: TowerGameState): void {
+    this.lastMonsterCount = snapshot.monsters.length;
+    recordEntities({
+      monsters: snapshot.monsters.length,
+      projectiles: snapshot.projectiles.length,
+      scrap: snapshot.scraps.length,
+    });
+    recordWave(snapshot.wave, this.lastWave);
+    this.lastWave = snapshot.wave;
+  }
 }
 
 // ─── Co-op lockstep P2P ──────────────────────────────────────────────────────
@@ -1222,6 +1260,22 @@ class TowerLockstepSession implements TowerRenderableSession {
   /** Horodatage de la dernière entrée capturée : horloge de la prédiction de rendu. */
   private lastCaptureAt = 0;
   private connectionIssue: string | undefined;
+  private readonly log = createLogger('coop');
+  private readonly telemetry: {
+    channelJoin: Span | undefined;
+    startBarrier: Span | undefined;
+    rejoinReplay: Span | undefined;
+    lastMonsterCount: number;
+    lastWave: number;
+    activePeers: number;
+  } = {
+    channelJoin: undefined,
+    startBarrier: undefined,
+    rejoinReplay: undefined,
+    lastMonsterCount: 0,
+    lastWave: 0,
+    activePeers: 0,
+  };
   private rejoinReceiver: TowerRejoinHistoryReceiver | undefined;
   private rejoinRequestId: string | undefined;
 
@@ -1303,12 +1357,18 @@ class TowerLockstepSession implements TowerRenderableSession {
       return;
     }
     this.running = true;
+    // Jonction au canal : première frontière diagnosticable d'une partie coopérative. Un
+    // démarrage qui n'aboutit pas se voit ici, sans avoir à interroger le joueur.
+    this.telemetry.channelJoin = getTracer().startSpan('coop.channel.join');
     this.channel.subscribe((status: string) => {
       if (!this.running) {
         return;
       }
       if (status === 'SUBSCRIBED') {
         this.channelReady = true;
+        this.telemetry.channelJoin?.end();
+        this.telemetry.channelJoin = undefined;
+        this.log.info('canal coopératif rejoint', { 'vs.players.count': this.rosterIds.size });
         const now = performance.now();
         for (const id of this.rosterIds) {
           this.lastSeenByPlayer.set(id, now);
@@ -1322,6 +1382,9 @@ class TowerLockstepSession implements TowerRenderableSession {
           this.requestRejoinHistory();
           return;
         }
+        this.telemetry.startBarrier = getTracer().startSpan('coop.start.barrier', {
+          attributes: { 'vs.players.count': this.rosterIds.size },
+        });
         this.barrier.markLocalReady(this.me);
         this.broadcastReady();
         this.readyHandle = window.setInterval(() => this.broadcastReady(), READY_HEARTBEAT_MS);
@@ -1332,6 +1395,11 @@ class TowerLockstepSession implements TowerRenderableSession {
         this.tryStartSimulation();
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         this.channelReady = false;
+        if (this.telemetry.channelJoin !== undefined) {
+          this.telemetry.channelJoin.setStatus({ code: SpanStatusCode.ERROR, message: status });
+          this.telemetry.channelJoin.end();
+          this.telemetry.channelJoin = undefined;
+        }
         this.reportIssue(`Canal Tower indisponible (${status}). Revenez au hub puis réessayez.`);
       }
     });
@@ -1365,10 +1433,15 @@ class TowerLockstepSession implements TowerRenderableSession {
     }
     this.listeners.clear();
     this.issueListeners.clear();
+    // Une partie interrompue ne doit pas laisser de span ouvert : un span sans fin n'est jamais
+    // exporté, et la trace deviendrait muette exactement sur l'incident qu'on veut voir.
+    this.telemetry.channelJoin?.end();
+    this.telemetry.startBarrier?.end();
+    this.endRejoinSpan('timeout');
     try {
       await supabase.removeChannel(this.channel);
     } catch (error) {
-      console.warn('[tower:lockstep] removeChannel', error);
+      this.log.warn('fermeture du canal impossible', { 'vs.error': describeError(error) });
     }
   }
 
@@ -1465,6 +1538,10 @@ class TowerLockstepSession implements TowerRenderableSession {
       return;
     }
     this.simulationStarted = true;
+    this.telemetry.startBarrier?.end();
+    this.telemetry.startBarrier = undefined;
+    this.telemetry.activePeers = this.inputBuffer.activeIds.size;
+    recordPeerChange(this.telemetry.activePeers);
     if (this.barrierTimeoutHandle !== undefined) {
       clearTimeout(this.barrierTimeoutHandle);
       this.barrierTimeoutHandle = undefined;
@@ -1554,6 +1631,14 @@ class TowerLockstepSession implements TowerRenderableSession {
         this.scheduledJoins.delete(event.playerId);
         this.localControlPackets.delete(event.eventId);
         this.rosterController.apply(event);
+        const peerDelta = event.action === 'join' ? 1 : -1;
+        this.telemetry.activePeers += peerDelta;
+        recordPeerChange(peerDelta);
+        this.log.info(`pair ${event.action === 'join' ? 'entré' : 'sorti'}`, {
+          'vs.tick': event.tick,
+          'vs.reason': event.reason,
+          'vs.players.count': this.telemetry.activePeers,
+        });
         const simulationEvent: TowerRosterEvent = {
           type: event.action,
           tick: event.tick,
@@ -1566,20 +1651,46 @@ class TowerLockstepSession implements TowerRenderableSession {
         }
       }
       this.history.append({ tick: historyTick, inputs, rosterEvents });
+      // La mesure entoure `step` de l'extérieur : le cœur de simulation ignore qu'il est
+      // chronométré, et reste donc sans horloge.
+      const startedAt = performance.now();
       this.simulation.step(inputs);
+      recordTickDuration(performance.now() - startedAt, {
+        mode: 'coop',
+        playersCount: this.telemetry.activePeers,
+        monsters: this.telemetry.lastMonsterCount,
+      });
       this.accumulatorMs -= TOWER_LOCKSTEP_TICK_MS;
       processed += 1;
       const canonicalSnapshot = this.simulation.createSnapshot();
       if (canonicalSnapshot.tick % FINGERPRINT_INTERVAL_TICKS === 0) {
         this.publishFingerprint(canonicalSnapshot);
+        this.observeSnapshot(canonicalSnapshot);
       }
       const snapshot = personalizeState(canonicalSnapshot, this.me);
       for (const listener of this.listeners) {
         listener(snapshot);
       }
     }
+    if (processed > 0) {
+      recordCatchupTicks(processed);
+      // Retard réel entre l'entrée capturée et le tick joué. C'est la mesure qui manquait pour
+      // départager le retard constant, imposé par la conception, des gels dus à un pair lent.
+      recordInputDelay(Math.max(0, this.nextLocalTick - this.inputBuffer.nextTick));
+    }
     this.frameHandle = requestAnimationFrame(this.onFrame);
   };
+
+  private observeSnapshot(snapshot: TowerGameState): void {
+    this.telemetry.lastMonsterCount = snapshot.monsters.length;
+    recordEntities({
+      monsters: snapshot.monsters.length,
+      projectiles: snapshot.projectiles.length,
+      scrap: snapshot.scraps.length,
+    });
+    recordWave(snapshot.wave, this.telemetry.lastWave);
+    this.telemetry.lastWave = snapshot.wave;
+  }
 
   private publishFingerprint(state: TowerGameState): void {
     const fingerprint = createTowerStateFingerprint(state);
@@ -1594,6 +1705,13 @@ class TowerLockstepSession implements TowerRenderableSession {
 
   private handleFingerprintResult(result: FingerprintResult): void {
     if (result.status === 'mismatch') {
+      recordFingerprintMismatch(
+        this.rosterController.coordinatorId === this.me ? 'coordinator' : 'peer',
+      );
+      this.log.error('divergence de simulation détectée', {
+        'vs.tick': result.tick,
+        'vs.mode': 'coop',
+      });
       this.reportIssue(
         `Désynchronisation Tower détectée au tick ${result.tick} avec ${result.playerId}. La partie ne peut pas être resynchronisée automatiquement.`,
       );
@@ -1749,6 +1867,10 @@ class TowerLockstepSession implements TowerRenderableSession {
   }
 
   private requestRejoinHistory(): void {
+    // La réintégration rejoue toute la partie depuis le tick zéro : c'est l'opération la plus
+    // coûteuse du netcode, et celle dont on ignore la fréquence réelle. La trace en donne la
+    // durée, le compteur l'issue.
+    this.telemetry.rejoinReplay = getTracer().startSpan('coop.rejoin.replay');
     const requestId = `${this.me}:rejoin:1`;
     this.rejoinRequestId = requestId;
     this.rejoinReceiver = new TowerRejoinHistoryReceiver(this.me, requestId, null, this.rosterIds);
@@ -1816,6 +1938,7 @@ class TowerLockstepSession implements TowerRenderableSession {
     }
     const result = this.rejoinReceiver.accept(value);
     if (result.status === 'unavailable') {
+      this.endRejoinSpan('history-unavailable');
       this.reportIssue(
         "Reconnexion Tower impossible : l'historique depuis le tick 0 a expiré. La partie des autres joueurs continue.",
       );
@@ -1859,9 +1982,36 @@ class TowerLockstepSession implements TowerRenderableSession {
     this.lastTimestamp = performance.now();
     this.accumulatorMs = TOWER_LOCKSTEP_TICK_MS * MAX_STEPS_PER_FRAME;
     this.frameHandle = requestAnimationFrame(this.onFrame);
+    this.telemetry.activePeers = this.inputBuffer.activeIds.size;
+    recordPeerChange(this.telemetry.activePeers);
+    this.endRejoinSpan('success', records.length);
     this.reportIssue(
       `Reconnexion Tower : ${records.length} ticks rejoués, rattrapage accéléré en cours…`,
     );
+  }
+
+  /**
+   * Clôt la trace de réintégration **et** compte son issue au même endroit : les deux ne peuvent
+   * pas diverger, et une session fermée avant la fin du rejeu compte comme un abandon.
+   */
+  private endRejoinSpan(
+    outcome: 'success' | 'history-unavailable' | 'timeout',
+    replayedTicks?: number,
+  ): void {
+    const span = this.telemetry.rejoinReplay;
+    if (span === undefined) {
+      return;
+    }
+    recordRejoin(outcome);
+    span.setAttributes({
+      'vs.outcome': outcome,
+      ...(replayedTicks === undefined ? {} : { 'vs.replay.ticks': replayedTicks }),
+    });
+    if (outcome !== 'success') {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    }
+    span.end();
+    this.telemetry.rejoinReplay = undefined;
   }
 
   private reportMissingReadyPlayers(): void {
@@ -1881,7 +2031,7 @@ class TowerLockstepSession implements TowerRenderableSession {
       return;
     }
     this.connectionIssue = message;
-    console.error(`[tower:lockstep] ${message}`);
+    this.log.warn(message);
     for (const listener of this.issueListeners) {
       listener(message);
     }

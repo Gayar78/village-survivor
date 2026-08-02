@@ -44,6 +44,7 @@ flowchart TD
 | `packages/protocol` | contrats sérialisables : entrées, état public, catalogue méta | aucune règle de jeu |
 | `packages/content` | catalogue partagé : armes, boutique, modules, quêtes, offres | **sans schéma ni validation** |
 | `supabase/migrations` | schéma Postgres, RLS et RPC | appliqué manuellement |
+| `apps/client/src/observability` | télémétrie : traces, métriques, journaux corrélés | **jamais importé par `game-core`** |
 
 `apps/server` n'existe pas et n'est plus prévu à court terme — voir
 [ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md).

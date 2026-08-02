@@ -15,7 +15,8 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 ## Correctifs de jouabilité — 1er août 2026
 
 Trois correctifs issus de la première session de jeu réelle à plusieurs postes, décrite dans
-[`docs/feedback.md`](docs/feedback.md).
+[`docs/feedback.md`](docs/feedback.md), et l'instrumentation qui manquait pour diagnostiquer la
+suivante.
 
 ### Corrigé
 
@@ -34,6 +35,17 @@ Trois correctifs issus de la première session de jeu réelle à plusieurs poste
 - **« Fracture glaciale » produit un effet.** L'amélioration mythique la plus rare du catalogue
   incrémentait un compteur que la simulation ne lisait jamais. Les coups critiques ralentissent
   désormais leur cible, par piles cumulées et plafonnées ; un monstre ralenti n'est jamais figé.
+
+### Ajouté
+
+- **le jeu est observable.** Traces d'une partie, mesures de performance et journaux corrélés
+  partent du navigateur en OTLP vers un collecteur de la pile LAN, derrière la passerelle
+  existante pour rester sur une seule origine. Sont mesurés : durée d'un tick de simulation,
+  durée d'une image, population par nature d'entité, ticks rattrapés par image, pairs actifs,
+  divergences d'empreinte, retard d'entrée en coopération et issues de réintégration. Le cœur de
+  simulation n'est pas touché : la mesure entoure `step()` depuis la couche client, et une garde
+  de lint doublée d'un test interdit d'y importer une bibliothèque de télémétrie. Le collecteur
+  est facultatif — absent, éteint ou en panne, les parties se déroulent à l'identique.
 
 ### Modifié
 
