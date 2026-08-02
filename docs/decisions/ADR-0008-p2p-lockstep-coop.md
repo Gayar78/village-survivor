@@ -41,10 +41,23 @@ La coopération repose sur un **lockstep pair-à-pair déterministe**, implémen
 - Le champ `hostId` subsiste dans la configuration transmise par le lobby, mais **aucun pair
   n'est autoritaire** pendant la partie.
 
-Le déterminisme requis par ce modèle est réel et vérifié : `packages/game-core/src` ne contient
-aucun appel à `Math.random`, `Date.now`, `performance.now`, ni aucun accès au DOM. Tout l'aléatoire
-passe par `SeededRandom`. Des tests couvrent le déterminisme, les frontières de roster et les
-empreintes d'état.
+Le déterminisme requis par ce modèle est partiellement tenu : `packages/game-core/src` ne
+contient aucun appel à `Math.random`, `Date.now`, `performance.now`, ni aucun accès au DOM. Tout
+l'aléatoire passe par `SeededRandom`. Des tests couvrent la reproductibilité, les frontières de
+roster et les empreintes d'état.
+
+> **Correction du 1er août 2026.** Cette rédaction affirmait un déterminisme « réel et vérifié ».
+> C'était trop fort. Les tests ne comparent que deux exécutions **du même moteur JavaScript, à
+> partir du même code** : ils prouvent la reproductibilité, pas l'accord entre deux postes.
+>
+> Une divergence a été constatée en conditions réelles au tick 2160. Deux causes candidates sont
+> identifiées, **et aucune n'est établie** : des pairs exécutant des versions différentes du
+> paquet — rien ne l'empêche ni ne le détecte — ou des fonctions mathématiques approximées
+> différemment selon le moteur. Le détail est dans
+> [`../architecture.md`](../architecture.md), section « Déterminisme ».
+>
+> Ce que l'on peut affirmer : le modèle repose sur une hypothèse de déterminisme **plus forte que
+> ce qui est aujourd'hui vérifié**, et les moyens de trancher n'existent pas encore.
 
 ## Conséquences
 

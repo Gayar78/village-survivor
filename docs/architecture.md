@@ -99,10 +99,40 @@ plafond d'avance par frame. Aucune règle ne lit l'horloge système.
 
 ### Déterminisme
 
-Le déterminisme n'est pas une commodité de test : le lockstep en dépend entièrement. Il est
-tenu et vérifiable — `packages/game-core/src` ne contient **aucun** appel à `Math.random`,
-`Date.now`, `performance.now`, ni aucun accès au DOM. Tout l'aléatoire de gameplay passe par
-`SeededRandom`, initialisé par la graine de la partie.
+Le déterminisme n'est pas une commodité de test : le lockstep en dépend entièrement.
+
+Trois conditions sont **tenues** : `packages/game-core/src` ne contient aucun appel à
+`Math.random`, `Date.now` ou `performance.now`, ni aucun accès au DOM. Tout l'aléatoire de
+gameplay passe par `SeededRandom`, initialisé par la graine de la partie.
+
+Ces trois conditions ne suffisent pas, et une divergence réelle l'a montré.
+
+> **Divergence constatée le 1er août 2026**, en partie à plusieurs postes : empreintes
+> différentes au tick 2160, soit après une minute quarante-huit de jeu.
+>
+> L'empreinte est **d'une sévérité maximale** : `createTowerStateFingerprint` sérialise tous les
+> champs publics de l'état en pleine précision, sans arrondi ni tolérance. Un écart d'un seul
+> dernier bit sur la position d'un monstre suffit à la faire diverger. C'est un choix de
+> conception défendable — détecter tôt — mais il implique que l'alerte ne dit rien de la gravité
+> réelle de l'écart.
+>
+> **Deux causes candidates, aucune établie à ce jour :**
+>
+> 1. **Les pairs n'exécutaient pas le même code.** Les pages HTML sont servies sans en-tête
+>    `Cache-Control` : un navigateur peut resservir un ancien `play.html`, qui référence un
+>    ancien paquet. Le netcode **n'échange aucune version de build**, donc rien ne détecte ni ne
+>    refuse un tel écart.
+> 2. **Les fonctions mathématiques ne sont pas identiques d'un moteur à l'autre.** La simulation
+>    appelle `Math.hypot`, `Math.atan2`, `Math.cos` et `Math.sin` à vingt-huit endroits du chemin
+>    critique. En JavaScript, seuls les opérateurs arithmétiques et `Math.sqrt` sont exactement
+>    spécifiés ; ces quatre-là sont « approximées par l'implémentation ».
+>
+> **Ces deux causes ne sont pas distinguables aujourd'hui**, faute de télémétrie et faute d'un
+> identifiant de build échangé. Les départager est le premier objectif de diagnostic de
+> l'incrément d'observabilité.
+>
+> En attendant, la seule précaution utile est de vérifier que tous les joueurs ont bien rechargé
+> la page après une reconstruction.
 
 Les éléments qui pourraient dériver sont dérivés de valeurs pures plutôt que tirés : la rotation
 des biomes, les offres du marchand et les offres de défense globale se calculent depuis la graine

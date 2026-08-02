@@ -139,6 +139,33 @@ Trois constats de sécurité ne sont **pas** traités, par cohérence avec la fr
 l'objectif : canaux temps réel usurpables, montant d'or déclaré par le client, et fonctions
 `security definer` autres que le crédit d'or. Ils sont consignés dans la matrice de traçabilité.
 
+## Remontées de la session du 1er août 2026 — Prochain
+
+Constatées en partie réelle à plusieurs postes, **à traiter avant toute évolution
+fonctionnelle** sur décision du propriétaire. Détail dans [`docs/feedback.md`](docs/feedback.md).
+
+1. **Désynchronisation entre pairs**, détectée après 1 min 48 s de jeu. Deux causes candidates,
+   aucune établie : des pairs exécutant des versions différentes du paquet, ou des fonctions
+   mathématiques approximées différemment selon le moteur JavaScript. Trois travaux en
+   découlent, du moins cher au plus lourd :
+   - servir les pages HTML avec un en-tête `Cache-Control` qui interdise de resservir une page
+     obsolète — quelques lignes de configuration ;
+   - **échanger un identifiant de build à la jonction** et refuser une partie entre versions
+     différentes, plutôt que de la laisser diverger en silence ;
+   - si la divergence persiste, remplacer `Math.hypot`, `Math.atan2`, `Math.cos` et `Math.sin`
+     par des équivalents déterministes dans le cœur de simulation. Chantier lourd, à n'engager
+     qu'une fois la première cause écartée.
+2. **Délai ressenti entre l'action et le déplacement.** Comportement inhérent au lockstep, déjà
+   consigné comme conséquence négative dans l'ADR-0008 : 100 ms de retard par conception, plus
+   l'attente du pair le plus lent. Deux pistes :
+   - **prédiction de l'avatar local au rendu seulement** — la simulation reste autoritaire et
+     déterministe, seul l'affichage anticipe. C'est le seul correctif qui améliore le ressenti
+     sans toucher au modèle ;
+   - abaisser le retard d'entrée de deux ticks à un, au prix d'une moindre tolérance aux à-coups.
+
+   Mesurer avant de choisir : la part du retard constant et celle des gels intermittents ne sont
+   pas connues.
+
 ## Dette à résorber — Prochain
 
 Ces travaux ne demandent aucune décision produit.

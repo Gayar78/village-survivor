@@ -14,10 +14,8 @@ alors qu'il existait déjà et tournait.
 1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
 2. [Spécification non-fonctionnelle](spec-nf.md) — **approuvée le 1er août 2026**
 3. [Spécification fonctionnelle](spec-fonctionnelle.md) — **approuvée le 1er août 2026**
-4. `feedback.md` — *à partir de la phase 5*
-
-Le dernier reste volontairement sans lien tant que le fichier n'existe pas : un lien mort dans
-la porte d'entrée coûte plus qu'il ne rapporte.
+4. [Feedback](feedback.md) — **ouvert le 1er août 2026**, par anticipation : une session de jeu
+   réelle a eu lieu avant l'incrément d'observabilité, et son retour ne devait pas se perdre.
 
 En attendant, l'état réel du produit est décrit par [`gameplay/current-rules.md`](gameplay/current-rules.md)
 et [`architecture.md`](architecture.md).
@@ -59,7 +57,7 @@ spans aux seules frontières significatives.
 | Objectif | [`objectif.md`](objectif.md) | approuvé |
 | Spécification non-fonctionnelle | [`spec-nf.md`](spec-nf.md) | approuvée |
 | Spécification fonctionnelle | [`spec-fonctionnelle.md`](spec-fonctionnelle.md) | approuvée |
-| Feedback | `feedback.md` | **absent** — phase 5 |
+| Feedback | [`feedback.md`](feedback.md) | en cours — ouvert par anticipation |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
 | Décisions | [`decisions/`](decisions/README.md) — 9 ADR | approuvé |
 | Observabilité | [`observabilite.md`](observabilite.md) | approuvée |
