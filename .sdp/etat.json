@@ -1,8 +1,8 @@
 {
   "schema_version": 3,
   "version": "v1",
-  "phase": 5,
-  "phase_nom": "tests-feedback",
+  "phase": 6,
+  "phase_nom": "backlog",
   "iteration": 1,
   "profil": {
     "code": "non",

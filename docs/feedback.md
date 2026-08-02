@@ -328,6 +328,70 @@ l'a remplacé. Conséquences constatées :
 C'est le premier correctif à apporter à l'instrumentation elle-même : un identifiant de session
 tiré au hasard, propre à l'onglet, sans lien avec le compte du joueur.
 
+## Session du 2 août 2026 (troisième) — seize minutes, et une divergence
+
+**Contexte** : partie coopérative de **16 min 32 s**, deux postes, vague 99, défaite. Build
+`msc1f9ze` vérifiée chargée par les deux navigateurs. Une partie solo de 10 min 32 s a suivi.
+
+**Rapporté** : « le ressenti est OK », « pas de bug ».
+
+### Ce que les joueurs n'ont pas vu
+
+**Une divergence de simulation s'est produite au tick 18220**, soit à la quinzième minute. Les
+deux pairs l'ont signalée mutuellement, puis à chaque contrôle d'empreinte — 80 signalements
+chacun — jusqu'au tick 19800. **Les 80 dernières secondes ont été jouées sur deux mondes
+différents**, et personne ne s'en est aperçu.
+
+Ce n'est pas un reproche aux joueurs : le bandeau est discret et l'écart, à ce stade d'une partie
+perdue d'avance, ne change pas grand-chose à ce qu'on ressent. Mais cela dit deux choses.
+
+D'abord que **le correctif de déterminisme du 1er août ne suffit pas**. Il a supprimé une cause —
+l'arithmétique approximée — et il l'a bien supprimée : quinze minutes sans le moindre écart, là où
+la partie du 1er août divergeait au bout de deux. Une autre cause subsiste, et elle met plus
+longtemps à se manifester.
+
+Ensuite que **l'empreinte ne sait pas dire où**. Elle compare l'état public entier et répond
+« différent ». Pour la suite, il faut des empreintes par sous-système — joueurs, monstres,
+projectiles, ferraille, Cœur, tourelles — afin que la prochaine divergence nomme son coupable au
+lieu de le taire.
+
+### Ce que la session valide
+
+| Mesure | Valeur | Lecture |
+|---|---|---|
+| Écart temps simulé / temps réel | **0,08 %** sur 16 minutes | l'horloge d'entrées tient |
+| Avance d'entrée, poste 1 / poste 2 | 3,32 / 3,59 ticks | conception : 3 |
+| Durée d'un tick | 0,19 et 0,71 ms à 100-200 monstres | budget : 1 ms |
+| Durée d'une image | 0,57 et 1,28 ms | budget : 16 ms |
+| Images par seconde | 56 et 31 | — |
+
+Le correctif d'horloge du 2 août est confirmé sur la durée. Les machines sont **loin d'être
+saturées** : sur la plus lente, le jeu occupe 1,3 ms des 33 ms disponibles par image.
+
+### Ce qui grossit sans fin
+
+| Minute | Monstres | Projectiles | Ferraille au sol |
+|---|---|---|---|
+| 2 | 18 | 2 | 41 |
+| 8 | 76 | 15 | 354 |
+| 14 | 107 | 109 | 761 |
+| 16 | 111 | 165 | **1005** |
+
+Les monstres plafonnent, la ferraille non : environ soixante pièces par minute, et **rien ne la
+supprime jamais** sauf un joueur passant à moins de soixante unités. En fin de partie il y en
+avait dix fois plus que de monstres. Chacune coûte un calcul de distance par joueur et par tick,
+une allocation d'objet par tick, sa part du hachage d'empreinte chaque seconde et un dessin par
+image. Détail et correctifs proposés dans [`../ROADMAP.md`](../ROADMAP.md).
+
+### Classement des retours
+
+| Nature | Constat | Suite |
+|---|---|---|
+| Écart à la spécification | Divergence au tick 18220 | Correctif prioritaire, v2 |
+| Diagnostic insuffisant | L'empreinte ne localise pas la divergence ; projection et empreinte non mesurées ; métrique de divergence perdue faute d'export | Dette d'observabilité, v2 |
+| Besoin supplémentaire | Borner la ferraille au sol | Fonctionnalité, v2 |
+| Spécification erronée | Aucune | — |
+
 ### Ce que cette session valide
 
 Elle confirme la priorité décidée en phase 2 et 3 : **instrumenter avant de faire évoluer le
