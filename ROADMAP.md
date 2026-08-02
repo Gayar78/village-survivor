@@ -144,17 +144,35 @@ l'objectif : canaux temps réel usurpables, montant d'or déclaré par le client
 Constatées en partie réelle à plusieurs postes, **à traiter avant toute évolution
 fonctionnelle** sur décision du propriétaire. Détail dans [`docs/feedback.md`](docs/feedback.md).
 
-1. **Désynchronisation entre pairs**, détectée après 1 min 48 s de jeu. Deux causes candidates,
-   aucune établie : des pairs exécutant des versions différentes du paquet, ou des fonctions
-   mathématiques approximées différemment selon le moteur JavaScript. Trois travaux en
-   découlent, du moins cher au plus lourd :
-   - servir les pages HTML avec un en-tête `Cache-Control` qui interdise de resservir une page
-     obsolète — quelques lignes de configuration ;
-   - **échanger un identifiant de build à la jonction** et refuser une partie entre versions
-     différentes, plutôt que de la laisser diverger en silence ;
-   - si la divergence persiste, remplacer `Math.hypot`, `Math.atan2`, `Math.cos` et `Math.sin`
-     par des équivalents déterministes dans le cœur de simulation. Chantier lourd, à n'engager
-     qu'une fois la première cause écartée.
+1. **Désynchronisation entre pairs — cause établie.** Mesurée le 1er août 2026 :
+   `Math.hypot`, `Math.cos` et `Math.sin` renvoient des valeurs différentes sous Firefox 153 et
+   sous un moteur Chromium. La simulation les appelle à vingt-huit endroits du chemin critique,
+   à chaque tick. **La coopération n'est fiable qu'entre navigateurs partageant le même moteur.**
+
+   Le correctif n'exige **pas** d'implémenter des fonctions trigonométriques déterministes. Les
+   appels se répartissent en trois motifs, tous remplaçables par des opérations exactement
+   spécifiées par le langage — `+ - * /`, `Math.sqrt` et `Math.round` :
+
+   - **aller-retour vecteur → angle → vecteur** (`redirectBullet`, tir de tourelle, tir joueur) :
+     calculer directement la direction normalisée. Supprime `atan2`, `cos` et `sin` d'un coup,
+     et coûte moins cher que le détour par l'angle ;
+   - **angles constants** des quatre tourelles (0°, 90°, 180°, −90°) : table de vecteurs
+     unitaires exacts, aucun calcul ;
+   - **tirage d'un angle aléatoire** pour l'apparition de ferraille et de vagues : tirer un
+     vecteur de direction plutôt qu'un angle.
+
+   Ainsi que `Math.hypot(x, y)` → `Math.sqrt(x * x + y * y)`, exact et sans risque de
+   dépassement à l'échelle du jeu.
+
+   Deux précautions à prendre au passage : les valeurs produites changeront légèrement, donc les
+   tests portant sur des positions exactes seront à revoir ; et il faut ajouter une **garde
+   d'architecture interdisant tout appel à une fonction non exactement spécifiée** dans
+   `game-core`, faute de quoi le problème reviendra sans prévenir.
+
+   Indépendamment, deux protections restent utiles contre une divergence d'origine différente :
+   servir les pages avec un en-tête `Cache-Control` explicite, et **échanger un identifiant de
+   build à la jonction** pour refuser une partie entre versions différentes plutôt que de la
+   laisser diverger en silence.
 2. **Délai ressenti entre l'action et le déplacement.** Comportement inhérent au lockstep, déjà
    consigné comme conséquence négative dans l'ADR-0008 : 100 ms de retard par conception, plus
    l'attente du pair le plus lent. Deux pistes :

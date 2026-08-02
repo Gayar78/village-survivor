@@ -50,14 +50,21 @@ roster et les empreintes d'état.
 > C'était trop fort. Les tests ne comparent que deux exécutions **du même moteur JavaScript, à
 > partir du même code** : ils prouvent la reproductibilité, pas l'accord entre deux postes.
 >
-> Une divergence a été constatée en conditions réelles au tick 2160. Deux causes candidates sont
-> identifiées, **et aucune n'est établie** : des pairs exécutant des versions différentes du
-> paquet — rien ne l'empêche ni ne le détecte — ou des fonctions mathématiques approximées
-> différemment selon le moteur. Le détail est dans
-> [`../architecture.md`](../architecture.md), section « Déterminisme ».
+> Une divergence a été constatée en conditions réelles au tick 2160, puis sa cause **établie par
+> mesure** le même jour : `Math.hypot`, `Math.cos` et `Math.sin` ne renvoient pas les mêmes
+> valeurs sous Firefox et sous un moteur Chromium. La simulation les emploie à vingt-huit
+> endroits du chemin critique.
 >
-> Ce que l'on peut affirmer : le modèle repose sur une hypothèse de déterminisme **plus forte que
-> ce qui est aujourd'hui vérifié**, et les moyens de trancher n'existent pas encore.
+> **Le modèle repose donc sur une hypothèse fausse en l'état** : le lockstep exige un accord au
+> bit près, que JavaScript ne garantit pas entre moteurs. La coopération n'est aujourd'hui
+> fiable qu'entre navigateurs partageant le même moteur.
+>
+> Cela ne condamne pas la décision — un cœur n'appelant que des opérations exactement spécifiées
+> rétablirait la propriété requise — mais cela ajoute une condition que l'ADR n'avait pas
+> identifiée : **le déterminisme entre moteurs ne s'obtient pas en évitant l'horloge et
+> l'aléatoire, il exige aussi de n'employer que des fonctions exactement spécifiées.**
+> Mesures et correctifs : [`../feedback.md`](../feedback.md) et
+> [`../../ROADMAP.md`](../../ROADMAP.md).
 
 ## Conséquences
 

@@ -92,9 +92,27 @@ Math.cos   : 547d5fdb55663325
 Math.sin   : fc8960a37b3a400b
 ```
 
-Résultat attendu depuis Firefox. Empreintes différentes : cause établie, et l'on saura même
-quelle fonction est fautive. Empreintes identiques : l'arithmétique est hors de cause et il faut
-chercher ailleurs.
+### Cause établie le 1er août 2026
+
+Relevé depuis Firefox 153 sur le second poste :
+
+| Fonction | Chromium | Firefox 153 | |
+|---|---|---|---|
+| `Math.hypot` | `f7f3f67607b620e6` | `e28fa4b046ac2d9e` | **diffère** |
+| `Math.atan2` | `297ed15f72ad7f79` | `297ed15f72ad7f79` | identique |
+| `Math.cos` | `547d5fdb55663325` | `a8631c792eb4f9ae` | **diffère** |
+| `Math.sin` | `fc8960a37b3a400b` | `06b8429d1dbde769` | **diffère** |
+
+**Trois fonctions sur quatre ne calculent pas la même chose selon le moteur.** La simulation les
+emploie à chaque tick pour produire des positions et des vitesses ; l'écart se réinjecte dans
+l'état et s'accumule jusqu'à franchir une frontière de décision. Le lockstep ne peut pas tenir
+entre Firefox et un navigateur Chromium. Ce n'est plus une hypothèse.
+
+`Math.atan2` concorde sur ces 200 000 entrées, mais **cela ne le garantit pas** : la
+spécification l'autorise à diverger comme les autres. Il doit être traité comme non fiable.
+
+Ce qui est hors de cause : `Math.sqrt` et `Math.round`, exactement spécifiés par le langage, de
+même que les opérateurs arithmétiques.
 
 ### Ce que cette session valide
 

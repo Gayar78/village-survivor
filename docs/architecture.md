@@ -116,23 +116,26 @@ Ces trois conditions ne suffisent pas, et une divergence réelle l'a montré.
 > conception défendable — détecter tôt — mais il implique que l'alerte ne dit rien de la gravité
 > réelle de l'écart.
 >
-> **Deux causes candidates, aucune établie à ce jour :**
+> **Cause établie le 1er août 2026** par mesure directe sur les deux postes : les fonctions
+> mathématiques ne renvoient pas les mêmes valeurs d'un moteur JavaScript à l'autre.
+> `Math.hypot`, `Math.cos` et `Math.sin` divergent entre Firefox 153 et Chromium ; seul
+> `Math.atan2` concordait, sans que la spécification le garantisse. Les mesures sont consignées
+> dans [`feedback.md`](feedback.md).
 >
-> 1. **Les pairs n'exécutaient pas le même code.** Les pages HTML sont servies sans en-tête
->    `Cache-Control` : un navigateur peut resservir un ancien `play.html`, qui référence un
->    ancien paquet. Le netcode **n'échange aucune version de build**, donc rien ne détecte ni ne
->    refuse un tel écart.
-> 2. **Les fonctions mathématiques ne sont pas identiques d'un moteur à l'autre.** La simulation
->    appelle `Math.hypot`, `Math.atan2`, `Math.cos` et `Math.sin` à vingt-huit endroits du chemin
->    critique. En JavaScript, seuls les opérateurs arithmétiques et `Math.sqrt` sont exactement
->    spécifiés ; ces quatre-là sont « approximées par l'implémentation ».
+> En JavaScript, seuls les opérateurs arithmétiques, `Math.sqrt` et `Math.round` sont exactement
+> spécifiés. Les fonctions trigonométriques sont explicitement « approximées par
+> l'implémentation ». La simulation en appelle à vingt-huit endroits du chemin critique, à chaque
+> tick, pour produire positions et vitesses : l'écart se réinjecte dans l'état et s'accumule.
 >
-> **Ces deux causes ne sont pas distinguables aujourd'hui**, faute de télémétrie et faute d'un
-> identifiant de build échangé. Les départager est le premier objectif de diagnostic de
-> l'incrément d'observabilité.
+> **Conséquence immédiate : la coopération n'est fiable qu'entre navigateurs partageant le même
+> moteur.** Firefox et un navigateur Chromium ne peuvent pas jouer ensemble.
 >
-> En attendant, la seule précaution utile est de vérifier que tous les joueurs ont bien rechargé
-> la page après une reconstruction.
+> Le correctif n'exige pas d'implémenter des fonctions trigonométriques déterministes. Les
+> appels se répartissent en trois motifs, tous remplaçables par des opérations exactement
+> spécifiées : aller-retour vecteur → angle → vecteur (à remplacer par une normalisation
+> directe), angles constants des quatre tourelles (table de vecteurs unitaires), et tirage d'un
+> angle aléatoire (à remplacer par le tirage d'un vecteur de direction). Détail dans
+> [`../ROADMAP.md`](../ROADMAP.md).
 
 Les éléments qui pourraient dériver sont dérivés de valeurs pures plutôt que tirés : la rotation
 des biomes, les offres du marchand et les offres de défense globale se calculent depuis la graine
