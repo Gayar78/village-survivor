@@ -238,8 +238,14 @@ l'illusion de tester la version qu'on croit.
   diffère, un message le dit **avant** la partie au lieu d'une divergence inexplicable après deux
   minutes. L'identifiant part aussi dans la télémétrie, pour que la question « jouaient-ils le
   même code ? » ait désormais une réponse ;
-- **une bascule reste nécessaire une fois** : un navigateur qui tient déjà la page en cache ne
-  demandera pas le nouvel en-tête. Il faut un rechargement forcé (Ctrl+Maj+R) sur chaque poste.
+- **l'URL de la page de jeu porte l'identifiant de construction.** L'en-tête corrige la cause
+  pour l'avenir, mais il ne peut rien pour une entrée **déjà** mémorisée sous l'ancienne règle :
+  le navigateur ne redemande pas une page qu'il croit fraîche, donc n'apprend jamais la nouvelle
+  consigne. Une URL qui change à chaque livraison est une autre entrée de cache, et force le
+  chargement quoi qu'il arrive ;
+- **une bascule reste nécessaire une fois**, sur le lobby seulement : un navigateur qui l'avait
+  déjà en cache avant le correctif ne demandera pas le nouvel en-tête. Un rechargement forcé
+  (Ctrl+Maj+R) sur la page d'accueil suffit, et une seule fois.
 
 ### Ce que cette session valide
 
