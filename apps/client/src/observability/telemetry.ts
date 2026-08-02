@@ -1,4 +1,12 @@
-import { context, metrics, trace, type Meter, type Tracer } from '@opentelemetry/api';
+import {
+  context,
+  metrics,
+  trace,
+  type Context,
+  type Meter,
+  type Span,
+  type Tracer,
+} from '@opentelemetry/api';
 import { logs, type Logger } from '@opentelemetry/api-logs';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
@@ -173,9 +181,34 @@ export function getLogger(): Logger {
   return logs.getLogger(SCOPE_NAME);
 }
 
-/** Identifiants de corrélation du span actif, ou `undefined` hors de tout contexte tracé. */
+/**
+ * Span de la partie en cours.
+ *
+ * Un navigateur ne propage pas de contexte à travers les minuteurs, les promesses et les
+ * événements réseau : `context.active()` y est presque toujours vide. Sans point d'ancrage
+ * explicite, chaque span créé plus tard devient une **trace isolée** et chaque journal part
+ * **sans identifiant de corrélation** — c'est exactement ce qui a été constaté le 2 août 2026 en
+ * relisant le backend. Une page ne joue qu'une partie : la retenir ici suffit à rattacher tout le
+ * reste.
+ */
+let sessionSpan: Span | undefined;
+
+export function setSessionSpan(span: Span | undefined): void {
+  sessionSpan = span;
+}
+
+/** Contexte dans lequel créer un span enfant de la partie, ou `undefined` hors partie. */
+export function sessionContext(): Context | undefined {
+  return sessionSpan === undefined ? undefined : trace.setSpan(context.active(), sessionSpan);
+}
+
+/**
+ * Identifiants de corrélation à joindre à un enregistrement de journal.
+ *
+ * Le contexte actif prime — il est juste quand il existe — et la partie en cours sert de repli.
+ */
 export function activeTraceIds(): { trace_id: string; span_id: string } | undefined {
-  const span = trace.getSpan(context.active());
+  const span = trace.getSpan(context.active()) ?? sessionSpan;
   if (span === undefined) {
     return undefined;
   }

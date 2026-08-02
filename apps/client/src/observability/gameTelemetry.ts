@@ -2,7 +2,13 @@ import { SpanStatusCode, type Attributes, type Span } from '@opentelemetry/api';
 import type { Histogram, UpDownCounter, Counter } from '@opentelemetry/api';
 
 import { hashRoomCode } from './redact.js';
-import { getMeter, getTracer, telemetryConfig } from './telemetry.js';
+import {
+  getMeter,
+  getTracer,
+  sessionContext,
+  setSessionSpan,
+  telemetryConfig,
+} from './telemetry.js';
 
 /**
  * Instruments et spans propres au jeu.
@@ -129,9 +135,24 @@ export function gameSessionAttributes(descriptor: GameSessionDescriptor): Attrib
  * boucle est suivie par des métriques agrégées, la partie par une trace.
  */
 export function startGameSessionSpan(descriptor: GameSessionDescriptor): Span {
-  return getTracer().startSpan('game.session', {
+  const span = getTracer().startSpan('game.session', {
     attributes: gameSessionAttributes(descriptor),
   });
+  // Ancre de rattachement : tout ce qui suit — spans de jonction, crédit d'or, journaux — s'y
+  // raccroche. Sans elle, chaque span serait une trace isolée et les journaux ne porteraient
+  // aucun identifiant de corrélation.
+  setSessionSpan(span);
+  return span;
+}
+
+/**
+ * Span rattaché à la partie en cours.
+ *
+ * Hors partie, retombe sur une trace autonome plutôt que d'échouer : une frontière observée est
+ * toujours préférable à un trou.
+ */
+export function startGameChildSpan(name: string, attributes: Attributes = {}): Span {
+  return getTracer().startSpan(name, { attributes }, sessionContext());
 }
 
 /** Termine une partie en consignant son issue ; `error` marque le span comme fautif. */
@@ -145,6 +166,7 @@ export function endGameSessionSpan(
     span.setStatus({ code: SpanStatusCode.ERROR });
   }
   span.end();
+  setSessionSpan(undefined);
 }
 
 export function recordTickDuration(

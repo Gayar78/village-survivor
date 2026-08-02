@@ -15,6 +15,7 @@ import { BUILD_ID } from '../buildId.js';
 import { HUB_CAPACITY } from '../hub/types.js';
 import { createLogger } from '../observability/logger.js';
 import {
+  startGameChildSpan,
   recordCatchupTicks,
   recordEntities,
   recordFingerprintMismatch,
@@ -25,7 +26,6 @@ import {
   recordWave,
 } from '../observability/gameTelemetry.js';
 import { describeError } from '../observability/redact.js';
-import { getTracer } from '../observability/telemetry.js';
 
 /** Doit correspondre au tick fixe interne de TowerSimulation. */
 export const TOWER_LOCKSTEP_TICK_MS = 50;
@@ -1412,7 +1412,7 @@ class TowerLockstepSession implements TowerRenderableSession {
     this.running = true;
     // Jonction au canal : première frontière diagnosticable d'une partie coopérative. Un
     // démarrage qui n'aboutit pas se voit ici, sans avoir à interroger le joueur.
-    this.telemetry.channelJoin = getTracer().startSpan('coop.channel.join');
+    this.telemetry.channelJoin = startGameChildSpan('coop.channel.join');
     this.channel.subscribe((status: string) => {
       if (!this.running) {
         return;
@@ -1435,8 +1435,8 @@ class TowerLockstepSession implements TowerRenderableSession {
           this.requestRejoinHistory();
           return;
         }
-        this.telemetry.startBarrier = getTracer().startSpan('coop.start.barrier', {
-          attributes: { 'vs.players.count': this.rosterIds.size },
+        this.telemetry.startBarrier = startGameChildSpan('coop.start.barrier', {
+          'vs.players.count': this.rosterIds.size,
         });
         this.barrier.markLocalReady(this.me);
         this.broadcastReady();
@@ -1983,7 +1983,7 @@ class TowerLockstepSession implements TowerRenderableSession {
     // La réintégration rejoue toute la partie depuis le tick zéro : c'est l'opération la plus
     // coûteuse du netcode, et celle dont on ignore la fréquence réelle. La trace en donne la
     // durée, le compteur l'issue.
-    this.telemetry.rejoinReplay = getTracer().startSpan('coop.rejoin.replay');
+    this.telemetry.rejoinReplay = startGameChildSpan('coop.rejoin.replay');
     const requestId = `${this.me}:rejoin:1`;
     this.rejoinRequestId = requestId;
     this.rejoinReceiver = new TowerRejoinHistoryReceiver(this.me, requestId, null, this.rosterIds);

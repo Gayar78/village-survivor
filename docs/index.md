@@ -3,7 +3,7 @@
 > Statut : en construction
 > Version du projet : v1
 > Propriétaire : Gayar
-> Dernière revue : 1er août 2026
+> Dernière revue : 2 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
 
 Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,
@@ -57,14 +57,16 @@ spans aux seules frontières significatives.
 | Objectif | [`objectif.md`](objectif.md) | approuvé |
 | Spécification non-fonctionnelle | [`spec-nf.md`](spec-nf.md) | approuvée |
 | Spécification fonctionnelle | [`spec-fonctionnelle.md`](spec-fonctionnelle.md) | approuvée |
-| Feedback | [`feedback.md`](feedback.md) | en cours — ouvert par anticipation |
+| Feedback | [`feedback.md`](feedback.md) | à jour — trois sessions consignées |
+| Journal de développement | [`journal-dev.md`](journal-dev.md) | à jour |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
 | Décisions | [`decisions/`](decisions/README.md) — 9 ADR | approuvé |
 | Observabilité | [`observabilite.md`](observabilite.md) | approuvée |
 | Stratégie de tests | [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | approuvée |
-| Rapport de tests | `qualite/rapport-tests.md` | **absent** — phase 5 |
+| Rapport de tests | [`qualite/rapport-tests.md`](qualite/rapport-tests.md) | à jour |
 | Runbooks | `runbooks/` | **absent** — au premier incident réellement rencontré |
-| Releases | `releases/v<N>.md` | **absent** — phase 7 |
+| Releases | [`releases/v1.md`](releases/v1.md) | figé |
+| Backlog | [`../BACKLOG.md`](../BACKLOG.md) | à jour — v2 |
 
 La traçabilité des exigences ([`qualite/traceabilite.md`](qualite/traceabilite.md)) est un
 artefact du niveau `critique`. Elle existait avant la mise sous méthode et rend de vrais
@@ -134,6 +136,14 @@ vivant : il porte son statut et sa date, et n'est jamais révisé après coup. L
 >
 > Cette contrainte tombe si le dépôt passe en privé — réglage qui appartient à ses
 > propriétaires, et que l'agent ne modifie pas.
+>
+> **Constat du 2 août 2026, à traiter.** La branche a été publiée et fusionnée. Le contrôle
+> effectué avant publication cherchait des secrets — fichiers d'environnement, jetons, mots de
+> passe, adresses e-mail — et n'a rien trouvé. **Il n'a pas appliqué la liste ci-dessus** : les
+> prénoms du point 1 figurent dans [`objectif.md`](objectif.md) et dans le `README`, et sont donc
+> publics. Les points 2 et 3 le sont également. L'historique Git conserve ces contenus même après
+> correction : les retirer réduit l'exposition future, il n'efface pas le passé. La décision
+> appartient au propriétaire.
 
 ## Hypothèses ouvertes
 
@@ -153,9 +163,10 @@ les phases 2 et 3.
 - la coopération et la persistance de compte ont été livrées sans arbitrage préalable
   ([ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md),
   [ADR-0009](decisions/ADR-0009-account-persistence.md)) ;
-- il n'existe **aucune télémétrie** dans le code : ni trace, ni métrique, ni API de débogage. Sa
-  conception est arrêtée depuis le 1er août 2026 ([`observabilite.md`](observabilite.md)) ; son
-  implémentation appartient à la phase 4 et conditionne la campagne d'observation d'un mois.
+- ~~il n'existe aucune télémétrie dans le code~~ — **livrée le 2 août 2026** et éprouvée en
+  partie réelle : traces, métriques et journaux corrélés, décrits par
+  [`observabilite.md`](observabilite.md) et attestés par
+  [`qualite/rapport-tests.md`](qualite/rapport-tests.md).
 
 ## Autres références
 

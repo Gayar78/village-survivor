@@ -16,10 +16,11 @@ import { gameUrl } from './gameUrl.js';
 import { randomSeed } from './randomSeed.js';
 import { createLogger } from './observability/logger.js';
 import { describeError } from './observability/redact.js';
-import { flushTelemetry, getTracer, initTelemetry } from './observability/telemetry.js';
+import { flushTelemetry, initTelemetry } from './observability/telemetry.js';
 import { SpanStatusCode } from '@opentelemetry/api';
 import {
   endGameSessionSpan,
+  startGameChildSpan,
   startGameSessionSpan,
   type GameMode,
 } from './observability/gameTelemetry.js';
@@ -248,7 +249,7 @@ async function creditAccountGoldAtEndOfRun(gold: number): Promise<void> {
     return;
   }
   accountGoldCredited = true;
-  const span = getTracer().startSpan('account.gold.credit', { attributes: { 'vs.gold': gold } });
+  const span = startGameChildSpan('account.gold.credit', { 'vs.gold': gold });
   try {
     const account = await authService.getSession();
     if (account !== null) {
