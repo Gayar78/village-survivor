@@ -27,10 +27,18 @@ trois unités d'exécution qui ne sont pas la partie elle-même. Elles sont spé
 délibérément différées : le diagnostic demandé portait sur la partie, et instrumenter
 l'authentification demande d'abord de décider ce qu'on a le droit d'en écrire.
 
-**Chaîne vérifiée de bout en bout le 1er août 2026** : émission depuis la passerelle, réception
-par le collecteur, trace relue dans Tempo avec ses attributs (`vs.mode`, `vs.seed`,
-`vs.players.count`). Ce qui n'est **pas** encore vérifié : une partie réelle jouée à plusieurs,
-qui reste le gate de sortie de la phase.
+**Chaîne vérifiée en partie réelle le 2 août 2026** : une partie coopérative à deux postes a
+produit deux traces complètes et l'ensemble des métriques, et ces mesures ont **établi un
+diagnostic qu'aucune discussion n'avait su produire** — voir [`feedback.md`](feedback.md). Le gate
+de sortie « une exécution réelle tracée de bout en bout » est tenu.
+
+> **Défaut constaté à cette occasion.** Les deux postes écrivent dans la **même série de
+> mesures** : aucun attribut ne les distingue depuis le retrait de l'identifiant de compte. Les
+> valeurs instantanées restent exploitables, mais elles appartiennent à un pair sans qu'on sache
+> lequel, et toute évolution dans le temps est faussée — deux producteurs sur une série cumulative
+> produisent des sauts que `rate()` interprète de travers. Correctif proposé : un identifiant de
+> session tiré au hasard à l'ouverture de l'onglet, sans lien avec le compte. Il distingue deux
+> exécutions, et rien de plus.
 
 ## Objectif de diagnostic
 

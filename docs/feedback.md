@@ -247,6 +247,87 @@ l'illusion de tester la version qu'on croit.
   déjà en cache avant le correctif ne demandera pas le nouvel en-tête. Un rechargement forcé
   (Ctrl+Maj+R) sur la page d'accueil suffit, et une seule fois.
 
+## Session du 2 août 2026 (seconde) — première partie réellement mesurée
+
+**Contexte** : partie coopérative à deux postes, Firefox 153 et Edge 150, build `msc096xf`
+vérifiée chargée par les deux navigateurs avant le lancement. Durée 2 min 26 s, vague 13, défaite.
+
+**Rapporté** : « le ressenti est meilleur, mais au bout d'un moment — plus long — il se remet à
+lagger ».
+
+### Ce que la télémétrie établit
+
+| Mesure | Valeur | Lecture |
+|---|---|---|
+| Ticks simulés | 2694 sur les deux pairs | accord parfait |
+| Temps de jeu simulé | 134,7 s | |
+| Durée réelle de la partie | 145,7 s et 146,0 s | **11 s de retard accumulé** |
+| Période effective du tick | **54,1 ms** | conception : 50 ms |
+| Fréquence effective | **18,5 Hz** | conception : 20 Hz |
+| Durée d'un tick de simulation | 0,093 ms en moyenne, jamais plus de 5 ms | budget : 1 ms |
+| Durée d'une image | 0,56 ms en moyenne, jamais plus de 10 ms | budget : 16 ms |
+| Images par seconde | ≈ 59 | |
+| Monstres présents | 18,7 en moyenne | budget : 200 |
+| Ticks rattrapés par image | 1,0007 | la boucle ne rattrape jamais |
+| **Avance d'entrée locale** | **nulle dans 83 % des images**, 0,65 tick en moyenne | conception : 3 ticks |
+| Divergence d'empreinte | **aucune** | |
+
+**Deux résultats positifs, à ne pas perdre de vue.** Les deux pairs finissent au **même tick**,
+avec la même vague et la même issue, et le compteur de divergence n'a jamais été incrémenté : le
+correctif de déterminisme tient en conditions réelles, sur deux navigateurs différents, pendant
+2694 ticks. Et la machine mesurée est **oisive** : 0,09 ms de simulation et 0,56 ms de rendu par
+image sur un budget de 16 ms. Le problème n'est ni la puissance des postes, ni le coût du jeu.
+
+### Diagnostic
+
+**Le jeu tourne 8 % trop lentement, et son horloge d'entrées perd du temps sans jamais le
+rattraper.**
+
+Deux horloges cohabitent dans `towerSession.ts`, et une seule est fiable :
+
+- la **simulation** avance sur un accumulateur alimenté par `performance.now()`. Il ne perd
+  jamais une milliseconde : si une image tarde, l'accumulateur le sait et réclame les ticks
+  manquants ;
+- la **capture des entrées** avance sur un `setInterval(50 ms)` qui produit **exactement un tick
+  par déclenchement**. Un déclenchement en retard, ou fusionné avec un autre par le navigateur,
+  est perdu définitivement. Aucun mécanisme ne le compense.
+
+Entre les deux, la conception ménage une réserve de trois ticks — les deux ticks de
+`TOWER_INPUT_DELAY_TICKS` plus la capture initiale. Cette réserve ne se reconstitue jamais : elle
+se vide au rythme de la dérive du minuteur. Une fois vide, la simulation n'avance plus qu'au
+rythme de la capture la plus lente du groupe, soit 54 ms au lieu de 50.
+
+**La mesure discrimine, et c'est exactement ce pour quoi elle a été faite.** Si le jeu attendait
+le réseau, notre capture locale continuerait pendant l'attente et l'avance mesurée **augmenterait**.
+Elle tombe à zéro : le pair mesuré consomme tout ce qu'il capture, et c'est donc sa propre horloge
+de capture qui le limite, pas la latence d'un autre poste.
+
+**Conséquence directe sur le ressenti, et elle explique le « au bout d'un moment ».** La
+prédiction de rendu introduite le 1er août ne fonctionne qu'à partir des entrées **déjà émises et
+non encore jouées** : c'est précisément cette réserve. Tant qu'elle existe, l'avatar obéit sans
+délai. Quand elle est vide — 83 % des images ici — la prédiction n'a plus rien à anticiper, se
+désactive silencieusement, et les 150 à 200 ms de retard reviennent. Le joueur ne voit pas une
+dégradation progressive : il voit un correctif qui cesse de fonctionner.
+
+Cela explique aussi l'asymétrie de la session précédente : le pair dont le minuteur dérive le plus
+impose son rythme à tout le monde **et** est celui qui n'a jamais de réserve, donc jamais de
+prédiction. Il est doublement pénalisé.
+
+### Ce que la télémétrie ne permet pas encore de dire
+
+**Les deux postes écrivent dans la même série de mesures.** Aucun attribut ne les distingue :
+le retrait des mesures d'usage a supprimé l'identifiant de compte, et rien de non identifiant ne
+l'a remplacé. Conséquences constatées :
+
+- les valeurs instantanées sont exploitables mais appartiennent à **un** pair, sans qu'on sache
+  lequel ;
+- toute évolution dans le temps est **inexploitable** : deux producteurs sur une même série
+  cumulative produisent des sauts que `rate()` interprète de travers — jusqu'à 191 ticks d'avance
+  moyenne là où le maximum observé est 10.
+
+C'est le premier correctif à apporter à l'instrumentation elle-même : un identifiant de session
+tiré au hasard, propre à l'onglet, sans lien avec le compte du joueur.
+
 ### Ce que cette session valide
 
 Elle confirme la priorité décidée en phase 2 et 3 : **instrumenter avant de faire évoluer le

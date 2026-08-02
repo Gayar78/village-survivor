@@ -228,6 +228,84 @@ Ce qui n'est **pas** corrigé, et reste ouvert :
    Mesurer avant de choisir : la part du retard constant et celle des gels intermittents ne sont
    pas connues.
 
+## Correctifs proposés après la mesure du 2 août 2026 — À arbitrer
+
+Établis par la télémétrie, détaillés dans [`docs/feedback.md`](docs/feedback.md). **Aucun n'est
+implémenté** : ils demandent un arbitrage, et le troisième touche le modèle lui-même.
+
+### 1. Aligner l'horloge de capture sur celle de la simulation — *corriger un défaut*
+
+La capture des entrées avance sur un `setInterval` qui perd un tick à chaque déclenchement tardif
+ou fusionné ; la simulation avance sur un accumulateur qui n'en perd aucun. La réserve de trois
+ticks entre les deux se vide et ne se reconstitue jamais.
+
+**Proposition** : capturer depuis le même accumulateur que la simulation — produire autant de
+ticks d'entrée que le temps réel en réclame, au lieu d'un par déclenchement de minuteur. La
+réserve redevient alors auto-stabilisée.
+
+Portée : `towerSession.ts` seul, une trentaine de lignes. Aucun changement de protocole, aucun
+effet sur le déterminisme — les entrées produites sont les mêmes, seule leur cadence de production
+change. **Risque faible, bénéfice attendu élevé** : c'est ce qui rétablit à la fois la cadence de
+20 Hz et le fonctionnement de la prédiction de rendu.
+
+À faire en premier, et à mesurer avant d'aller plus loin. Il est possible que cela suffise.
+
+### 2. Distinguer les pairs dans la télémétrie — *rendre la mesure exploitable*
+
+Les deux postes écrivent dans la même série : aucune évolution temporelle n'est lisible, et on ne
+sait pas de quel pair viennent les valeurs.
+
+**Proposition** : un identifiant de session tiré au hasard à l'ouverture de l'onglet, attaché aux
+ressources OpenTelemetry. Il ne désigne ni le compte ni la personne — il distingue deux
+exécutions, ce qui est exactement le besoin, et rien de plus.
+
+Portée : quelques lignes dans `observability/telemetry.ts`. Sans lui, la prochaine session sera
+aussi difficile à lire que celle-ci.
+
+### 3. Rendre l'avance d'entrée adaptative — *atténuer, sans changer de modèle*
+
+Le retard d'entrée est figé à deux ticks. Trop court, la réserve se vide au moindre à-coup ; trop
+long, le jeu répond moins bien pour tout le monde.
+
+**Proposition** : faire varier ce retard selon la réserve réellement observée, en le faisant
+annoncer par le coordinateur à une frontière de tick — le mécanisme d'événements de roster existe
+déjà et garantit que tous les pairs changent au même tick.
+
+Portée : moyenne, et elle touche le protocole. À n'entreprendre que si le correctif 1 ne suffit
+pas.
+
+### 4. Découpler la simulation du temps réel des autres — *changer de modèle*
+
+C'est la remise en cause de fond, et elle est proposée sans être recommandée aujourd'hui.
+
+Le lockstep couple les horloges d'entrée, de simulation et d'affichage de tous les pairs en une
+seule, dont la cadence est celle du plus lent. Aucun mécanisme ne rattrape le temps perdu, et
+**un défaut local devient définitivement un défaut collectif**. Les correctifs 1 et 3 déplacent
+le seuil de tolérance ; ils ne suppriment pas la propriété.
+
+Deux sorties existent, toutes deux importantes :
+
+- **Rejeu avec retour arrière (« rollback »).** Chaque pair simule immédiatement avec des entrées
+  distantes supposées, puis rembobine et rejoue quand les vraies arrivent. L'entrée locale est
+  appliquée sans aucun délai, quelles que soient les autres machines. C'est le modèle des jeux
+  d'action en réseau. Il exige que la simulation sache **prendre un instantané complet de son
+  état et y revenir** — ce que `TowerSimulation` ne sait pas faire aujourd'hui.
+
+  À noter : **c'est exactement ce que réclame déjà la dette n°7** (points de reprise pour la
+  reconnexion, aujourd'hui bornée par un rejeu depuis le tick zéro). Un même travail — un
+  instantané sérialisable de l'état — sert les deux besoins. C'est l'argument le plus fort en sa
+  faveur.
+
+- **Serveur autoritaire**, c'est-à-dire le retour à l'[ADR-0004](docs/decisions/ADR-0004-authoritative-multiplayer-server.md)
+  que l'[ADR-0008](docs/decisions/ADR-0008-p2p-lockstep-coop.md) a remplacé sans arbitrage. Il
+  supprime le couplage entre pairs et règle du même coup la question de la triche, laissée
+  ouverte. Il rouvre en revanche l'hébergement, son coût et son exploitation — que l'objectif
+  écarte aujourd'hui.
+
+**Recommandation** : appliquer 1 et 2, remesurer, et ne trancher entre 3 et 4 qu'avec ces
+chiffres en main. Décider aujourd'hui reviendrait à choisir une architecture sur une seule partie
+de deux minutes.
+
 ## Dette à résorber — Prochain
 
 Ces travaux ne demandent aucune décision produit.
