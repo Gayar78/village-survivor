@@ -17,7 +17,7 @@ trace, ni métrique, ni interface de débogage.
 
 **Extrapoler.** Mesurer le coût réel d'une partie à deux, trois et quatre joueurs afin de prévoir
 ce qui tiendra ou non, plutôt que de l'optimiser au jugé. Le benchmark hors ligne mesure
-211 µs par tick sous 200 monstres, mais il ne dit rien du navigateur réel, ni de l'effet du
+210 µs par tick sous 200 monstres, mais il ne dit rien du navigateur réel, ni de l'effet du
 nombre de joueurs sur le lockstep.
 
 > **Modification du 1er août 2026 — troisième finalité retirée.** Une troisième famille de
@@ -224,7 +224,7 @@ d'optimiser ou non.
 
 | Indicateur | Budget | Aujourd'hui |
 |---|---|---|
-| Durée d'un tick de simulation | < 1 ms sous 200 monstres | 211 µs hors navigateur |
+| Durée d'un tick de simulation | < 1 ms sous 200 monstres | 210 µs hors navigateur |
 | Durée d'une image | < 16 ms pour tenir 60 images par seconde | non mesuré |
 | Ticks rattrapés par image | 1 en régime normal | non mesuré |
 | Retard d'entrée en coopération | < 4 ticks, soit 200 ms | non mesuré |

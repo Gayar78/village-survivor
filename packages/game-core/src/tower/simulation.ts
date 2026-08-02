@@ -212,6 +212,37 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+/**
+ * Règle de déplacement d'un avatar, pour une entrée et une durée.
+ *
+ * Elle est isolée ici parce qu'elle a **deux** appelants : le pas de simulation, qui fait
+ * autorité, et `projectPlayerPosition`, qui projette la position de rendu de l'avatar local.
+ * Les deux doivent produire exactement le même chemin, sinon la prédiction dériverait de l'état
+ * qu'elle anticipe et l'avatar sauterait à chaque rattrapage. Une seule règle, un seul code.
+ */
+function movedPlayerPosition(
+  position: Vector2,
+  input: TowerInput,
+  speed: number,
+  deltaSeconds: number,
+): Vector2 {
+  let dx = input.moveX;
+  let dy = input.moveY;
+  const length = exactLength(dx, dy);
+  if (length > 1) {
+    dx /= length;
+    dy /= length;
+  }
+  const next = {
+    x: position.x + dx * speed * deltaSeconds,
+    y: position.y + dy * speed * deltaSeconds,
+  };
+  return {
+    x: clamp(next.x, -WORLD.bound, WORLD.bound),
+    y: clamp(next.y, -WORLD.bound, WORLD.bound),
+  };
+}
+
 function normalizeMetaBuild(value: Partial<MetaBuildModifiers> | undefined): MetaBuildModifiers {
   const result = { ...NEUTRAL_META_BUILD };
   for (const key of Object.keys(result) as Array<keyof MetaBuildModifiers>) {
@@ -535,21 +566,7 @@ export class TowerSimulation {
     input: TowerInput,
     deltaSeconds: number,
   ): void {
-    let dx = input.moveX;
-    let dy = input.moveY;
-    const length = exactLength(dx, dy);
-    if (length > 1) {
-      dx /= length;
-      dy /= length;
-    }
-    const next = {
-      x: player.position.x + dx * player.speed * deltaSeconds,
-      y: player.position.y + dy * player.speed * deltaSeconds,
-    };
-    player.position = {
-      x: clamp(next.x, -WORLD.bound, WORLD.bound),
-      y: clamp(next.y, -WORLD.bound, WORLD.bound),
-    };
+    player.position = movedPlayerPosition(player.position, input, player.speed, deltaSeconds);
   }
 
   private updatePlayerAim(player: MutableTowerPlayer, input: TowerInput): void {
@@ -1912,6 +1929,52 @@ export class TowerSimulation {
 
   public getScrapFund(): number {
     return this.scrapFund;
+  }
+
+  // ── Prédiction de rendu ───────────────────────────────────────────────────
+
+  /**
+   * Position qu'aura un avatar après `inputs`, sans rien modifier.
+   *
+   * Sert au rendu de l'avatar local en coopératif, où l'état affiché a toujours quelques ticks
+   * de retard sur les touches enfoncées. Les entrées passées ici sont celles que le joueur a
+   * **déjà émises** au réseau : elles seront appliquées telles quelles par tous les pairs, donc
+   * la position calculée ici n'est pas un pari, c'est le résultat connu d'avance.
+   *
+   * La dernière entrée compte pour `lastFraction` de tick (0..1), ce qui donne un déplacement
+   * continu entre deux ticks au lieu d'un saut de 13 pixels toutes les 50 ms.
+   *
+   * Renvoie `undefined` si l'avatar n'existe pas. Un avatar à terre ne bouge pas : sa position
+   * courante est renvoyée telle quelle, comme le fait la simulation.
+   *
+   * **Cette méthode ne participe pas au déterminisme** : elle ne touche à aucun état, n'avance
+   * aucun compteur et n'est jamais appelée par `step`. Deux pairs peuvent l'appeler à des
+   * moments différents sans conséquence.
+   */
+  public predictPlayerPosition(
+    playerId: string,
+    inputs: readonly TowerInput[],
+    lastFraction = 1,
+  ): Vector2 | undefined {
+    const playerIndex = this.playerIds.indexOf(playerId);
+    const player = playerIndex < 0 ? undefined : this.players[playerIndex];
+    if (player === undefined) {
+      return undefined;
+    }
+    let position: Vector2 = { x: player.position.x, y: player.position.y };
+    if (player.downedRemainingMs > 0) {
+      return position;
+    }
+    const deltaSeconds = TICK_MS / 1_000;
+    for (let frame = 0; frame < inputs.length; frame += 1) {
+      const input = inputs[frame];
+      if (input === undefined) {
+        break;
+      }
+      const fraction = frame === inputs.length - 1 ? clamp(lastFraction, 0, 1) : 1;
+      position = movedPlayerPosition(position, input, player.speed, deltaSeconds * fraction);
+    }
+    return position;
   }
 
   // ── Snapshot ──────────────────────────────────────────────────────────────

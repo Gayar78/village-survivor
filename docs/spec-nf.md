@@ -85,7 +85,7 @@ acceptées. Elles sont détaillées dans [`qualite/traceabilite.md`](qualite/tra
 **Profondeur : `renforce`** — logique métier, modes d'erreur, accès non autorisés et
 dépendances.
 
-L'état actuel couvre bien la logique métier (111 tests) mais laisse trois trous que cette phase
+L'état actuel couvre bien la logique métier (137 tests) mais laisse trois trous que cette phase
 rend obligatoires à combler : **les accès non autorisés** ne sont testés nulle part, **le
 comportement en cas de panne de la dépendance externe** non plus, et **le contrat
 d'observabilité** n'existe pas encore.
@@ -122,7 +122,7 @@ l'extérieur.
 |---|---|
 | Utilisateurs attendus | 5 à 20 comptes, 2 à 4 joueurs simultanés |
 | Sessions simultanées | une, exceptionnellement deux |
-| Budget de performance | un tick de simulation doit rester sous **1 ms** sous 200 monstres ; mesuré à 211 µs aujourd'hui |
+| Budget de performance | un tick de simulation doit rester sous **1 ms** sous 200 monstres ; mesuré à 210 µs aujourd'hui |
 | Rendu | 60 images par seconde visées sur un poste de bureau ordinaire |
 | Indisponibilité acceptable | **illimitée** — le propriétaire a déclaré n'en subir aucune conséquence |
 

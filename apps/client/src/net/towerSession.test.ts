@@ -16,6 +16,8 @@ import {
   TowerReadyBarrier,
   TowerRejoinHistoryReceiver,
   TowerRosterController,
+  towerLocalRenderLead,
+  TOWER_MAX_RENDER_LEAD_TICKS,
   type TowerRosterControlEvent,
   type TowerInputBatchMessage,
 } from './towerSession.js';
@@ -287,5 +289,39 @@ describe('empreintes d’intégrité', () => {
     expect(monitor.accept({ senderId: 'outsider', tick: 40, fingerprint: 'evil' })).toEqual({
       status: 'ignored',
     });
+  });
+});
+
+describe('avance de rendu de l’avatar local', () => {
+  it('vaut l’âge de la dernière entrée émise en marche normale', () => {
+    // Trois entrées capturées d'avance : celle qui vient d'être prise (indice 102) puis les deux
+    // que le lockstep garde en file. L'avance croît du tick que dure leur capture.
+    expect(towerLocalRenderLead(100, 103, 0)).toBe(2);
+    expect(towerLocalRenderLead(100, 103, 0.5)).toBe(2.5);
+    expect(towerLocalRenderLead(100, 103, 1)).toBe(3);
+  });
+
+  it('ne recule jamais quand une entrée est capturée', () => {
+    // Instant de la capture : le compteur avance d'un tick et la fraction repart de zéro. Un
+    // avatar qui sauterait en arrière à cet instant, vingt fois par seconde, serait injouable.
+    expect(towerLocalRenderLead(100, 104, 0)).toBe(towerLocalRenderLead(100, 103, 1));
+  });
+
+  it('plafonne l’avance quand la simulation attend un pair', () => {
+    // Le tick simulé est bloqué à 100 pendant que la capture locale continue : sans plafond,
+    // l'avatar s'éloignerait indéfiniment du monde dessiné autour de lui.
+    expect(towerLocalRenderLead(100, 160, 0.5)).toBe(TOWER_MAX_RENDER_LEAD_TICKS);
+  });
+
+  it('ne rend aucune avance tant qu’aucune entrée n’est en file', () => {
+    expect(towerLocalRenderLead(100, 100, 0)).toBe(0);
+    expect(towerLocalRenderLead(100, 101, 0)).toBe(0);
+  });
+
+  it('borne une fraction de capture aberrante', () => {
+    // `performance.now()` peut sauter (onglet mis en veille) : la fraction ne doit pas faire
+    // consommer une entrée qui n'existe pas encore.
+    expect(towerLocalRenderLead(100, 103, 12)).toBe(3);
+    expect(towerLocalRenderLead(100, 103, -4)).toBe(2);
   });
 });

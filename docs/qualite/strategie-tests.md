@@ -14,7 +14,7 @@ sont pas du tout. Ce document dit quoi ajouter et pourquoi.
 
 | Domaine | État | Volume |
 |---|---|---|
-| Logique métier de la simulation | **couvert** | 111 tests Vitest |
+| Logique métier de la simulation | **couvert** | 137 tests Vitest |
 | Contrat de session et roster coopératif | **couvert** | inclus ci-dessus |
 | Interface (HUD, boutique, méta-build) | **couvert** | inclus ci-dessus |
 | Démarrage du jeu dans un navigateur réel | **couvert** | 1 smoke Playwright, en intégration continue |

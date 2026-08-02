@@ -1,6 +1,6 @@
 # Feuille de route
 
-Dernière mise à jour : 31 juillet 2026
+Dernière mise à jour : 1er août 2026
 
 ## Convention
 
@@ -110,6 +110,11 @@ et suppose, elle, un projet Supabase hébergé.
   critiques ralentissent désormais leur cible. Les valeurs de réglage sont prudentes et
   **demandent une validation en partie réelle** : cette amélioration n'avait jamais été
   équilibrée, faute d'exister.
+- **Le déplacement répond sans délai.** L'avatar local est dessiné à l'heure du joueur, à partir
+  des entrées déjà diffusées : de 150-200 ms de retard, on passe à 50 ms au plus. Le prix, arbitré
+  par [ADR-0010](docs/decisions/ADR-0010-local-render-prediction.md), est un écart d'affichage
+  entre l'avatar et le monde autour de lui, **à juger en jouant**. Les gels dus à un pair en
+  retard, eux, ne sont pas corrigés : ils appartiennent au modèle lockstep.
 
 ## Dette résorbée le 31 juillet 2026
 
@@ -150,10 +155,25 @@ Trois constats de sécurité ne sont **pas** traités, par cohérence avec la fr
 l'objectif : canaux temps réel usurpables, montant d'or déclaré par le client, et fonctions
 `security definer` autres que le crédit d'or. Ils sont consignés dans la matrice de traçabilité.
 
-## Remontées de la session du 1er août 2026 — Prochain
+## Remontées de la session du 1er août 2026 — Corrigées, à revérifier en jeu
 
 Constatées en partie réelle à plusieurs postes, **à traiter avant toute évolution
 fonctionnelle** sur décision du propriétaire. Détail dans [`docs/feedback.md`](docs/feedback.md).
+
+Les deux constats ont reçu leur correctif le jour même — voir « Correctifs de jouabilité du
+1er août 2026 » plus haut. **Ni l'un ni l'autre n'est vérifié en conditions réelles** : le
+déterminisme demande une partie à plusieurs navigateurs, le confort de déplacement demande un
+jugement de joueur. L'énoncé du problème est conservé ci-dessous tel qu'il a été établi ; il
+reste la référence pour la recette.
+
+Ce qui n'est **pas** corrigé, et reste ouvert :
+
+- **les gels dus au pair le plus lent**, inhérents au lockstep. L'avatar local continue d'obéir
+  200 ms au plus, le monde se fige toujours ;
+- **la part respective du retard constant et des gels**, toujours non mesurée : c'est un objectif
+  de l'incrément d'observabilité ;
+- **l'échange de l'identité du build à la jonction** et l'en-tête `Cache-Control` explicite, qui
+  transformeraient une divergence d'une autre origine en message compréhensible avant la partie.
 
 1. **Désynchronisation entre pairs — cause établie, et bloquante pour la coopération.** Mesurée
    le 1er août 2026 sur trois navigateurs : `Math.cos`, `Math.sin` et `Math.atan2` renvoient des

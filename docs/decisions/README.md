@@ -36,6 +36,7 @@ courants.
 | [0007](ADR-0007-immediate-mode-entity-rendering.md) | Accepté, **partiellement caduc** | Rendre les entités en mode immédiat trié par profondeur |
 | [0008](ADR-0008-p2p-lockstep-coop.md) | Constaté | Coopération en lockstep pair-à-pair sans serveur |
 | [0009](ADR-0009-account-persistence.md) | Constaté | Comptes Supabase et progression persistante |
+| [0010](ADR-0010-local-render-prediction.md) | Accepté | Dessiner l'avatar local en avance sur la simulation |
 
 ### Notes sur les statuts particuliers
 

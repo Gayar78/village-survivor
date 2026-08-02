@@ -12,6 +12,41 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 
 ---
 
+## Correctifs de jouabilité — 1er août 2026
+
+Trois correctifs issus de la première session de jeu réelle à plusieurs postes, décrite dans
+[`docs/feedback.md`](docs/feedback.md).
+
+### Corrigé
+
+- **la simulation est reproductible d'un navigateur à l'autre.** Une partie coopérative
+  divergeait après moins de deux minutes. Cause établie par mesure sur trois navigateurs :
+  `Math.cos`, `Math.sin`, `Math.atan2` et `Math.hypot` sont approximés par l'implémentation et
+  renvoient des valeurs différentes — **y compris entre deux versions du même moteur**. Les
+  vingt-huit appels du chemin critique passent par `exact-math.ts`, qui n'emploie que des
+  opérations exactement spécifiées par le langage. Une garde de lint interdit leur retour ; c'est
+  elle qui a trouvé un vingt-neuvième cas, l'opérateur de puissance des seuils de niveau ;
+- **le déplacement répond sans délai perceptible.** L'avatar local est désormais dessiné à
+  l'heure du joueur, à partir des entrées déjà diffusées sur le canal — donc sans rien deviner et
+  sans jamais rien recaler. De 150 à 200 ms de retard, on passe à 50 ms au plus. Le prix est un
+  écart d'affichage entre l'avatar et le monde autour de lui, arbitré par
+  [ADR-0010](docs/decisions/ADR-0010-local-render-prediction.md) ;
+- **« Fracture glaciale » produit un effet.** L'amélioration mythique la plus rare du catalogue
+  incrémentait un compteur que la simulation ne lisait jamais. Les coups critiques ralentissent
+  désormais leur cible, par piles cumulées et plafonnées ; un monstre ralenti n'est jamais figé.
+
+### Modifié
+
+- **la télémétrie est recentrée sur le diagnostic et la performance**, sur décision du
+  propriétaire : les mesures d'usage produit sortent du périmètre. Conséquence assumée, le critère
+  de réussite de l'objectif devra être constaté à la main. Effet de bord bienvenu, plus aucun
+  identifiant de joueur n'est émis.
+
+### Non corrigé, et documenté comme tel
+
+- les **gels** dus au pair le plus lent : ils appartiennent au modèle lockstep ;
+- l'**absence de mesure** permettant de départager le retard constant des gels.
+
 ## Correctifs d'audit — 31 juillet 2026
 
 ### Corrigé

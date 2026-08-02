@@ -85,9 +85,10 @@ Deux implémentations le satisfont, toutes deux dans
 connaît que le port : elle fonctionne à l'identique dans les deux modes. Le principe d'ADR-0003
 est donc respecté, et le jour où un serveur autoritaire apparaîtra, il remplacera un adaptateur.
 
-La session ajoute `getRenderAlpha()` — la fraction de progression vers le prochain tick, pour
-interpoler l'affichage — et `onConnectionIssue()`, qui remonte les incidents réseau sans coupler
-le netcode au DOM.
+La session ajoute trois méthodes de rendu : `getRenderAlpha()` — la fraction de progression vers
+le prochain tick, pour interpoler l'affichage —, `getLocalRenderPosition()` — la position à
+laquelle dessiner l'avatar local, en avance sur l'état reçu — et `onConnectionIssue()`, qui
+remonte les incidents réseau sans coupler le netcode au DOM.
 
 ## 5. Modèle d'exécution
 
@@ -140,6 +141,21 @@ Ces trois conditions ne suffisent pas, et une divergence réelle l'a montré.
 > directe), angles constants des quatre tourelles (table de vecteurs unitaires), et tirage d'un
 > angle aléatoire (à remplacer par le tirage d'un vecteur de direction). Détail dans
 > [`../ROADMAP.md`](../ROADMAP.md).
+>
+> **Correctif appliqué le 1er août 2026.** Les vingt-huit appels ont été remplacés. Le module
+> [`packages/game-core/src/exact-math.ts`](../packages/game-core/src/exact-math.ts) n'emploie que
+> des opérations exactement spécifiées ; la plupart des cas se sont réduits à une normalisation
+> directe, sans aucune fonction trigonométrique. L'opérateur de puissance, lui aussi approximé,
+> fixait les seuils de niveau : il a été remplacé par une multiplication successive.
+>
+> Une **quatrième condition de déterminisme** rejoint donc les trois précédentes : ne jamais
+> employer, dans `game-core`, une fonction que la spécification du langage laisse approximer. Une
+> garde de lint la fait respecter — c'est elle qui a trouvé le cas de l'opérateur de puissance,
+> que la recherche manuelle avait manqué.
+>
+> **Ce que le correctif ne prouve pas** : que la coopération est désormais sans divergence. Il
+> supprime la cause établie ; il reste à le constater en partie réelle, ce que la page de
+> diagnostic permet de vérifier avant de jouer.
 
 Les éléments qui pourraient dériver sont dérivés de valeurs pures plutôt que tirés : la rotation
 des biomes, les offres du marchand et les offres de défense globale se calculent depuis la graine
@@ -190,6 +206,12 @@ partie est déclaré par le client**. Voir [ADR-0009](decisions/ADR-0009-account
 redessinés à chaque frame, plus une minimap fixée à l'écran. Les positions rendues sont
 interpolées entre deux états de simulation à l'aide de `getRenderAlpha()`. Aucun asset n'est
 chargé : tout est géométrique.
+
+**L'avatar local fait exception en coopératif** : il est dessiné en avance sur le reste du monde,
+à partir des entrées que le joueur a déjà émises au réseau, afin que la commande ne se fasse plus
+attendre 150 à 200 ms. La caméra le suit, donc tout le décor obéit sans délai. Ce que cela coûte
+— l'avatar est montré ailleurs qu'où la simulation le place — est arbitré dans
+[ADR-0010](decisions/ADR-0010-local-render-prediction.md).
 
 Les couleurs sont paramétrables par le joueur (`apps/client/src/preferences`) et n'influencent
 jamais la simulation.
@@ -246,8 +268,8 @@ intégration continue, où aucune clé n'existe. Le lobby, lui, n'a aucun test d
 il en faudrait un mode invité ou un mock de l'authentification.
 
 Le benchmark mesure le coût **par tick réellement simulé** et s'arrête à la défaite, de sorte
-que la mesure reste valable si l'équilibrage évolue. Ordre de grandeur observé : 211 µs par tick
-avec 200 monstres, 17 µs par projection d'état.
+que la mesure reste valable si l'équilibrage évolue. Ordre de grandeur observé : 210 µs par tick
+avec 200 monstres, 19 µs par projection d'état.
 
 ## 12. Dette structurelle
 

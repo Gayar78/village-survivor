@@ -33,6 +33,31 @@ intermittents dus à un pair en retard. Le mot « nombreux » suggère des à-co
 latence uniforme, ce qui orienterait vers des pairs qui décrochent — onglet en arrière-plan,
 machine plus lente, ou saturation de la boucle. Aucune mesure ne permet de trancher aujourd'hui.
 
+#### Correctif appliqué le 1er août 2026
+
+Le retard **constant** est supprimé pour l'avatar local : il est désormais dessiné à l'heure du
+joueur et non à celle de la simulation, à partir des entrées déjà diffusées sur le canal. La
+caméra le suivant, tout le décor obéit sans délai. Reste au plus le temps de capture d'une
+entrée, soit 50 ms, contre 150 à 200 ms auparavant.
+
+Trois précisions comptent pour la recette :
+
+- **rien n'est deviné.** Les entrées employées sont celles que tous les pairs vont appliquer :
+  la position dessinée est celle que la simulation atteindra. Aucun recalage ne peut donc être
+  visible ;
+- **la simulation n'est pas touchée**, ni son empreinte. Un test compare la trace d'une partie
+  ponctuée de prédictions à celle de la même partie sans aucune ;
+- **le prix est un écart d'affichage** : l'avatar local est montré jusqu'à 150 ms en avance sur
+  le monde autour de lui, soit une quarantaine de pixels à pleine course. Un monstre peut donc
+  blesser un avatar qui paraît un peu à côté, et une balle partir légèrement en retrait du canon.
+  C'est l'arbitrage arrêté par [ADR-0010](decisions/ADR-0010-local-render-prediction.md), et
+  **c'est ce point précis qu'il faut juger en jouant**.
+
+Les **gels** ne sont pas corrigés : ils tiennent au modèle lui-même, où le tick commun avance au
+rythme du pair le plus lent. L'avatar local continue seulement d'obéir pendant les 200 premières
+millisecondes d'un gel, au lieu de se figer avec le reste. Départager le retard constant des
+gels reste un objectif de l'incrément d'observabilité.
+
 ### Constat 2 — Désynchronisation déclarée
 
 **Rapporté** : bandeau « Désynchronisation Tower détectée au tick 2160 avec `a1f9e19f-f…` ».
@@ -131,6 +156,20 @@ En attendant, une parade partielle reste possible sans toucher au cœur : **éch
 du moteur à la jonction** et avertir — ou refuser — quand les pairs ne partagent pas exactement
 le même build. Cela ne répare rien, mais transforme une divergence inexplicable en un message
 compréhensible avant la partie.
+
+### Correctif appliqué le 1er août 2026
+
+Les vingt-huit appels du chemin critique sont remplacés par des opérations que la spécification
+du langage définit exactement. Une garde de lint interdit leur retour dans `game-core` ; c'est
+elle qui a trouvé un vingt-neuvième cas, l'opérateur de puissance des seuils de niveau, que la
+recherche manuelle avait manqué.
+
+La page de diagnostic vérifie maintenant les deux côtés : les fonctions du moteur, qui **doivent**
+différer d'un navigateur à l'autre, et leurs remplaçants, qui **doivent** concorder partout.
+C'est le contrôle à faire avant la prochaine partie à plusieurs postes.
+
+**Ce que cela ne prouve pas** : que la coopération est désormais sans divergence. La cause
+établie est supprimée ; seule une partie réelle dira s'il en existait une autre.
 
 ### Ce que cette session valide
 

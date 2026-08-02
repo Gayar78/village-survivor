@@ -70,6 +70,10 @@ roster et les empreintes d'état.
 > l'aléatoire, il exige aussi de n'employer que des fonctions exactement spécifiées.**
 > Mesures et correctifs : [`../feedback.md`](../feedback.md) et
 > [`../../ROADMAP.md`](../../ROADMAP.md).
+>
+> **Correctif appliqué le même jour.** Les vingt-huit appels ont été remplacés par des opérations
+> exactement spécifiées, et une garde de lint interdit leur retour. L'hypothèse de l'ADR redevient
+> tenable ; il reste à le constater en partie réelle.
 
 ## Conséquences
 
@@ -88,6 +92,12 @@ roster et les empreintes d'état.
   récompenses ») n'est plus tenu.
 - **Le rythme est celui du pair le plus lent.** Le lockstep interdit toute prédiction et toute
   correction ; un pair en retard ralentit la partie pour tous.
+
+  > **Précision du 1er août 2026.** Cette interdiction porte sur la **simulation** : aucun pair ne
+  > peut avancer son état sans les entrées de tous. Elle ne porte pas sur l'**affichage**.
+  > [ADR-0010](ADR-0010-local-render-prediction.md) dessine l'avatar local en avance à partir des
+  > entrées déjà diffusées — donc sans rien deviner et sans rien corriger. Le rythme du tick
+  > commun, lui, reste bien celui du pair le plus lent.
 - **La partie dépend d'un onglet au premier plan.** L'interface le dit explicitement au joueur
   (« gardez cet onglet actif »), les navigateurs bridant les minuteries des onglets en arrière-plan.
 - **Le transport dépend de Supabase.** La coopération n'est pas jouable sans projet Supabase

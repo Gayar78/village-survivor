@@ -5,6 +5,7 @@ import type {
   TowerInput,
   TowerRosterEvent,
   TowerSession,
+  Vector2,
 } from '@village-survivor/protocol';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -77,8 +78,53 @@ export const TOWER_LOCKSTEP_EVENTS = {
 /** Session Tower + fraction d'interpolation pour le rendu (voir TowerScene). */
 export interface TowerRenderableSession extends TowerSession {
   getRenderAlpha(): number;
+  /**
+   * Position de rendu de l'avatar local, en avance sur l'état affiché, ou `undefined` quand la
+   * session n'a rien à anticiper. Voir `TOWER_MAX_RENDER_LEAD_TICKS`.
+   */
+  getLocalRenderPosition(): Vector2 | undefined;
   /** Rend les incidents de connexion exploitables sans coupler le netcode au DOM. */
   onConnectionIssue(listener: (message: string) => void): () => void;
+}
+
+/**
+ * Avance maximale, en ticks de 50 ms, de l'avatar local sur le monde affiché autour de lui.
+ *
+ * En lockstep, une touche enfoncée n'est jouée qu'après avoir été mise en file
+ * (`TOWER_INPUT_DELAY_TICKS`), reçue par tous, puis affichée avec un tick d'interpolation : de
+ * 150 à 200 ms entre le geste et le mouvement. C'est le premier défaut rapporté par les joueurs.
+ *
+ * Dessiner l'avatar local en avance supprime ce délai, au prix d'un écart assumé : l'avatar est
+ * montré là où le joueur l'a déjà emmené, le reste du monde là où la simulation en est. Un
+ * monstre peut donc toucher un avatar qui paraît à quelques dizaines de pixels, et une balle
+ * partir légèrement en retrait du canon.
+ *
+ * Quatre ticks, soit 200 ms et au plus 52 pixels à pleine vitesse, bornent cet écart. La borne ne
+ * mord qu'en cas de blocage réseau : en marche normale l'avance vaut trois ticks, l'âge de la
+ * dernière entrée émise. **Valeur à valider en partie réelle** : elle arbitre entre nervosité et
+ * fidélité de l'affichage, et cet arbitrage se juge manette en main.
+ */
+export const TOWER_MAX_RENDER_LEAD_TICKS = 4;
+
+/**
+ * Avance de rendu de l'avatar local, en ticks, à partir des seules entrées déjà émises.
+ *
+ * `captureFraction` est l'âge de la dernière entrée capturée, rapporté à la durée d'un tick.
+ * Le résultat est **monotone dans le temps réel** : c'est le minimum de deux quantités qui ne
+ * décroissent jamais — l'horloge de capture et le plafond adossé au tick simulé. Un avatar dont
+ * l'avance reculerait sauterait en arrière à chaque hoquet du réseau, ce qui serait pire que le
+ * délai qu'on cherche à supprimer.
+ */
+export function towerLocalRenderLead(
+  simulationTick: number,
+  nextLocalTick: number,
+  captureFraction: number,
+  maxLeadTicks: number = TOWER_MAX_RENDER_LEAD_TICKS,
+): number {
+  const fraction = Math.max(0, Math.min(1, captureFraction));
+  const captureClock = nextLocalTick - 1 + fraction;
+  const ceiling = simulationTick + maxLeadTicks;
+  return Math.max(0, Math.min(captureClock, ceiling) - simulationTick);
 }
 
 export interface TowerCoopConfig {
@@ -1092,6 +1138,15 @@ export class TowerLocalSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_LOCKSTEP_TICK_MS));
   }
 
+  /**
+   * Rien à anticiper en solo : l'entrée courante est appliquée au tick suivant, sans file ni
+   * attente d'un pair. Le seul retard restant est le tick d'interpolation, que personne n'a
+   * signalé.
+   */
+  public getLocalRenderPosition(): Vector2 | undefined {
+    return undefined;
+  }
+
   public onConnectionIssue(listener: (message: string) => void): () => void {
     void listener;
     return () => undefined;
@@ -1164,6 +1219,8 @@ class TowerLockstepSession implements TowerRenderableSession {
   private lastTimestamp = 0;
   private accumulatorMs = 0;
   private nextLocalTick = 0;
+  /** Horodatage de la dernière entrée capturée : horloge de la prédiction de rendu. */
+  private lastCaptureAt = 0;
   private connectionIssue: string | undefined;
   private rejoinReceiver: TowerRejoinHistoryReceiver | undefined;
   private rejoinRequestId: string | undefined;
@@ -1348,6 +1405,45 @@ class TowerLockstepSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_LOCKSTEP_TICK_MS));
   }
 
+  /**
+   * Avatar local dessiné à l'heure du joueur, et non à celle de la simulation.
+   *
+   * N'utilise que des entrées **déjà diffusées** : ce sont celles que tous les pairs
+   * appliqueront, donc la position rendue est celle que la simulation atteindra, pas une
+   * supposition. Il n'y a rien à corriger ensuite, donc aucun recalage visible.
+   *
+   * Effet secondaire recherché : pendant qu'un pair retarde le tick commun, l'avatar local
+   * continue d'obéir — jusqu'au plafond d'avance — au lieu de se figer avec le reste du monde.
+   */
+  public getLocalRenderPosition(): Vector2 | undefined {
+    if (!this.simulationStarted) {
+      return undefined;
+    }
+    const simulationTick = this.inputBuffer.nextTick;
+    const lead = towerLocalRenderLead(
+      simulationTick,
+      this.nextLocalTick,
+      (performance.now() - this.lastCaptureAt) / TOWER_LOCKSTEP_TICK_MS,
+    );
+    if (lead <= 0) {
+      return undefined;
+    }
+    const inputs: TowerInput[] = [];
+    let remaining = lead;
+    for (let tick = simulationTick; remaining > 0 && tick < this.nextLocalTick; tick += 1) {
+      const input = this.localFrames.get(tick);
+      if (input === undefined) {
+        break;
+      }
+      inputs.push(input);
+      remaining -= 1;
+    }
+    if (inputs.length === 0) {
+      return undefined;
+    }
+    return this.simulation.predictPlayerPosition(this.me, inputs, lead - (inputs.length - 1));
+  }
+
   public onConnectionIssue(listener: (message: string) => void): () => void {
     this.issueListeners.add(listener);
     if (this.connectionIssue !== undefined) {
@@ -1399,6 +1495,7 @@ class TowerLockstepSession implements TowerRenderableSession {
       action === undefined ? this.latestInput : withDiscreteAction(this.latestInput, action);
     this.addLocalFrame(this.nextLocalTick, input);
     this.nextLocalTick += 1;
+    this.lastCaptureAt = performance.now();
     this.broadcastRecentInputs();
   }
 
