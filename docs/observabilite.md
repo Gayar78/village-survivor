@@ -20,14 +20,16 @@ ce qui tiendra ou non, plutôt que de l'optimiser au jugé. Le benchmark hors li
 211 µs par tick sous 200 monstres, mais il ne dit rien du navigateur réel, ni de l'effet du
 nombre de joueurs sur le lockstep.
 
-**Décider.** La condition de victoire et la persistance entre les parties sont suspendues aux
-tests à trois joueurs. Ces tests ne peuvent trancher que si l'on sait **combien de parties ont
-été lancées, par qui, de sa propre initiative, combien de temps elles ont duré et comment elles
-se sont terminées**. Le critère de réussite de l'objectif est lui-même un compte : sans mesure,
-il est invérifiable.
-
-Cette troisième finalité est inhabituelle pour de la télémétrie, et c'est pourtant la plus
-importante ici.
+> **Modification du 1er août 2026 — troisième finalité retirée.** Une troisième famille de
+> mesures était prévue, destinée à compter les parties et les abandons pour éclairer le débat
+> produit et vérifier le critère de réussite. Le propriétaire l'écarte : il parle directement à
+> ses joueurs, et un compteur ne lui apprendra rien qu'une conversation ne dise mieux.
+>
+> La télémétrie se concentre donc sur **le diagnostic et la performance**. La décision touche
+> une spécification verrouillée ; elle est consignée ici plutôt qu'appliquée en silence.
+>
+> Conséquence à assumer : le critère de réussite de l'objectif — cinq parties par personne sur
+> un mois — devra être constaté à la main, et non par la mesure comme il était prévu.
 
 ## Contrainte qui prime sur toutes les autres
 
@@ -57,12 +59,12 @@ noierait le signal. La boucle est suivie par des métriques agrégées.
 
 ### Attributs du span racine d'une partie
 
-`vs.seed`, `vs.mode` (`solo` ou `coop`), `vs.players.count`, `vs.player.account_id`,
-`service.version`, `deployment.environment.name`.
+`vs.seed`, `vs.mode` (`solo` ou `coop`), `vs.players.count`, `service.version`,
+`deployment.environment.name`.
 
-`vs.player.account_id` est l'identifiant technique du compte — un UUID. Il est **nécessaire** :
-le critère de réussite compte les parties par personne. Il est aussi **suffisant** : ni
-l'adresse e-mail ni le pseudonyme ne sont jamais émis.
+**Aucun identifiant de joueur n'est émis.** Il n'était nécessaire que pour compter les parties
+par personne, finalité retirée du périmètre. Le diagnostic n'en a pas besoin : une divergence ou
+un décrochage se caractérisent par la graine et le tick, non par l'identité du joueur.
 
 ## Métriques
 
@@ -99,23 +101,18 @@ La dernière est délibérée : la fenêtre de reconnexion a été portée de di
 qu'on sache si le cas se produit une fois par mois ou trois fois par soirée. La mesure tranchera
 avant qu'on investisse dans des points de reprise.
 
-### Usage — pour décider du produit
+### Usage — retiré du périmètre
 
-| Métrique | Type | Attributs | Sert à |
-|---|---|---|---|
-| `vs.session.started` | compteur | `vs.player.account_id`, `vs.initiation` (`self`, `invited`), `vs.mode` | **compter le critère de réussite** |
-| `vs.session.duration` | histogramme (s) | `vs.end.cause` | savoir si les parties tiennent les joueurs |
-| `vs.session.end` | compteur | `vs.end.cause` (`defeat`, `quit`, `disconnect`) | distinguer une défaite d'un abandon |
-| `vs.session.wave.reached` | histogramme | `vs.players.count` | situer la difficulté ressentie |
-| `vs.meta.gold.earned` | histogramme | — | mesurer ce que la progression rapporte réellement |
+Une troisième famille devait compter les parties lancées, leur durée et leur cause de fin, afin
+d'éclairer le débat sur la condition de victoire et de vérifier le critère de réussite.
 
-`vs.end.cause = quit` est le signal le plus parlant du lot : **un joueur qui quitte avant de
-perdre s'ennuie**. C'est cette proportion, croisée avec la durée, qui éclairera le débat sur la
-condition de victoire — un jeu sans fin qu'on abandonne en cours de partie n'a pas de problème
-de difficulté, il a un problème de raison de continuer.
+**Elle est retirée le 1er août 2026**, sur décision du propriétaire : le cercle de joueurs est
+si restreint qu'un échange direct renseigne mieux qu'un compteur. Deux durées de partie ne
+disent pas pourquoi on s'est arrêté ; un joueur, si.
 
-`vs.initiation` distingue une partie lancée spontanément d'une partie rejointe sur invitation.
-Le critère de réussite ne compte que les premières.
+Ce qui subsiste des attributs prévus : **aucun identifiant de compte n'est émis**, puisque plus
+rien n'exige de compter par personne. C'est autant de données personnelles en moins dans la
+télémétrie, et cela simplifie la section « Données et sécurité » ci-dessous.
 
 ## Propagation et export
 

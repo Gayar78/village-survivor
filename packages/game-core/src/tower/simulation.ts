@@ -63,6 +63,7 @@ import {
   BIOME_DURATION_WAVES,
   BURN,
   CONTACT_COOLDOWN_MS,
+  CRIT_SLOW,
   CONTACT_MARGIN,
   DOWNED_DURATION_MS,
   EXPLODE_ON_KILL,
@@ -615,8 +616,10 @@ export class TowerSimulation {
     direction: Vector2,
   ): void {
     let damage = this.weaponDamage(player, weapon, definition);
+    let critical = false;
     if (player.critChance > 0 && this.combatRandom.next() < player.critChance) {
       damage *= player.critMult;
+      critical = true;
     }
     this.projectileCounter += 1;
     this.projectiles.push({
@@ -635,6 +638,9 @@ export class TowerSimulation {
       explodeOnKill: player.explodeOnKill,
       lifestealPct: player.lifestealPct,
       growingBullet: player.growingBullet,
+      // « Fracture glaciale » n'agit que sur les coups critiques : un tir ordinaire ne
+      // transporte aucune pile, même si le joueur possède l'amélioration.
+      critSlowStacks: critical ? player.critSlowStacks : 0,
       ownerId: player.id,
       hitMonsterIds: new Set<string>(),
     });
@@ -791,6 +797,8 @@ export class TowerSimulation {
       explodeOnKill: false,
       lifestealPct: 0,
       growingBullet: 0,
+      // Les tourelles ne portent pas d'améliorations de joueur.
+      critSlowStacks: 0,
       ownerId: undefined,
       hitMonsterIds: new Set<string>(),
     });
@@ -935,6 +943,13 @@ export class TowerSimulation {
       monster.burnRemainingMs = BURN.durationMs;
       monster.burnOwnerId = owner?.id;
     }
+    if (bullet.critSlowStacks > 0) {
+      monster.slowStacks = Math.min(
+        CRIT_SLOW.maxStacks,
+        monster.slowStacks + bullet.critSlowStacks,
+      );
+      monster.slowRemainingMs = CRIT_SLOW.durationMs;
+    }
     const killed = this.damageMonster(monster, bullet.damage, owner);
     if (owner !== undefined && bullet.lifestealPct > 0) {
       owner.hp = Math.min(owner.maxHp, owner.hp + bullet.damage * bullet.lifestealPct);
@@ -968,6 +983,7 @@ export class TowerSimulation {
         continue;
       }
       monster.contactCooldownRemaining = Math.max(0, monster.contactCooldownRemaining - deltaMs);
+      this.applySlowDecay(monster, deltaMs);
       this.applyBurn(monster, deltaMs, deltaSeconds);
       if (monster.hp <= 0) {
         continue;
@@ -988,6 +1004,29 @@ export class TowerSimulation {
     this.damageMonster(monster, amount, owner);
   }
 
+  /**
+   * Vitesse effective d'un monstre, ralentissement compris.
+   *
+   * Les piles sont plafonnées à l'application, donc le facteur reste strictement positif : un
+   * monstre ralenti avance moins vite, il ne s'arrête jamais et ne recule jamais.
+   */
+  private monsterSpeed(monster: MutableTowerMonster): number {
+    if (monster.slowRemainingMs <= 0 || monster.slowStacks <= 0) {
+      return monster.speed;
+    }
+    return monster.speed * (1 - CRIT_SLOW.perStack * monster.slowStacks);
+  }
+
+  private applySlowDecay(monster: MutableTowerMonster, deltaMs: number): void {
+    if (monster.slowRemainingMs <= 0) {
+      return;
+    }
+    monster.slowRemainingMs = Math.max(0, monster.slowRemainingMs - deltaMs);
+    if (monster.slowRemainingMs <= 0) {
+      monster.slowStacks = 0;
+    }
+  }
+
   private moveMonster(monster: MutableTowerMonster, deltaSeconds: number): void {
     const target = this.findMonsterTarget(monster);
     const dx = target.x - monster.position.x;
@@ -996,7 +1035,7 @@ export class TowerSimulation {
     if (length <= 0) {
       return;
     }
-    const stepDistance = Math.min(length, monster.speed * deltaSeconds);
+    const stepDistance = Math.min(length, this.monsterSpeed(monster) * deltaSeconds);
     monster.position = {
       x: monster.position.x + (dx / length) * stepDistance,
       y: monster.position.y + (dy / length) * stepDistance,
@@ -1846,6 +1885,8 @@ export class TowerSimulation {
       burnRemainingMs: 0,
       burnStacks: 0,
       burnOwnerId: undefined,
+      slowRemainingMs: 0,
+      slowStacks: 0,
       detonated: false,
     });
     return id;

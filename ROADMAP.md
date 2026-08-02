@@ -100,6 +100,17 @@ et suppose, elle, un projet Supabase hébergé.
 
 ---
 
+## Correctifs de jouabilité du 1er août 2026
+
+- **Déterminisme entre navigateurs rétabli.** Les vingt-huit appels à des fonctions approximées
+  par l'implémentation sont remplacés par des opérations exactement spécifiées, et une garde de
+  lint interdit leur retour. C'est ce qui conditionnait l'existence du mode coopératif.
+- **« Fracture glaciale » agit enfin.** L'amélioration mythique la plus rare — 0,9 % de chance
+  d'être proposée — incrémentait un compteur que la simulation ne lisait jamais. Les coups
+  critiques ralentissent désormais leur cible. Les valeurs de réglage sont prudentes et
+  **demandent une validation en partie réelle** : cette amélioration n'avait jamais été
+  équilibrée, faute d'exister.
+
 ## Dette résorbée le 31 juillet 2026
 
 - **Ancien jeu supprimé** : 38 fichiers, 7 612 lignes. Les tests passent de 167 à 100, tous
@@ -219,8 +230,6 @@ Ces travaux ne demandent aucune décision produit.
    de reconnexion restera bornée par le temps de rejeu. Des instantanés périodiques de l'état de
    simulation la rendraient indépendante de la durée de la partie — condition nécessaire pour
    des sessions longues, qui sont précisément ce que vise un jeu de survie sans fin.
-9. **Améliorations sans effet.** « Fracture glaciale » incrémente un compteur que la simulation
-   ne consomme jamais : l'amélioration mythique la plus rare ne fait rien.
 
 ## Décisions à arbitrer
 

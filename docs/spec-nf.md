@@ -96,6 +96,7 @@ Le détail vit dans [`qualite/strategie-tests.md`](qualite/strategie-tests.md).
 
 | Sujet | Décision |
 |---|---|
+| Finalité | **diagnostic et performance uniquement** — les mesures d'usage produit sont retirées du périmètre le 1er août 2026 |
 | Unité d'exécution tracée | **une partie**, du lancement à sa fin ; et, séparément, chaque parcours du lobby |
 | Span racine et frontières enfant | racine `game.session` ; enfants aux seules frontières utiles au diagnostic |
 | Export | OTLP/HTTP vers un collecteur de la pile locale |
@@ -139,7 +140,7 @@ conséquences. Les voici.
 | Backend `grafana/otel-lgtm`, **un seul conteneur** | rassemble traces, journaux et métriques avec une interface, sans configuration | +1 conteneur, environ **1 Go de mémoire**, 0 € |
 | Collecteur exposé **derrière la passerelle existante** (`/otel/v1/...`) | conserve l'origine unique du déploiement LAN | aucune règle de partage entre origines à écrire |
 | Unité tracée = **une partie**, jamais un tick | 20 ticks par seconde produiraient 72 000 traces par heure et par joueur | la boucle de jeu est suivie par des métriques agrégées |
-| Identifiant de compte (UUID) en attribut, **jamais l'e-mail ni le pseudonyme** | le critère de réussite exige de compter les parties par personne | pseudonymat conservé dans la télémétrie |
+| **Aucun identifiant de joueur** dans la télémétrie | le diagnostic caractérise une panne par la graine et le tick, pas par l'identité | zéro donnée personnelle émise |
 | Niveau de log surchargeable par le stockage local du navigateur | un navigateur ne lit pas de variable d'environnement à l'exécution | changer de niveau ne demande **ni reconstruction ni modification de code** |
 | Rétention de télémétrie bornée à **7 jours** | le disque est celui d'un poste de travail | suffisant pour diagnostiquer, insuffisant pour une analyse à long terme |
 | La télémétrie reste **facultative au démarrage** | le jeu doit rester jouable sans la pile complète | un collecteur absent n'empêche ni de jouer ni de tester |

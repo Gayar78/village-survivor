@@ -73,6 +73,10 @@ vagues sont **partagés**.
 L'expérience gagnée par élimination vaut la récompense du monstre × 4. Le premier niveau demande
 55 points, puis chaque palier est multiplié par 1,11.
 
+L'amélioration mythique **Fracture glaciale** fait ralentir les cibles touchées par un coup
+critique : chaque pile retire 15 % de leur vitesse, jusqu'à trois piles, pendant deux secondes
+rafraîchies à chaque nouveau coup critique. Un monstre ralenti n'est jamais immobilisé.
+
 Une montée de niveau propose **trois cartes** et n'interrompt jamais la simulation. Les cartes
 sont tirées selon des poids de rareté : commune 58,3 %, rare 25 %, épique 13 %, légendaire
 2,7 %, mythique 0,9 %, divine 0,1 %. Les niveaux gagnés s'empilent ; le joueur résout ses choix
