@@ -14,8 +14,13 @@
         background: #111a1d;
         color: #e6edf3;
       }
-      h1 { font-size: 1.4rem; }
-      code, pre { font-family: ui-monospace, monospace; }
+      h1 {
+        font-size: 1.4rem;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, monospace;
+      }
       pre {
         background: #0a1114;
         border: 1px solid #223;
@@ -24,27 +29,43 @@
         overflow-x: auto;
         user-select: all;
       }
-      td { padding: 0.2rem 0.9rem 0.2rem 0; vertical-align: top; }
-      .ok { color: #7ee787; }
-      .ko { color: #ff7b72; }
-      .hint { color: #9aa7b1; font-size: 0.92rem; }
+      td {
+        padding: 0.2rem 0.9rem 0.2rem 0;
+        vertical-align: top;
+      }
+      .ok {
+        color: #7ee787;
+      }
+      .ko {
+        color: #ff7b72;
+      }
+      .hint {
+        color: #9aa7b1;
+        font-size: 0.92rem;
+      }
     </style>
   </head>
   <body>
     <h1>Contrôle d'arithmétique entre navigateurs</h1>
 
     <p>
-      Cette page calcule les mêmes opérations mathématiques que la simulation du jeu, puis en
-      publie une empreinte. <strong>Ouvrez-la sur chaque poste et comparez les empreintes.</strong>
+      Cette page compare deux familles de fonctions.
+      <strong>Ouvrez-la sur chaque poste et comparez les empreintes.</strong>
     </p>
     <ul>
-      <li><strong>Empreintes identiques</strong> : l'arithmétique n'est pas en cause, la désynchronisation vient d'ailleurs.</li>
-      <li><strong>Empreintes différentes</strong> : cause établie — deux moteurs ne calculent pas la même chose, et le lockstep ne peut pas tenir.</li>
+      <li>
+        <strong>Fonctions du moteur</strong> — <code>Math.cos</code> et compagnie. Elles
+        <em>diffèrent</em> d'un navigateur à l'autre : c'est le défaut constaté le 1<sup>er</sup>
+        août 2026, qui désynchronisait les parties coopératives.
+      </li>
+      <li>
+        <strong>Remplaçants du jeu</strong> — les fonctions déterministes qui les ont remplacées
+        dans la simulation. Elles <em>doivent</em> donner exactement la même empreinte partout. Si
+        ce n'est pas le cas, la correction est incomplète et il faut le signaler.
+      </li>
     </ul>
 
-    <p class="hint">
-      Aucune donnée n'est envoyée nulle part : tout est calculé dans la page.
-    </p>
+    <p class="hint">Aucune donnée n'est envoyée nulle part : tout est calculé dans la page.</p>
 
     <h2>Résultat</h2>
     <pre id="out">Calcul en cours…</pre>
@@ -124,14 +145,55 @@
         }
       }
 
+      // ─── Contrôle des remplaçants déterministes ──────────────────────────────────────────
+      // Reprise à l'identique de packages/game-core/src/exact-math.ts. Ces empreintes doivent
+      // être IDENTIQUES sur tous les navigateurs : c'est ce que la correction garantit.
+      const PI = 3.141592653589793;
+      const TWO_PI = 6.283185307179586;
+      const HALF_PI = 1.5707963267948966;
+      const S3 = -0.16666666666666632;
+      const S5 = 0.008333333333224894;
+      const S7 = -0.00019841269829857993;
+      const S9 = 0.0000027557313707070068;
+      const S11 = -2.5050760253406863e-8;
+      const S13 = 1.58969099521155e-10;
+
+      function exactSin(angle) {
+        if (!Number.isFinite(angle)) return 0;
+        let x = angle - TWO_PI * Math.round(angle / TWO_PI);
+        if (x > HALF_PI) x = PI - x;
+        else if (x < -HALF_PI) x = -PI - x;
+        const q = x * x;
+        return x + x * q * (S3 + q * (S5 + q * (S7 + q * (S9 + q * (S11 + q * S13)))));
+      }
+      const exactCos = (angle) => exactSin(angle + HALF_PI);
+      const exactLength = (x, y) => Math.sqrt(x * x + y * y);
+
+      const exact = { length: makeDigest(), cos: makeDigest(), sin: makeDigest() };
+      const exactRandom = makeRandom(20260801);
+      for (let i = 0; i < ITERATIONS; i += 1) {
+        const x = (exactRandom() - 0.5) * 2000;
+        const y = (exactRandom() - 0.5) * 2000;
+        const angle = (exactRandom() - 0.5) * 6.283185307179586;
+        exact.length.add(exactLength(x, y));
+        exact.cos.add(exactCos(angle));
+        exact.sin.add(exactSin(angle));
+      }
+
       const lines = [
         'Navigateur : ' + navigator.userAgent,
         'Itérations : ' + ITERATIONS,
         '',
+        '── Fonctions du moteur — DOIVENT différer entre navigateurs ──',
         'Math.hypot : ' + functions.hypot.hex(),
         'Math.atan2 : ' + functions.atan2.hex(),
         'Math.cos   : ' + functions.cos.hex(),
         'Math.sin   : ' + functions.sin.hex(),
+        '',
+        '── Remplaçants du jeu — DOIVENT être identiques partout ──',
+        'exactLength : ' + exact.length.hex(),
+        'exactCos    : ' + exact.cos.hex(),
+        'exactSin    : ' + exact.sin.hex(),
       ];
       document.getElementById('out').textContent = lines.join('\n');
 
@@ -143,7 +205,10 @@
         ['sin(' + sample.angle + ')', String(sample.s)],
       ]);
       document.getElementById('samples').innerHTML = rows
-        .map(([label, value]) => '<tr><td><code>' + label + '</code></td><td><code>' + value + '</code></td></tr>')
+        .map(
+          ([label, value]) =>
+            '<tr><td><code>' + label + '</code></td><td><code>' + value + '</code></td></tr>',
+        )
         .join('');
     </script>
   </body>

@@ -48,6 +48,7 @@ import type {
   Vector2,
 } from '@village-survivor/protocol';
 
+import { exactDirectionTo, exactLength, exactRotate, exactUnitFromAngle } from '../exact-math.js';
 import { SeededRandom } from '../random.js';
 import type {
   MutableHeart,
@@ -142,7 +143,25 @@ const UPGRADE_RARITIES: readonly UpgradeRarity[] = [
 ];
 
 function distance(a: Vector2, b: Vector2): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  return exactLength(a.x - b.x, a.y - b.y);
+}
+
+/**
+ * Vecteurs unitaires exacts des quatre orientations de tourelle.
+ *
+ * Les angles cardinaux ont des cosinus et sinus entiers : les écrire directement évite tout
+ * calcul, donc toute possibilité de divergence entre navigateurs.
+ */
+const TURRET_AXIS: Readonly<Record<TurretDir, Vector2>> = {
+  N: { x: 0, y: -1 },
+  E: { x: 1, y: 0 },
+  S: { x: 0, y: 1 },
+  W: { x: -1, y: 0 },
+};
+
+/** Convertit des degrés en radians ; la constante est un littéral, donc lue à l'identique. */
+function toRadians(degrees: number): number {
+  return (degrees * 3.141592653589793) / 180;
 }
 
 /**
@@ -201,12 +220,6 @@ function normalizeMetaBuild(value: Partial<MetaBuildModifiers> | undefined): Met
     }
   }
   return result;
-}
-
-/** Différence angulaire absolue (degrés) ramenée dans [0, 180]. */
-function angleDifferenceDeg(a: number, b: number): number {
-  const diff = ((((a - b) % 360) + 540) % 360) - 180;
-  return Math.abs(diff);
 }
 
 /**
@@ -385,10 +398,10 @@ export class TowerSimulation {
 
   private createTurret(dir: TurretDir): MutableTurret {
     const angle = TURRET_ANGLES[dir];
-    const radians = (angle * Math.PI) / 180;
+    const axis = TURRET_AXIS[dir];
     return {
       dir,
-      position: { x: Math.cos(radians) * TURRET.offset, y: Math.sin(radians) * TURRET.offset },
+      position: { x: axis.x * TURRET.offset, y: axis.y * TURRET.offset },
       angle,
       hp: TURRET.hp,
       maxHp: TURRET.hp,
@@ -523,7 +536,7 @@ export class TowerSimulation {
   ): void {
     let dx = input.moveX;
     let dy = input.moveY;
-    const length = Math.hypot(dx, dy);
+    const length = exactLength(dx, dy);
     if (length > 1) {
       dx /= length;
       dy /= length;
@@ -539,7 +552,7 @@ export class TowerSimulation {
   }
 
   private updatePlayerAim(player: MutableTowerPlayer, input: TowerInput): void {
-    const length = Math.hypot(input.aimX, input.aimY);
+    const length = exactLength(input.aimX, input.aimY);
     if (length > 0) {
       player.aim = { x: input.aimX / length, y: input.aimY / length };
     }
@@ -558,11 +571,14 @@ export class TowerSimulation {
     if (input.fire !== true || weapon.fireCooldownRemaining > 0) {
       return;
     }
-    const aimLength = Math.hypot(player.aim.x, player.aim.y);
+    const aimLength = exactLength(player.aim.x, player.aim.y);
     if (aimLength <= 0) {
       return;
     }
-    const baseAngle = Math.atan2(player.aim.y, player.aim.x);
+    // Direction unitaire du tir. Le code passait par un angle absolu — `atan2` puis `cos` et
+    // `sin` — pour retomber sur ce même vecteur : un détour plus coûteux, et surtout porteur de
+    // deux fonctions approximées par l'implémentation.
+    const aim = { x: player.aim.x / aimLength, y: player.aim.y / aimLength };
     const definition = weaponDefinition(weapon.id);
     const extraShots = this.rollMultishot(player.multishotChance);
     const totalShots = definition.projectileCount + extraShots;
@@ -572,7 +588,10 @@ export class TowerSimulation {
         : MULTISHOT_SPREAD_RAD;
     for (let index = 0; index < totalShots; index += 1) {
       const spread = (index - (totalShots - 1) / 2) * spreadStep;
-      this.spawnPlayerBullet(player, weapon, definition, baseAngle + spread);
+      // Seul endroit de la simulation où un angle arbitraire doit réellement être appliqué :
+      // la dispersion dépend d'une amélioration et ne peut donc pas être tabulée.
+      const direction = spread === 0 ? aim : exactRotate(aim.x, aim.y, spread);
+      this.spawnPlayerBullet(player, weapon, definition, direction);
     }
     weapon.fireCooldownRemaining = this.weaponFireRate(player, weapon, definition);
   }
@@ -593,7 +612,7 @@ export class TowerSimulation {
     player: MutableTowerPlayer,
     weapon: MutableTowerPlayer['weapons'][number],
     definition: TowerWeaponDefinition,
-    angle: number,
+    direction: Vector2,
   ): void {
     let damage = this.weaponDamage(player, weapon, definition);
     if (player.critChance > 0 && this.combatRandom.next() < player.critChance) {
@@ -603,8 +622,8 @@ export class TowerSimulation {
     this.projectiles.push({
       id: `bullet-${this.projectileCounter}`,
       position: { x: player.position.x, y: player.position.y },
-      velocityX: Math.cos(angle) * this.weaponBulletSpeed(player, definition),
-      velocityY: Math.sin(angle) * this.weaponBulletSpeed(player, definition),
+      velocityX: direction.x * this.weaponBulletSpeed(player, definition),
+      velocityY: direction.y * this.weaponBulletSpeed(player, definition),
       radius: this.weaponBulletRadius(player, definition),
       damage,
       source: 'player',
@@ -699,6 +718,11 @@ export class TowerSimulation {
   private findTurretTarget(turret: MutableTurret): MutableTowerMonster | undefined {
     let selected: MutableTowerMonster | undefined;
     let selectedScore = Infinity;
+    const axis = TURRET_AXIS[turret.dir];
+    // Le test d'arc se ramène à un produit scalaire : une cible est dans l'arc si le cosinus de
+    // l'écart angulaire dépasse celui du demi-arc. On évite ainsi de calculer l'angle lui-même,
+    // qui exigeait `atan2`. Le seuil est calculé une fois, hors de la boucle.
+    const arcCosine = exactUnitFromAngle(toRadians(turret.halfArcDeg)).x;
     for (const monster of this.monsters) {
       if (monster.hp <= 0) {
         continue;
@@ -707,14 +731,12 @@ export class TowerSimulation {
       if (gap > turret.range + monster.radius) {
         continue;
       }
-      const angleToMonster =
-        (Math.atan2(
-          monster.position.y - turret.position.y,
-          monster.position.x - turret.position.x,
-        ) *
-          180) /
-        Math.PI;
-      if (angleDifferenceDeg(angleToMonster, turret.angle) > turret.halfArcDeg) {
+      // Test d'arc sans normaliser ni allouer : comparer le produit scalaire au cosinus du
+      // demi-arc mis à l'échelle de la distance revient au même, et cette boucle s'exécute pour
+      // chaque monstre, chaque tourelle et chaque tick.
+      const dx = monster.position.x - turret.position.x;
+      const dy = monster.position.y - turret.position.y;
+      if (dx * axis.x + dy * axis.y < arcCosine * gap) {
         continue;
       }
       const score = this.turretTargetScore(turret, monster, gap);
@@ -743,16 +765,21 @@ export class TowerSimulation {
   }
 
   private spawnTurretBullet(turret: MutableTurret, target: MutableTowerMonster): void {
-    const angle = Math.atan2(
-      target.position.y - turret.position.y,
-      target.position.x - turret.position.x,
+    const direction = exactDirectionTo(
+      turret.position.x,
+      turret.position.y,
+      target.position.x,
+      target.position.y,
     );
+    if (direction === undefined) {
+      return;
+    }
     this.projectileCounter += 1;
     this.projectiles.push({
       id: `bullet-${this.projectileCounter}`,
       position: { x: turret.position.x, y: turret.position.y },
-      velocityX: Math.cos(angle) * turret.bulletSpeed,
-      velocityY: Math.sin(angle) * turret.bulletSpeed,
+      velocityX: direction.x * turret.bulletSpeed,
+      velocityY: direction.y * turret.bulletSpeed,
       radius: turret.bulletRadius,
       damage: turret.bulletDamage,
       source: 'turret',
@@ -777,7 +804,7 @@ export class TowerSimulation {
       if (bullet === undefined) {
         continue;
       }
-      const step = Math.hypot(bullet.velocityX, bullet.velocityY) * deltaSeconds;
+      const step = exactLength(bullet.velocityX, bullet.velocityY) * deltaSeconds;
       // Le point de départ du tick est conservé : les collisions sont résolues sur le trajet
       // parcouru, pas sur la seule position d'arrivée.
       const sweepFrom = bullet.position;
@@ -889,10 +916,13 @@ export class TowerSimulation {
   }
 
   private redirectBullet(bullet: MutableTowerProjectile, target: Vector2): void {
-    const speed = Math.hypot(bullet.velocityX, bullet.velocityY);
-    const angle = Math.atan2(target.y - bullet.position.y, target.x - bullet.position.x);
-    bullet.velocityX = Math.cos(angle) * speed;
-    bullet.velocityY = Math.sin(angle) * speed;
+    const speed = exactLength(bullet.velocityX, bullet.velocityY);
+    const direction = exactDirectionTo(bullet.position.x, bullet.position.y, target.x, target.y);
+    if (direction === undefined) {
+      return;
+    }
+    bullet.velocityX = direction.x * speed;
+    bullet.velocityY = direction.y * speed;
   }
 
   private applyBulletDamage(
@@ -962,7 +992,7 @@ export class TowerSimulation {
     const target = this.findMonsterTarget(monster);
     const dx = target.x - monster.position.x;
     const dy = target.y - monster.position.y;
-    const length = Math.hypot(dx, dy);
+    const length = exactLength(dx, dy);
     if (length <= 0) {
       return;
     }
@@ -1265,7 +1295,8 @@ export class TowerSimulation {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const angle = this.random.between(0, Math.PI * 2);
       const radius = this.random.between(NATURAL_SCRAP.minRadiusFromHeart, WORLD.spawnZoneRadius);
-      const position = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      const unit = exactUnitFromAngle(angle);
+      const position = { x: unit.x * radius, y: unit.y * radius };
       if (distance(position, this.heart.position) >= NATURAL_SCRAP.minRadiusFromHeart) {
         return position;
       }
@@ -1358,7 +1389,8 @@ export class TowerSimulation {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const angle = this.random.between(0, Math.PI * 2);
       const radius = this.random.between(minRadius, maxRadius);
-      const position = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      const unit = exactUnitFromAngle(angle);
+      const position = { x: unit.x * radius, y: unit.y * radius };
       fallback = position;
       const tooClose = this.players.some(
         (player) => distance(player.position, position) < WAVE.minDistanceFromPlayers,
@@ -2021,5 +2053,11 @@ export class TowerSimulation {
 
 /** XP requise pour passer du niveau `level` au suivant : 55 puis ×1.11 (arrondi). */
 function xpForLevel(level: number): number {
-  return Math.round(XP_BASE * XP_GROWTH ** (level - 1));
+  // Multiplications successives plutôt qu'une puissance : l'opérateur `**` est approximé par
+  // l'implémentation, et il fixe ici les seuils de niveau, donc les offres d'amélioration.
+  let threshold = XP_BASE;
+  for (let step = 1; step < level; step += 1) {
+    threshold *= XP_GROWTH;
+  }
+  return Math.round(threshold);
 }
