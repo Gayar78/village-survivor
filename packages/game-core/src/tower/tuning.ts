@@ -197,6 +197,22 @@ export const BURN = {
   durationMs: 3_000,
 } as const;
 
+/**
+ * Ralentissement infligé par un coup critique, amélioration « Fracture glaciale ».
+ *
+ * Valeurs volontairement prudentes : l'amélioration existait dans le catalogue sans qu'aucun
+ * effet ne lui soit associé, donc sans équilibrage antérieur. Elles demandent à être validées
+ * par des parties réelles avant d'être considérées comme acquises.
+ */
+export const CRIT_SLOW = {
+  /** Fraction de vitesse retirée par pile. */
+  perStack: 0.15,
+  /** Piles simultanées maximales sur un même monstre. */
+  maxStacks: 3,
+  /** Durée d'une application (ms), rafraîchie à chaque nouveau coup critique. */
+  durationMs: 2_000,
+} as const;
+
 /** Écart angulaire (rad) entre projectiles supplémentaires du tir multiple. */
 export const MULTISHOT_SPREAD_RAD = 0.14;
 

@@ -10,8 +10,10 @@ import {
   type LaunchPayload,
   type PresenceStatus,
 } from '../hub/types.js';
+import { randomSeed } from '../randomSeed.js';
 import { FriendsPanel } from './FriendsPanel.js';
 import { Toasts } from './Toasts.js';
+import { gameUrl } from '../gameUrl.js';
 
 /** Session minimale nécessaire à l'écran hub. */
 interface HubSession {
@@ -42,13 +44,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-/** Génère une graine de monde partagée (8 caractères hexadécimaux). */
-function randomSeed(): string {
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /** Deux initiales majuscules à partir d'un nom d'affichage. */
@@ -376,7 +371,7 @@ export class Hub {
         rejoin: true,
       }),
     );
-    location.assign('play.html');
+    location.assign(gameUrl());
   }
 
   private copyCode(): void {

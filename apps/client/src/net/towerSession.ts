@@ -5,11 +5,27 @@ import type {
   TowerInput,
   TowerRosterEvent,
   TowerSession,
+  Vector2,
 } from '@village-survivor/protocol';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { SpanStatusCode, type Span } from '@opentelemetry/api';
 
 import { supabase } from '../account/supabaseClient.js';
+import { BUILD_ID } from '../buildId.js';
 import { HUB_CAPACITY } from '../hub/types.js';
+import { createLogger } from '../observability/logger.js';
+import {
+  recordCatchupTicks,
+  recordEntities,
+  recordFingerprintMismatch,
+  recordInputDelay,
+  recordPeerChange,
+  recordRejoin,
+  recordTickDuration,
+  recordWave,
+} from '../observability/gameTelemetry.js';
+import { describeError } from '../observability/redact.js';
+import { getTracer } from '../observability/telemetry.js';
 
 /** Doit correspondre au tick fixe interne de TowerSimulation. */
 export const TOWER_LOCKSTEP_TICK_MS = 50;
@@ -21,7 +37,33 @@ const MAX_INPUT_PACKET_BYTES = 16_384;
 const MAX_CONTROL_PACKET_BYTES = 4_096;
 const MAX_HISTORY_PACKET_BYTES = 16_384;
 const MAX_HISTORY_CHUNK_TICKS = 24;
-const MAX_HISTORY_TICKS = 12_000;
+/**
+ * Profondeur de l'historique d'entrées conservé pour une reconnexion, en ticks de 50 ms.
+ *
+ * Une reconnexion rejoue la partie depuis le tick 0 : c'est le seul mécanisme disponible, faute
+ * d'instantané de l'état interne de la simulation. Passé ce plafond, les ticks les plus anciens
+ * sont écartés et toute reconnexion devient définitivement impossible — le pair qui revient
+ * reçoit `history-unavailable` et reste dehors.
+ *
+ * À 12 000 ticks, ce couperet tombait au bout de dix minutes, dans un jeu de survie sans fin
+ * conçu pour durer : toute déconnexion un peu tardive était sans retour. La fenêtre passe à
+ * vingt minutes.
+ *
+ * Trois coûts la bornent, et il faut les tenir ensemble :
+ *
+ * 1. **mémoire** — environ 620 octets par tick à quatre joueurs, soit à peu près 15 Mo retenus
+ *    en fin de fenêtre, dans un onglet qui porte déjà le moteur de rendu ;
+ * 2. **temps de rejeu** — le pair qui revient rejoue toute la fenêtre sur le fil principal,
+ *    soit de l'ordre de 4 secondes ici ;
+ * 3. **avance de réintégration** — ce rejeu doit tenir dans les `REJOIN_EVENT_LEAD_TICKS`
+ *    (12 secondes) accordés avant l'entrée effective, sinon le revenant arrive en retard et
+ *    diverge. C'est cette contrainte, et non la mémoire, qui interdit d'aller beaucoup plus loin.
+ *
+ * Le correctif de fond est ailleurs : des instantanés périodiques de l'état de simulation
+ * rendraient le rejeu proportionnel au temps écoulé depuis le dernier point de reprise, et non
+ * au début de la partie. Il est consigné comme dette dans la feuille de route.
+ */
+const MAX_HISTORY_TICKS = 24_000;
 const ROSTER_EVENT_LEAD_TICKS = TOWER_INPUT_BATCH_TICKS + TOWER_INPUT_DELAY_TICKS;
 const REJOIN_EVENT_LEAD_TICKS = MAX_FUTURE_INPUT_TICKS;
 const PEER_TIMEOUT_MS = 5_000;
@@ -51,8 +93,65 @@ export const TOWER_LOCKSTEP_EVENTS = {
 /** Session Tower + fraction d'interpolation pour le rendu (voir TowerScene). */
 export interface TowerRenderableSession extends TowerSession {
   getRenderAlpha(): number;
+  /**
+   * Position de rendu de l'avatar local, en avance sur l'état affiché, ou `undefined` quand la
+   * session n'a rien à anticiper. Voir `TOWER_MAX_RENDER_LEAD_TICKS`.
+   */
+  getLocalRenderPosition(): Vector2 | undefined;
   /** Rend les incidents de connexion exploitables sans coupler le netcode au DOM. */
   onConnectionIssue(listener: (message: string) => void): () => void;
+}
+
+/**
+ * Avance maximale, en ticks de 50 ms, de l'avatar local sur le monde affiché autour de lui.
+ *
+ * En lockstep, une touche enfoncée n'est jouée qu'après avoir été mise en file
+ * (`TOWER_INPUT_DELAY_TICKS`), reçue par tous, puis affichée avec un tick d'interpolation : de
+ * 150 à 200 ms entre le geste et le mouvement. C'est le premier défaut rapporté par les joueurs.
+ *
+ * Dessiner l'avatar local en avance supprime ce délai, au prix d'un écart assumé : l'avatar est
+ * montré là où le joueur l'a déjà emmené, le reste du monde là où la simulation en est. Un
+ * monstre peut donc toucher un avatar qui paraît à quelques dizaines de pixels, et une balle
+ * partir légèrement en retrait du canon.
+ *
+ * Quatre ticks, soit 200 ms et au plus 52 pixels à pleine vitesse, bornent cet écart. La borne ne
+ * mord qu'en cas de blocage réseau : en marche normale l'avance vaut trois ticks, l'âge de la
+ * dernière entrée émise. **Valeur à valider en partie réelle** : elle arbitre entre nervosité et
+ * fidélité de l'affichage, et cet arbitrage se juge manette en main.
+ */
+export const TOWER_MAX_RENDER_LEAD_TICKS = 4;
+
+/**
+ * Tick d'entrée que le temps écoulé réclame, depuis l'origine de l'horloge de capture.
+ *
+ * Fonction du **temps réel**, jamais d'un nombre de déclenchements de minuteur. C'est toute la
+ * différence entre une horloge qui rattrape ce qu'elle a manqué et une horloge qui perd
+ * définitivement chaque déclenchement tardif — mesuré le 2 août 2026 : 54,1 ms par tick au lieu
+ * de 50, soit 11 secondes de retard en deux minutes et demie de jeu.
+ */
+export function towerDueLocalTick(baseTick: number, elapsedMs: number): number {
+  return baseTick + Math.max(0, Math.floor(elapsedMs / TOWER_LOCKSTEP_TICK_MS));
+}
+
+/**
+ * Avance de rendu de l'avatar local, en ticks, à partir des seules entrées déjà émises.
+ *
+ * `captureFraction` est l'âge de la dernière entrée capturée, rapporté à la durée d'un tick.
+ * Le résultat est **monotone dans le temps réel** : c'est le minimum de deux quantités qui ne
+ * décroissent jamais — l'horloge de capture et le plafond adossé au tick simulé. Un avatar dont
+ * l'avance reculerait sauterait en arrière à chaque hoquet du réseau, ce qui serait pire que le
+ * délai qu'on cherche à supprimer.
+ */
+export function towerLocalRenderLead(
+  simulationTick: number,
+  nextLocalTick: number,
+  captureFraction: number,
+  maxLeadTicks: number = TOWER_MAX_RENDER_LEAD_TICKS,
+): number {
+  const fraction = Math.max(0, Math.min(1, captureFraction));
+  const captureClock = nextLocalTick - 1 + fraction;
+  const ceiling = simulationTick + maxLeadTicks;
+  return Math.max(0, Math.min(captureClock, ceiling) - simulationTick);
 }
 
 export interface TowerCoopConfig {
@@ -70,6 +169,12 @@ export interface TowerCoopConfig {
 
 export interface TowerReadyMessage {
   senderId: string;
+  /**
+   * Construction exécutée par l'émetteur. Le lockstep exige que tous les pairs exécutent le
+   * **même code** ; rien ne le vérifiait avant le 2 août 2026. Optionnel pour rester compatible
+   * avec un pair d'une version antérieure, qui ne l'enverra pas.
+   */
+  build?: string;
 }
 
 export interface TowerInputFrame {
@@ -408,12 +513,35 @@ export class TowerRosterController {
   }
 }
 
-export function towerReadyBroadcast(senderId: string): TowerBroadcast {
+export function towerReadyBroadcast(senderId: string, build: string = BUILD_ID): TowerBroadcast {
   return {
     type: 'broadcast',
     event: TOWER_LOCKSTEP_EVENTS.ready,
-    payload: { senderId },
+    payload: { senderId, build },
   };
+}
+
+/**
+ * Compare la construction d'un pair à la nôtre.
+ *
+ * Renvoie `null` quand il n'y a rien à signaler — même build, ou pair antérieur à ce contrôle,
+ * qui n'annonce rien. Sinon, le message à afficher.
+ *
+ * Ce contrôle ne répare rien : deux builds différentes divergeront quand même. Il transforme une
+ * divergence inexplicable, constatée après deux minutes de jeu, en un avertissement compréhensible
+ * avant de commencer.
+ */
+export function towerBuildMismatchMessage(
+  remoteBuild: unknown,
+  localBuild: string = BUILD_ID,
+): string | null {
+  if (!isBoundedNonEmptyString(remoteBuild, MAX_ACTION_ID_LENGTH) || remoteBuild === localBuild) {
+    return null;
+  }
+  return (
+    'Versions du jeu différentes entre les joueurs : la partie divergera. ' +
+    'Rechargez la page avec Ctrl+Maj+R sur chaque poste, puis relancez.'
+  );
 }
 
 export function towerInputBatchBroadcast(payload: TowerInputBatchMessage): TowerBroadcast {
@@ -1029,6 +1157,9 @@ export class TowerLocalSession implements TowerRenderableSession {
   private frameHandle: number | undefined;
   private lastTimestamp = 0;
   private accumulatorMs = 0;
+  /** Population du dernier instantané connu : sert d'attribut aux mesures du tick suivant. */
+  private lastMonsterCount = 0;
+  private lastWave = 0;
 
   public constructor(options: { seed: string; metaBuild?: Partial<MetaBuildModifiers> }) {
     this.simulation = new TowerSimulation(options.seed, {
@@ -1066,6 +1197,15 @@ export class TowerLocalSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_LOCKSTEP_TICK_MS));
   }
 
+  /**
+   * Rien à anticiper en solo : l'entrée courante est appliquée au tick suivant, sans file ni
+   * attente d'un pair. Le seul retard restant est le tick d'interpolation, que personne n'a
+   * signalé.
+   */
+  public getLocalRenderPosition(): Vector2 | undefined {
+    return undefined;
+  }
+
   public onConnectionIssue(listener: (message: string) => void): () => void {
     void listener;
     return () => undefined;
@@ -1088,19 +1228,40 @@ export class TowerLocalSession implements TowerRenderableSession {
     this.accumulatorMs += rawDeltaMs;
     let processed = 0;
     while (this.accumulatorMs >= TOWER_LOCKSTEP_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
+      // La mesure entoure `step` sans que `step` ne sache qu'il est mesuré : c'est la frontière
+      // qui protège le déterminisme du cœur de simulation.
+      const startedAt = performance.now();
       this.simulation.step({ 'player-1': this.currentInput });
+      recordTickDuration(performance.now() - startedAt, {
+        mode: 'solo',
+        playersCount: 1,
+        monsters: this.lastMonsterCount,
+      });
       this.currentInput = persistentInput(this.currentInput);
       this.accumulatorMs -= TOWER_LOCKSTEP_TICK_MS;
       processed += 1;
     }
     if (processed > 0) {
       const snapshot = this.simulation.createSnapshot();
+      recordCatchupTicks(processed);
+      this.observeSnapshot(snapshot);
       for (const listener of this.listeners) {
         listener(snapshot);
       }
     }
     this.frameHandle = requestAnimationFrame(this.onFrame);
   };
+
+  private observeSnapshot(snapshot: TowerGameState): void {
+    this.lastMonsterCount = snapshot.monsters.length;
+    recordEntities({
+      monsters: snapshot.monsters.length,
+      projectiles: snapshot.projectiles.length,
+      scrap: snapshot.scraps.length,
+    });
+    recordWave(snapshot.wave, this.lastWave);
+    this.lastWave = snapshot.wave;
+  }
 }
 
 // ─── Co-op lockstep P2P ──────────────────────────────────────────────────────
@@ -1138,7 +1299,28 @@ class TowerLockstepSession implements TowerRenderableSession {
   private lastTimestamp = 0;
   private accumulatorMs = 0;
   private nextLocalTick = 0;
+  /** Horodatage de la dernière entrée capturée : horloge de la prédiction de rendu. */
+  private lastCaptureAt = 0;
+  /** Origine de l'horloge de capture, et tick correspondant. Voir `startCaptureClock`. */
+  private captureEpochMs = 0;
+  private captureBaseTick = 0;
   private connectionIssue: string | undefined;
+  private readonly log = createLogger('coop');
+  private readonly telemetry: {
+    channelJoin: Span | undefined;
+    startBarrier: Span | undefined;
+    rejoinReplay: Span | undefined;
+    lastMonsterCount: number;
+    lastWave: number;
+    activePeers: number;
+  } = {
+    channelJoin: undefined,
+    startBarrier: undefined,
+    rejoinReplay: undefined,
+    lastMonsterCount: 0,
+    lastWave: 0,
+    activePeers: 0,
+  };
   private rejoinReceiver: TowerRejoinHistoryReceiver | undefined;
   private rejoinRequestId: string | undefined;
 
@@ -1164,6 +1346,14 @@ class TowerLockstepSession implements TowerRenderableSession {
       'broadcast',
       { event: TOWER_LOCKSTEP_EVENTS.ready },
       (message) => {
+        const mismatch = towerBuildMismatchMessage(message.payload?.build);
+        if (mismatch !== null) {
+          this.log.error('constructions différentes entre pairs', {
+            'vs.build.local': BUILD_ID,
+            'vs.build.remote': String(message.payload?.build),
+          });
+          this.reportIssue(mismatch);
+        }
         if (this.barrier.accept(message.payload)) {
           this.tryStartSimulation();
         }
@@ -1220,12 +1410,18 @@ class TowerLockstepSession implements TowerRenderableSession {
       return;
     }
     this.running = true;
+    // Jonction au canal : première frontière diagnosticable d'une partie coopérative. Un
+    // démarrage qui n'aboutit pas se voit ici, sans avoir à interroger le joueur.
+    this.telemetry.channelJoin = getTracer().startSpan('coop.channel.join');
     this.channel.subscribe((status: string) => {
       if (!this.running) {
         return;
       }
       if (status === 'SUBSCRIBED') {
         this.channelReady = true;
+        this.telemetry.channelJoin?.end();
+        this.telemetry.channelJoin = undefined;
+        this.log.info('canal coopératif rejoint', { 'vs.players.count': this.rosterIds.size });
         const now = performance.now();
         for (const id of this.rosterIds) {
           this.lastSeenByPlayer.set(id, now);
@@ -1239,6 +1435,9 @@ class TowerLockstepSession implements TowerRenderableSession {
           this.requestRejoinHistory();
           return;
         }
+        this.telemetry.startBarrier = getTracer().startSpan('coop.start.barrier', {
+          attributes: { 'vs.players.count': this.rosterIds.size },
+        });
         this.barrier.markLocalReady(this.me);
         this.broadcastReady();
         this.readyHandle = window.setInterval(() => this.broadcastReady(), READY_HEARTBEAT_MS);
@@ -1249,6 +1448,11 @@ class TowerLockstepSession implements TowerRenderableSession {
         this.tryStartSimulation();
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         this.channelReady = false;
+        if (this.telemetry.channelJoin !== undefined) {
+          this.telemetry.channelJoin.setStatus({ code: SpanStatusCode.ERROR, message: status });
+          this.telemetry.channelJoin.end();
+          this.telemetry.channelJoin = undefined;
+        }
         this.reportIssue(`Canal Tower indisponible (${status}). Revenez au hub puis réessayez.`);
       }
     });
@@ -1282,10 +1486,15 @@ class TowerLockstepSession implements TowerRenderableSession {
     }
     this.listeners.clear();
     this.issueListeners.clear();
+    // Une partie interrompue ne doit pas laisser de span ouvert : un span sans fin n'est jamais
+    // exporté, et la trace deviendrait muette exactement sur l'incident qu'on veut voir.
+    this.telemetry.channelJoin?.end();
+    this.telemetry.startBarrier?.end();
+    this.endRejoinSpan('timeout');
     try {
       await supabase.removeChannel(this.channel);
     } catch (error) {
-      console.warn('[tower:lockstep] removeChannel', error);
+      this.log.warn('fermeture du canal impossible', { 'vs.error': describeError(error) });
     }
   }
 
@@ -1322,6 +1531,45 @@ class TowerLockstepSession implements TowerRenderableSession {
     return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_LOCKSTEP_TICK_MS));
   }
 
+  /**
+   * Avatar local dessiné à l'heure du joueur, et non à celle de la simulation.
+   *
+   * N'utilise que des entrées **déjà diffusées** : ce sont celles que tous les pairs
+   * appliqueront, donc la position rendue est celle que la simulation atteindra, pas une
+   * supposition. Il n'y a rien à corriger ensuite, donc aucun recalage visible.
+   *
+   * Effet secondaire recherché : pendant qu'un pair retarde le tick commun, l'avatar local
+   * continue d'obéir — jusqu'au plafond d'avance — au lieu de se figer avec le reste du monde.
+   */
+  public getLocalRenderPosition(): Vector2 | undefined {
+    if (!this.simulationStarted) {
+      return undefined;
+    }
+    const simulationTick = this.inputBuffer.nextTick;
+    const lead = towerLocalRenderLead(
+      simulationTick,
+      this.nextLocalTick,
+      (performance.now() - this.lastCaptureAt) / TOWER_LOCKSTEP_TICK_MS,
+    );
+    if (lead <= 0) {
+      return undefined;
+    }
+    const inputs: TowerInput[] = [];
+    let remaining = lead;
+    for (let tick = simulationTick; remaining > 0 && tick < this.nextLocalTick; tick += 1) {
+      const input = this.localFrames.get(tick);
+      if (input === undefined) {
+        break;
+      }
+      inputs.push(input);
+      remaining -= 1;
+    }
+    if (inputs.length === 0) {
+      return undefined;
+    }
+    return this.simulation.predictPlayerPosition(this.me, inputs, lead - (inputs.length - 1));
+  }
+
   public onConnectionIssue(listener: (message: string) => void): () => void {
     this.issueListeners.add(listener);
     if (this.connectionIssue !== undefined) {
@@ -1343,6 +1591,10 @@ class TowerLockstepSession implements TowerRenderableSession {
       return;
     }
     this.simulationStarted = true;
+    this.telemetry.startBarrier?.end();
+    this.telemetry.startBarrier = undefined;
+    this.telemetry.activePeers = this.inputBuffer.activeIds.size;
+    recordPeerChange(this.telemetry.activePeers);
     if (this.barrierTimeoutHandle !== undefined) {
       clearTimeout(this.barrierTimeoutHandle);
       this.barrierTimeoutHandle = undefined;
@@ -1351,29 +1603,86 @@ class TowerLockstepSession implements TowerRenderableSession {
     for (let tick = 0; tick < TOWER_INPUT_DELAY_TICKS; tick += 1) {
       this.addLocalFrame(tick, idleInput());
     }
+    // Une entrée immédiate en plus des ticks de retard : c'est elle qui constitue la réserve de
+    // trois ticks sur laquelle vit la prédiction de rendu.
     this.nextLocalTick = TOWER_INPUT_DELAY_TICKS;
-    this.captureNextLocalFrame();
-    this.inputHandle = window.setInterval(
-      () => this.captureNextLocalFrame(),
-      TOWER_LOCKSTEP_TICK_MS,
-    );
+    this.captureOneLocalFrame();
+    this.startCaptureClock();
     this.lastTimestamp = performance.now();
     this.frameHandle = requestAnimationFrame(this.onFrame);
   }
 
-  private captureNextLocalFrame(): void {
-    if (!this.running || !this.simulationStarted) {
-      return;
-    }
-    if (this.nextLocalTick > this.inputBuffer.nextTick + MAX_FUTURE_INPUT_TICKS) {
-      return;
-    }
+  /**
+   * Démarre l'horloge de capture des entrées.
+   *
+   * Cette horloge est **absolue** : le nombre d'entrées à avoir produites se déduit du temps
+   * écoulé depuis cet instant, et non du nombre de fois qu'un minuteur s'est déclenché.
+   *
+   * La distinction n'est pas théorique. Jusqu'au 2 août 2026, la capture avançait d'un tick par
+   * déclenchement de `setInterval` : un déclenchement tardif ou fusionné par le navigateur était
+   * perdu définitivement, alors que la simulation, elle, avance sur un accumulateur qui ne perd
+   * jamais de temps. Les deux horloges dérivaient donc l'une de l'autre, la réserve de trois ticks
+   * qui les sépare se vidait sans jamais se reconstituer, et la partie finissait par n'avancer
+   * qu'au rythme du minuteur le plus lent du groupe. Mesuré sur une partie réelle : 54,1 ms par
+   * tick au lieu de 50, soit 11 secondes de retard accumulé en deux minutes et demie, sur des
+   * machines occupées à 4 %.
+   */
+  private startCaptureClock(): void {
+    this.captureEpochMs = performance.now();
+    this.captureBaseTick = this.nextLocalTick;
+    this.lastCaptureAt = this.captureEpochMs;
+    // Le minuteur reste le moteur de secours : contrairement à `requestAnimationFrame`, il
+    // continue de se déclencher — plus lentement — dans un onglet en arrière-plan. Comme la
+    // capture vise une cible absolue, un déclenchement tardif rattrape simplement plusieurs ticks.
+    this.inputHandle = window.setInterval(
+      () => this.captureDueLocalFrames(),
+      TOWER_LOCKSTEP_TICK_MS,
+    );
+  }
+
+  /**
+   * Produit toutes les entrées que le temps réel réclame, et pas seulement la suivante.
+   *
+   * Idempotente : elle compare l'état à une cible calculée, donc l'appeler trop souvent ne produit
+   * rien de plus. C'est ce qui permet de l'appeler depuis deux moteurs — le minuteur et la boucle
+   * d'affichage — sans double comptage.
+   */
+  /** Une entrée, tout de suite : sert à amorcer la réserve au démarrage et après un rejeu. */
+  private captureOneLocalFrame(): void {
     const action = this.pendingActions.shift();
     const input =
       action === undefined ? this.latestInput : withDiscreteAction(this.latestInput, action);
     this.addLocalFrame(this.nextLocalTick, input);
     this.nextLocalTick += 1;
+    this.lastCaptureAt = performance.now();
     this.broadcastRecentInputs();
+  }
+
+  private captureDueLocalFrames(): void {
+    if (!this.running || !this.simulationStarted) {
+      return;
+    }
+    const wanted = towerDueLocalTick(this.captureBaseTick, performance.now() - this.captureEpochMs);
+    let captured = 0;
+    while (this.nextLocalTick < wanted && captured < MAX_STEPS_PER_FRAME) {
+      // Garde d'origine : ne jamais courir trop loin devant une simulation bloquée, faute de quoi
+      // la mémoire et les paquets d'entrées croîtraient sans fin.
+      if (this.nextLocalTick > this.inputBuffer.nextTick + MAX_FUTURE_INPUT_TICKS) {
+        break;
+      }
+      const action = this.pendingActions.shift();
+      const input =
+        action === undefined ? this.latestInput : withDiscreteAction(this.latestInput, action);
+      this.addLocalFrame(this.nextLocalTick, input);
+      this.nextLocalTick += 1;
+      captured += 1;
+    }
+    if (captured > 0) {
+      this.lastCaptureAt = performance.now();
+      // Une seule diffusion pour tout le lot : le protocole envoie de toute façon une fenêtre
+      // glissante des derniers ticks, donc en émettre une par entrée serait du gaspillage pur.
+      this.broadcastRecentInputs();
+    }
   }
 
   private addLocalFrame(tick: number, input: TowerInput): void {
@@ -1418,6 +1727,10 @@ class TowerLockstepSession implements TowerRenderableSession {
     const rawDeltaMs = Math.max(0, Math.min(250, timestamp - this.lastTimestamp));
     this.lastTimestamp = timestamp;
     this.accumulatorMs += rawDeltaMs;
+    // Capturer avant de consommer, et depuis la boucle d'affichage plutôt que d'attendre le
+    // prochain minuteur : à 60 images par seconde, une entrée due est produite dans les 16 ms
+    // au lieu de 50. L'appel est idempotent, il ne double donc pas celui du minuteur.
+    this.captureDueLocalFrames();
     let processed = 0;
     while (this.accumulatorMs >= TOWER_LOCKSTEP_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
       const inputs = this.inputBuffer.takeNextTick();
@@ -1431,6 +1744,14 @@ class TowerLockstepSession implements TowerRenderableSession {
         this.scheduledJoins.delete(event.playerId);
         this.localControlPackets.delete(event.eventId);
         this.rosterController.apply(event);
+        const peerDelta = event.action === 'join' ? 1 : -1;
+        this.telemetry.activePeers += peerDelta;
+        recordPeerChange(peerDelta);
+        this.log.info(`pair ${event.action === 'join' ? 'entré' : 'sorti'}`, {
+          'vs.tick': event.tick,
+          'vs.reason': event.reason,
+          'vs.players.count': this.telemetry.activePeers,
+        });
         const simulationEvent: TowerRosterEvent = {
           type: event.action,
           tick: event.tick,
@@ -1443,20 +1764,46 @@ class TowerLockstepSession implements TowerRenderableSession {
         }
       }
       this.history.append({ tick: historyTick, inputs, rosterEvents });
+      // La mesure entoure `step` de l'extérieur : le cœur de simulation ignore qu'il est
+      // chronométré, et reste donc sans horloge.
+      const startedAt = performance.now();
       this.simulation.step(inputs);
+      recordTickDuration(performance.now() - startedAt, {
+        mode: 'coop',
+        playersCount: this.telemetry.activePeers,
+        monsters: this.telemetry.lastMonsterCount,
+      });
       this.accumulatorMs -= TOWER_LOCKSTEP_TICK_MS;
       processed += 1;
       const canonicalSnapshot = this.simulation.createSnapshot();
       if (canonicalSnapshot.tick % FINGERPRINT_INTERVAL_TICKS === 0) {
         this.publishFingerprint(canonicalSnapshot);
+        this.observeSnapshot(canonicalSnapshot);
       }
       const snapshot = personalizeState(canonicalSnapshot, this.me);
       for (const listener of this.listeners) {
         listener(snapshot);
       }
     }
+    if (processed > 0) {
+      recordCatchupTicks(processed);
+      // Retard réel entre l'entrée capturée et le tick joué. C'est la mesure qui manquait pour
+      // départager le retard constant, imposé par la conception, des gels dus à un pair lent.
+      recordInputDelay(Math.max(0, this.nextLocalTick - this.inputBuffer.nextTick));
+    }
     this.frameHandle = requestAnimationFrame(this.onFrame);
   };
+
+  private observeSnapshot(snapshot: TowerGameState): void {
+    this.telemetry.lastMonsterCount = snapshot.monsters.length;
+    recordEntities({
+      monsters: snapshot.monsters.length,
+      projectiles: snapshot.projectiles.length,
+      scrap: snapshot.scraps.length,
+    });
+    recordWave(snapshot.wave, this.telemetry.lastWave);
+    this.telemetry.lastWave = snapshot.wave;
+  }
 
   private publishFingerprint(state: TowerGameState): void {
     const fingerprint = createTowerStateFingerprint(state);
@@ -1471,6 +1818,13 @@ class TowerLockstepSession implements TowerRenderableSession {
 
   private handleFingerprintResult(result: FingerprintResult): void {
     if (result.status === 'mismatch') {
+      recordFingerprintMismatch(
+        this.rosterController.coordinatorId === this.me ? 'coordinator' : 'peer',
+      );
+      this.log.error('divergence de simulation détectée', {
+        'vs.tick': result.tick,
+        'vs.mode': 'coop',
+      });
       this.reportIssue(
         `Désynchronisation Tower détectée au tick ${result.tick} avec ${result.playerId}. La partie ne peut pas être resynchronisée automatiquement.`,
       );
@@ -1626,6 +1980,10 @@ class TowerLockstepSession implements TowerRenderableSession {
   }
 
   private requestRejoinHistory(): void {
+    // La réintégration rejoue toute la partie depuis le tick zéro : c'est l'opération la plus
+    // coûteuse du netcode, et celle dont on ignore la fréquence réelle. La trace en donne la
+    // durée, le compteur l'issue.
+    this.telemetry.rejoinReplay = getTracer().startSpan('coop.rejoin.replay');
     const requestId = `${this.me}:rejoin:1`;
     this.rejoinRequestId = requestId;
     this.rejoinReceiver = new TowerRejoinHistoryReceiver(this.me, requestId, null, this.rosterIds);
@@ -1693,6 +2051,7 @@ class TowerLockstepSession implements TowerRenderableSession {
     }
     const result = this.rejoinReceiver.accept(value);
     if (result.status === 'unavailable') {
+      this.endRejoinSpan('history-unavailable');
       this.reportIssue(
         "Reconnexion Tower impossible : l'historique depuis le tick 0 a expiré. La partie des autres joueurs continue.",
       );
@@ -1728,17 +2087,41 @@ class TowerLockstepSession implements TowerRenderableSession {
     this.inputBuffer.advanceTo(replayedUntil === undefined ? 0 : replayedUntil + 1);
     this.simulationStarted = true;
     this.nextLocalTick = this.inputBuffer.nextTick + TOWER_INPUT_DELAY_TICKS;
-    this.captureNextLocalFrame();
-    this.inputHandle = window.setInterval(
-      () => this.captureNextLocalFrame(),
-      TOWER_LOCKSTEP_TICK_MS,
-    );
+    this.captureOneLocalFrame();
+    this.startCaptureClock();
     this.lastTimestamp = performance.now();
     this.accumulatorMs = TOWER_LOCKSTEP_TICK_MS * MAX_STEPS_PER_FRAME;
     this.frameHandle = requestAnimationFrame(this.onFrame);
+    this.telemetry.activePeers = this.inputBuffer.activeIds.size;
+    recordPeerChange(this.telemetry.activePeers);
+    this.endRejoinSpan('success', records.length);
     this.reportIssue(
       `Reconnexion Tower : ${records.length} ticks rejoués, rattrapage accéléré en cours…`,
     );
+  }
+
+  /**
+   * Clôt la trace de réintégration **et** compte son issue au même endroit : les deux ne peuvent
+   * pas diverger, et une session fermée avant la fin du rejeu compte comme un abandon.
+   */
+  private endRejoinSpan(
+    outcome: 'success' | 'history-unavailable' | 'timeout',
+    replayedTicks?: number,
+  ): void {
+    const span = this.telemetry.rejoinReplay;
+    if (span === undefined) {
+      return;
+    }
+    recordRejoin(outcome);
+    span.setAttributes({
+      'vs.outcome': outcome,
+      ...(replayedTicks === undefined ? {} : { 'vs.replay.ticks': replayedTicks }),
+    });
+    if (outcome !== 'success') {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    }
+    span.end();
+    this.telemetry.rejoinReplay = undefined;
   }
 
   private reportMissingReadyPlayers(): void {
@@ -1758,7 +2141,7 @@ class TowerLockstepSession implements TowerRenderableSession {
       return;
     }
     this.connectionIssue = message;
-    console.error(`[tower:lockstep] ${message}`);
+    this.log.warn(message);
     for (const listener of this.issueListeners) {
       listener(message);
     }

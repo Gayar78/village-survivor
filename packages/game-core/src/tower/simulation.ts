@@ -48,6 +48,7 @@ import type {
   Vector2,
 } from '@village-survivor/protocol';
 
+import { exactDirectionTo, exactLength, exactRotate, exactUnitFromAngle } from '../exact-math.js';
 import { SeededRandom } from '../random.js';
 import type {
   MutableHeart,
@@ -62,6 +63,7 @@ import {
   BIOME_DURATION_WAVES,
   BURN,
   CONTACT_COOLDOWN_MS,
+  CRIT_SLOW,
   CONTACT_MARGIN,
   DOWNED_DURATION_MS,
   EXPLODE_ON_KILL,
@@ -142,11 +144,103 @@ const UPGRADE_RARITIES: readonly UpgradeRarity[] = [
 ];
 
 function distance(a: Vector2, b: Vector2): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  return exactLength(a.x - b.x, a.y - b.y);
+}
+
+/**
+ * Vecteurs unitaires exacts des quatre orientations de tourelle.
+ *
+ * Les angles cardinaux ont des cosinus et sinus entiers : les écrire directement évite tout
+ * calcul, donc toute possibilité de divergence entre navigateurs.
+ */
+const TURRET_AXIS: Readonly<Record<TurretDir, Vector2>> = {
+  N: { x: 0, y: -1 },
+  E: { x: 1, y: 0 },
+  S: { x: 0, y: 1 },
+  W: { x: -1, y: 0 },
+};
+
+/** Convertit des degrés en radians ; la constante est un littéral, donc lue à l'identique. */
+function toRadians(degrees: number): number {
+  return (degrees * 3.141592653589793) / 180;
+}
+
+/**
+ * Fraction du segment `[from, to]` à laquelle il entre en contact avec le cercle décrit par
+ * `centre` et `radius`, ou `undefined` s'il n'y a pas de contact.
+ *
+ * Ne tester que la position d'arrivée laisserait les projectiles rapides traverser leurs cibles :
+ * à 950 unités par seconde et 20 ticks par seconde, une balle avance de 47,5 unités par tick,
+ * soit bien plus que les 12 unités de contact d'un coureur. Le tir de précision ratait donc
+ * régulièrement ce qu'il touchait visiblement.
+ *
+ * Résolution exacte de |from + t·(to − from) − centre|² = radius², puis conservation de la
+ * première racine si elle tombe dans le segment. N'utilise que des opérations IEEE-754 exactes,
+ * ce qui préserve le déterminisme dont dépend le lockstep coopératif.
+ */
+function segmentCircleEntry(
+  from: Vector2,
+  to: Vector2,
+  centre: Vector2,
+  radius: number,
+): number | undefined {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const fx = from.x - centre.x;
+  const fy = from.y - centre.y;
+
+  const startsInside = fx * fx + fy * fy <= radius * radius;
+  if (startsInside) {
+    return 0;
+  }
+
+  const a = dx * dx + dy * dy;
+  if (a === 0) {
+    return undefined;
+  }
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - radius * radius;
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) {
+    return undefined;
+  }
+  const entry = (-b - Math.sqrt(discriminant)) / (2 * a);
+  return entry >= 0 && entry <= 1 ? entry : undefined;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+/**
+ * Règle de déplacement d'un avatar, pour une entrée et une durée.
+ *
+ * Elle est isolée ici parce qu'elle a **deux** appelants : le pas de simulation, qui fait
+ * autorité, et `projectPlayerPosition`, qui projette la position de rendu de l'avatar local.
+ * Les deux doivent produire exactement le même chemin, sinon la prédiction dériverait de l'état
+ * qu'elle anticipe et l'avatar sauterait à chaque rattrapage. Une seule règle, un seul code.
+ */
+function movedPlayerPosition(
+  position: Vector2,
+  input: TowerInput,
+  speed: number,
+  deltaSeconds: number,
+): Vector2 {
+  let dx = input.moveX;
+  let dy = input.moveY;
+  const length = exactLength(dx, dy);
+  if (length > 1) {
+    dx /= length;
+    dy /= length;
+  }
+  const next = {
+    x: position.x + dx * speed * deltaSeconds,
+    y: position.y + dy * speed * deltaSeconds,
+  };
+  return {
+    x: clamp(next.x, -WORLD.bound, WORLD.bound),
+    y: clamp(next.y, -WORLD.bound, WORLD.bound),
+  };
 }
 
 function normalizeMetaBuild(value: Partial<MetaBuildModifiers> | undefined): MetaBuildModifiers {
@@ -158,12 +252,6 @@ function normalizeMetaBuild(value: Partial<MetaBuildModifiers> | undefined): Met
     }
   }
   return result;
-}
-
-/** Différence angulaire absolue (degrés) ramenée dans [0, 180]. */
-function angleDifferenceDeg(a: number, b: number): number {
-  const diff = ((((a - b) % 360) + 540) % 360) - 180;
-  return Math.abs(diff);
 }
 
 /**
@@ -342,10 +430,10 @@ export class TowerSimulation {
 
   private createTurret(dir: TurretDir): MutableTurret {
     const angle = TURRET_ANGLES[dir];
-    const radians = (angle * Math.PI) / 180;
+    const axis = TURRET_AXIS[dir];
     return {
       dir,
-      position: { x: Math.cos(radians) * TURRET.offset, y: Math.sin(radians) * TURRET.offset },
+      position: { x: axis.x * TURRET.offset, y: axis.y * TURRET.offset },
       angle,
       hp: TURRET.hp,
       maxHp: TURRET.hp,
@@ -478,25 +566,11 @@ export class TowerSimulation {
     input: TowerInput,
     deltaSeconds: number,
   ): void {
-    let dx = input.moveX;
-    let dy = input.moveY;
-    const length = Math.hypot(dx, dy);
-    if (length > 1) {
-      dx /= length;
-      dy /= length;
-    }
-    const next = {
-      x: player.position.x + dx * player.speed * deltaSeconds,
-      y: player.position.y + dy * player.speed * deltaSeconds,
-    };
-    player.position = {
-      x: clamp(next.x, -WORLD.bound, WORLD.bound),
-      y: clamp(next.y, -WORLD.bound, WORLD.bound),
-    };
+    player.position = movedPlayerPosition(player.position, input, player.speed, deltaSeconds);
   }
 
   private updatePlayerAim(player: MutableTowerPlayer, input: TowerInput): void {
-    const length = Math.hypot(input.aimX, input.aimY);
+    const length = exactLength(input.aimX, input.aimY);
     if (length > 0) {
       player.aim = { x: input.aimX / length, y: input.aimY / length };
     }
@@ -515,11 +589,14 @@ export class TowerSimulation {
     if (input.fire !== true || weapon.fireCooldownRemaining > 0) {
       return;
     }
-    const aimLength = Math.hypot(player.aim.x, player.aim.y);
+    const aimLength = exactLength(player.aim.x, player.aim.y);
     if (aimLength <= 0) {
       return;
     }
-    const baseAngle = Math.atan2(player.aim.y, player.aim.x);
+    // Direction unitaire du tir. Le code passait par un angle absolu — `atan2` puis `cos` et
+    // `sin` — pour retomber sur ce même vecteur : un détour plus coûteux, et surtout porteur de
+    // deux fonctions approximées par l'implémentation.
+    const aim = { x: player.aim.x / aimLength, y: player.aim.y / aimLength };
     const definition = weaponDefinition(weapon.id);
     const extraShots = this.rollMultishot(player.multishotChance);
     const totalShots = definition.projectileCount + extraShots;
@@ -529,7 +606,10 @@ export class TowerSimulation {
         : MULTISHOT_SPREAD_RAD;
     for (let index = 0; index < totalShots; index += 1) {
       const spread = (index - (totalShots - 1) / 2) * spreadStep;
-      this.spawnPlayerBullet(player, weapon, definition, baseAngle + spread);
+      // Seul endroit de la simulation où un angle arbitraire doit réellement être appliqué :
+      // la dispersion dépend d'une amélioration et ne peut donc pas être tabulée.
+      const direction = spread === 0 ? aim : exactRotate(aim.x, aim.y, spread);
+      this.spawnPlayerBullet(player, weapon, definition, direction);
     }
     weapon.fireCooldownRemaining = this.weaponFireRate(player, weapon, definition);
   }
@@ -550,18 +630,20 @@ export class TowerSimulation {
     player: MutableTowerPlayer,
     weapon: MutableTowerPlayer['weapons'][number],
     definition: TowerWeaponDefinition,
-    angle: number,
+    direction: Vector2,
   ): void {
     let damage = this.weaponDamage(player, weapon, definition);
+    let critical = false;
     if (player.critChance > 0 && this.combatRandom.next() < player.critChance) {
       damage *= player.critMult;
+      critical = true;
     }
     this.projectileCounter += 1;
     this.projectiles.push({
       id: `bullet-${this.projectileCounter}`,
       position: { x: player.position.x, y: player.position.y },
-      velocityX: Math.cos(angle) * this.weaponBulletSpeed(player, definition),
-      velocityY: Math.sin(angle) * this.weaponBulletSpeed(player, definition),
+      velocityX: direction.x * this.weaponBulletSpeed(player, definition),
+      velocityY: direction.y * this.weaponBulletSpeed(player, definition),
       radius: this.weaponBulletRadius(player, definition),
       damage,
       source: 'player',
@@ -573,6 +655,9 @@ export class TowerSimulation {
       explodeOnKill: player.explodeOnKill,
       lifestealPct: player.lifestealPct,
       growingBullet: player.growingBullet,
+      // « Fracture glaciale » n'agit que sur les coups critiques : un tir ordinaire ne
+      // transporte aucune pile, même si le joueur possède l'amélioration.
+      critSlowStacks: critical ? player.critSlowStacks : 0,
       ownerId: player.id,
       hitMonsterIds: new Set<string>(),
     });
@@ -656,6 +741,11 @@ export class TowerSimulation {
   private findTurretTarget(turret: MutableTurret): MutableTowerMonster | undefined {
     let selected: MutableTowerMonster | undefined;
     let selectedScore = Infinity;
+    const axis = TURRET_AXIS[turret.dir];
+    // Le test d'arc se ramène à un produit scalaire : une cible est dans l'arc si le cosinus de
+    // l'écart angulaire dépasse celui du demi-arc. On évite ainsi de calculer l'angle lui-même,
+    // qui exigeait `atan2`. Le seuil est calculé une fois, hors de la boucle.
+    const arcCosine = exactUnitFromAngle(toRadians(turret.halfArcDeg)).x;
     for (const monster of this.monsters) {
       if (monster.hp <= 0) {
         continue;
@@ -664,14 +754,12 @@ export class TowerSimulation {
       if (gap > turret.range + monster.radius) {
         continue;
       }
-      const angleToMonster =
-        (Math.atan2(
-          monster.position.y - turret.position.y,
-          monster.position.x - turret.position.x,
-        ) *
-          180) /
-        Math.PI;
-      if (angleDifferenceDeg(angleToMonster, turret.angle) > turret.halfArcDeg) {
+      // Test d'arc sans normaliser ni allouer : comparer le produit scalaire au cosinus du
+      // demi-arc mis à l'échelle de la distance revient au même, et cette boucle s'exécute pour
+      // chaque monstre, chaque tourelle et chaque tick.
+      const dx = monster.position.x - turret.position.x;
+      const dy = monster.position.y - turret.position.y;
+      if (dx * axis.x + dy * axis.y < arcCosine * gap) {
         continue;
       }
       const score = this.turretTargetScore(turret, monster, gap);
@@ -700,16 +788,21 @@ export class TowerSimulation {
   }
 
   private spawnTurretBullet(turret: MutableTurret, target: MutableTowerMonster): void {
-    const angle = Math.atan2(
-      target.position.y - turret.position.y,
-      target.position.x - turret.position.x,
+    const direction = exactDirectionTo(
+      turret.position.x,
+      turret.position.y,
+      target.position.x,
+      target.position.y,
     );
+    if (direction === undefined) {
+      return;
+    }
     this.projectileCounter += 1;
     this.projectiles.push({
       id: `bullet-${this.projectileCounter}`,
       position: { x: turret.position.x, y: turret.position.y },
-      velocityX: Math.cos(angle) * turret.bulletSpeed,
-      velocityY: Math.sin(angle) * turret.bulletSpeed,
+      velocityX: direction.x * turret.bulletSpeed,
+      velocityY: direction.y * turret.bulletSpeed,
       radius: turret.bulletRadius,
       damage: turret.bulletDamage,
       source: 'turret',
@@ -721,6 +814,8 @@ export class TowerSimulation {
       explodeOnKill: false,
       lifestealPct: 0,
       growingBullet: 0,
+      // Les tourelles ne portent pas d'améliorations de joueur.
+      critSlowStacks: 0,
       ownerId: undefined,
       hitMonsterIds: new Set<string>(),
     });
@@ -734,7 +829,10 @@ export class TowerSimulation {
       if (bullet === undefined) {
         continue;
       }
-      const step = Math.hypot(bullet.velocityX, bullet.velocityY) * deltaSeconds;
+      const step = exactLength(bullet.velocityX, bullet.velocityY) * deltaSeconds;
+      // Le point de départ du tick est conservé : les collisions sont résolues sur le trajet
+      // parcouru, pas sur la seule position d'arrivée.
+      const sweepFrom = bullet.position;
       bullet.position = {
         x: bullet.position.x + bullet.velocityX * deltaSeconds,
         y: bullet.position.y + bullet.velocityY * deltaSeconds,
@@ -743,7 +841,7 @@ export class TowerSimulation {
       if (bullet.growingBullet > 0) {
         bullet.radius += bullet.growingBullet * deltaSeconds;
       }
-      const alive = this.resolveBulletCollisions(bullet);
+      const alive = this.resolveBulletCollisions(bullet, sweepFrom);
       const outOfRange = bullet.remainingRange <= 0;
       const outOfBounds =
         Math.abs(bullet.position.x) > WORLD.bound || Math.abs(bullet.position.y) > WORLD.bound;
@@ -753,11 +851,18 @@ export class TowerSimulation {
     }
   }
 
-  /** Résout les impacts d'une balle sur ce tick. Renvoie `false` si la balle disparaît. */
-  private resolveBulletCollisions(bullet: MutableTowerProjectile): boolean {
+  /**
+   * Résout les impacts d'une balle sur ce tick. Renvoie `false` si la balle disparaît.
+   *
+   * `sweepFrom` est la position occupée au début du tick : les cibles sont cherchées sur tout le
+   * trajet parcouru. Un rebond change la trajectoire en cours de tick et invalide ce segment,
+   * d'où sa remise à `undefined` — les impacts suivants retombent alors sur la position courante.
+   */
+  private resolveBulletCollisions(bullet: MutableTowerProjectile, sweepFrom: Vector2): boolean {
+    let sweptFrom: Vector2 | undefined = sweepFrom;
     // Jusqu'à quelques impacts par tick (perforation/rebond) ; borné pour éviter les boucles.
     for (let iteration = 0; iteration < 8; iteration += 1) {
-      const monster = this.findBulletHit(bullet);
+      const monster = this.findBulletHit(bullet, sweptFrom);
       if (monster === undefined) {
         return true;
       }
@@ -773,6 +878,7 @@ export class TowerSimulation {
         if (next !== undefined) {
           bullet.bounce -= 1;
           this.redirectBullet(bullet, next.position);
+          sweptFrom = undefined;
           continue;
         }
       }
@@ -781,16 +887,34 @@ export class TowerSimulation {
     return true;
   }
 
-  private findBulletHit(bullet: MutableTowerProjectile): MutableTowerMonster | undefined {
+  /**
+   * Premier monstre rencontré sur le trajet du tick, ou le plus proche de la position courante
+   * lorsque le segment n'est plus exploitable (après un rebond).
+   */
+  private findBulletHit(
+    bullet: MutableTowerProjectile,
+    sweptFrom: Vector2 | undefined,
+  ): MutableTowerMonster | undefined {
     let nearest: MutableTowerMonster | undefined;
-    let nearestDistance = Infinity;
+    // Distance au point d'arrivée sans segment, fraction d'entrée sur le segment sinon. Les deux
+    // sémantiques ne se mélangent jamais : `sweptFrom` est fixé pour toute la boucle.
+    let nearestRank = Infinity;
     for (const monster of this.monsters) {
       if (monster.hp <= 0 || bullet.hitMonsterIds.has(monster.id)) {
         continue;
       }
-      const gap = distance(monster.position, bullet.position);
-      if (gap <= bullet.radius + monster.radius && gap < nearestDistance) {
-        nearestDistance = gap;
+      const reach = bullet.radius + monster.radius;
+      if (sweptFrom === undefined) {
+        const gap = distance(monster.position, bullet.position);
+        if (gap <= reach && gap < nearestRank) {
+          nearestRank = gap;
+          nearest = monster;
+        }
+        continue;
+      }
+      const entry = segmentCircleEntry(sweptFrom, bullet.position, monster.position, reach);
+      if (entry !== undefined && entry < nearestRank) {
+        nearestRank = entry;
         nearest = monster;
       }
     }
@@ -817,10 +941,13 @@ export class TowerSimulation {
   }
 
   private redirectBullet(bullet: MutableTowerProjectile, target: Vector2): void {
-    const speed = Math.hypot(bullet.velocityX, bullet.velocityY);
-    const angle = Math.atan2(target.y - bullet.position.y, target.x - bullet.position.x);
-    bullet.velocityX = Math.cos(angle) * speed;
-    bullet.velocityY = Math.sin(angle) * speed;
+    const speed = exactLength(bullet.velocityX, bullet.velocityY);
+    const direction = exactDirectionTo(bullet.position.x, bullet.position.y, target.x, target.y);
+    if (direction === undefined) {
+      return;
+    }
+    bullet.velocityX = direction.x * speed;
+    bullet.velocityY = direction.y * speed;
   }
 
   private applyBulletDamage(
@@ -832,6 +959,13 @@ export class TowerSimulation {
       monster.burnStacks += bullet.burnStacks;
       monster.burnRemainingMs = BURN.durationMs;
       monster.burnOwnerId = owner?.id;
+    }
+    if (bullet.critSlowStacks > 0) {
+      monster.slowStacks = Math.min(
+        CRIT_SLOW.maxStacks,
+        monster.slowStacks + bullet.critSlowStacks,
+      );
+      monster.slowRemainingMs = CRIT_SLOW.durationMs;
     }
     const killed = this.damageMonster(monster, bullet.damage, owner);
     if (owner !== undefined && bullet.lifestealPct > 0) {
@@ -866,6 +1000,7 @@ export class TowerSimulation {
         continue;
       }
       monster.contactCooldownRemaining = Math.max(0, monster.contactCooldownRemaining - deltaMs);
+      this.applySlowDecay(monster, deltaMs);
       this.applyBurn(monster, deltaMs, deltaSeconds);
       if (monster.hp <= 0) {
         continue;
@@ -886,15 +1021,38 @@ export class TowerSimulation {
     this.damageMonster(monster, amount, owner);
   }
 
+  /**
+   * Vitesse effective d'un monstre, ralentissement compris.
+   *
+   * Les piles sont plafonnées à l'application, donc le facteur reste strictement positif : un
+   * monstre ralenti avance moins vite, il ne s'arrête jamais et ne recule jamais.
+   */
+  private monsterSpeed(monster: MutableTowerMonster): number {
+    if (monster.slowRemainingMs <= 0 || monster.slowStacks <= 0) {
+      return monster.speed;
+    }
+    return monster.speed * (1 - CRIT_SLOW.perStack * monster.slowStacks);
+  }
+
+  private applySlowDecay(monster: MutableTowerMonster, deltaMs: number): void {
+    if (monster.slowRemainingMs <= 0) {
+      return;
+    }
+    monster.slowRemainingMs = Math.max(0, monster.slowRemainingMs - deltaMs);
+    if (monster.slowRemainingMs <= 0) {
+      monster.slowStacks = 0;
+    }
+  }
+
   private moveMonster(monster: MutableTowerMonster, deltaSeconds: number): void {
     const target = this.findMonsterTarget(monster);
     const dx = target.x - monster.position.x;
     const dy = target.y - monster.position.y;
-    const length = Math.hypot(dx, dy);
+    const length = exactLength(dx, dy);
     if (length <= 0) {
       return;
     }
-    const stepDistance = Math.min(length, monster.speed * deltaSeconds);
+    const stepDistance = Math.min(length, this.monsterSpeed(monster) * deltaSeconds);
     monster.position = {
       x: monster.position.x + (dx / length) * stepDistance,
       y: monster.position.y + (dy / length) * stepDistance,
@@ -909,7 +1067,9 @@ export class TowerSimulation {
   private resolveMonsterContacts(monster: MutableTowerMonster): void {
     if (monster.kind === 'kamikaze') {
       if (this.kamikazeTouchesTarget(monster)) {
-        this.explodeKamikaze(monster);
+        // La détonation appartient désormais à `killMonster` : le kamikaze explose de la même
+        // façon qu'il meure au contact ou sous les tirs.
+        this.killMonster(monster, this.findNearestLivingPlayer(monster.position, Infinity));
       }
       return;
     }
@@ -943,7 +1103,14 @@ export class TowerSimulation {
     );
   }
 
-  private explodeKamikaze(monster: MutableTowerMonster): void {
+  /**
+   * Applique l'explosion d'un kamikaze, sans le tuer : c'est `killMonster` qui l'appelle, de
+   * sorte que la détonation ait lieu quelle que soit la cause de la mort — contact, balle,
+   * brûlure ou aura. Auparavant elle n'était déclenchée qu'au contact, si bien qu'abattre un
+   * kamikaze le désamorçait purement et simplement, contrairement à ce qu'annonçaient son nom,
+   * le réglage et les règles de gameplay.
+   */
+  private detonateKamikaze(monster: MutableTowerMonster): void {
     const center = monster.position;
     for (const player of this.players) {
       if (
@@ -968,8 +1135,6 @@ export class TowerSimulation {
     if (distance(this.heart.position, center) <= KAMIKAZE_EXPLOSION.radius + this.heart.radius) {
       this.damageHeartInternal(KAMIKAZE_EXPLOSION.damage);
     }
-    // Le kamikaze meurt dans son explosion (sans dégâts joueur crédités, mais lâche sa ferraille).
-    this.killMonster(monster, this.findNearestLivingPlayer(center, Infinity));
   }
 
   private findContactedPlayer(monster: MutableTowerMonster): MutableTowerPlayer | undefined {
@@ -1031,6 +1196,15 @@ export class TowerSimulation {
   }
 
   private killMonster(monster: MutableTowerMonster, killer: MutableTowerPlayer | undefined): void {
+    // `detonated` garantit une seule explosion par kamikaze. Les points de vie ne peuvent pas
+    // jouer ce rôle : `damageMonster` les met à zéro avant d'appeler cette méthode, si bien
+    // qu'un test `hp > 0` désamorcerait précisément la mort par balle qu'on veut couvrir.
+    // `detonateKamikaze` ne blesse que joueurs, tourelles et Cœur, jamais un monstre : aucune
+    // récursion n'est possible.
+    if (monster.kind === 'kamikaze' && !monster.detonated) {
+      monster.detonated = true;
+      this.detonateKamikaze(monster);
+    }
     if (monster.hp > 0) {
       monster.hp = 0;
     }
@@ -1177,7 +1351,8 @@ export class TowerSimulation {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const angle = this.random.between(0, Math.PI * 2);
       const radius = this.random.between(NATURAL_SCRAP.minRadiusFromHeart, WORLD.spawnZoneRadius);
-      const position = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      const unit = exactUnitFromAngle(angle);
+      const position = { x: unit.x * radius, y: unit.y * radius };
       if (distance(position, this.heart.position) >= NATURAL_SCRAP.minRadiusFromHeart) {
         return position;
       }
@@ -1270,7 +1445,8 @@ export class TowerSimulation {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const angle = this.random.between(0, Math.PI * 2);
       const radius = this.random.between(minRadius, maxRadius);
-      const position = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+      const unit = exactUnitFromAngle(angle);
+      const position = { x: unit.x * radius, y: unit.y * radius };
       fallback = position;
       const tooClose = this.players.some(
         (player) => distance(player.position, position) < WAVE.minDistanceFromPlayers,
@@ -1726,6 +1902,9 @@ export class TowerSimulation {
       burnRemainingMs: 0,
       burnStacks: 0,
       burnOwnerId: undefined,
+      slowRemainingMs: 0,
+      slowStacks: 0,
+      detonated: false,
     });
     return id;
   }
@@ -1750,6 +1929,52 @@ export class TowerSimulation {
 
   public getScrapFund(): number {
     return this.scrapFund;
+  }
+
+  // ── Prédiction de rendu ───────────────────────────────────────────────────
+
+  /**
+   * Position qu'aura un avatar après `inputs`, sans rien modifier.
+   *
+   * Sert au rendu de l'avatar local en coopératif, où l'état affiché a toujours quelques ticks
+   * de retard sur les touches enfoncées. Les entrées passées ici sont celles que le joueur a
+   * **déjà émises** au réseau : elles seront appliquées telles quelles par tous les pairs, donc
+   * la position calculée ici n'est pas un pari, c'est le résultat connu d'avance.
+   *
+   * La dernière entrée compte pour `lastFraction` de tick (0..1), ce qui donne un déplacement
+   * continu entre deux ticks au lieu d'un saut de 13 pixels toutes les 50 ms.
+   *
+   * Renvoie `undefined` si l'avatar n'existe pas. Un avatar à terre ne bouge pas : sa position
+   * courante est renvoyée telle quelle, comme le fait la simulation.
+   *
+   * **Cette méthode ne participe pas au déterminisme** : elle ne touche à aucun état, n'avance
+   * aucun compteur et n'est jamais appelée par `step`. Deux pairs peuvent l'appeler à des
+   * moments différents sans conséquence.
+   */
+  public predictPlayerPosition(
+    playerId: string,
+    inputs: readonly TowerInput[],
+    lastFraction = 1,
+  ): Vector2 | undefined {
+    const playerIndex = this.playerIds.indexOf(playerId);
+    const player = playerIndex < 0 ? undefined : this.players[playerIndex];
+    if (player === undefined) {
+      return undefined;
+    }
+    let position: Vector2 = { x: player.position.x, y: player.position.y };
+    if (player.downedRemainingMs > 0) {
+      return position;
+    }
+    const deltaSeconds = TICK_MS / 1_000;
+    for (let frame = 0; frame < inputs.length; frame += 1) {
+      const input = inputs[frame];
+      if (input === undefined) {
+        break;
+      }
+      const fraction = frame === inputs.length - 1 ? clamp(lastFraction, 0, 1) : 1;
+      position = movedPlayerPosition(position, input, player.speed, deltaSeconds * fraction);
+    }
+    return position;
   }
 
   // ── Snapshot ──────────────────────────────────────────────────────────────
@@ -1932,5 +2157,11 @@ export class TowerSimulation {
 
 /** XP requise pour passer du niveau `level` au suivant : 55 puis ×1.11 (arrondi). */
 function xpForLevel(level: number): number {
-  return Math.round(XP_BASE * XP_GROWTH ** (level - 1));
+  // Multiplications successives plutôt qu'une puissance : l'opérateur `**` est approximé par
+  // l'implémentation, et il fixe ici les seuils de niveau, donc les offres d'amélioration.
+  let threshold = XP_BASE;
+  for (let step = 1; step < level; step += 1) {
+    threshold *= XP_GROWTH;
+  }
+  return Math.round(threshold);
 }

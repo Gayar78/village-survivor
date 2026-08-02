@@ -73,7 +73,7 @@ export interface MutableTowerPlayer {
   explodeOnKill: boolean;
   /** Croissance du calibre de la balle en vol (px/s). */
   growingBullet: number;
-  /** Piles de « crit-slow » (stockées, effet fin — pas encore rendu). */
+  /** Piles de ralentissement appliquées par les coups critiques de ce joueur. */
   critSlowStacks: number;
 }
 
@@ -97,6 +97,17 @@ export interface MutableTowerMonster {
   burnStacks: number;
   /** Joueur crédité des dégâts de brûlure (id) ; undefined sinon. */
   burnOwnerId: string | undefined;
+  /** Ralentissement en cours : durée restante (ms) et piles cumulées. */
+  slowRemainingMs: number;
+  slowStacks: number;
+  /**
+   * Kamikaze uniquement : sa charge a-t-elle déjà sauté ?
+   *
+   * Les points de vie ne peuvent pas servir de garde d'unicité, `damageMonster` les mettant à
+   * zéro avant d'appeler `killMonster`. Ce drapeau n'est pas projeté dans l'état public et
+   * n'entre donc pas dans l'empreinte comparée par le lockstep.
+   */
+  detonated: boolean;
 }
 
 export interface MutableTowerProjectile {
@@ -119,6 +130,11 @@ export interface MutableTowerProjectile {
   lifestealPct: number;
   /** Croissance du calibre en vol (px/s). */
   growingBullet: number;
+  /**
+   * Piles de ralentissement à appliquer à l'impact. Non nul uniquement lorsque le tir a été
+   * critique et que son tireur possède l'amélioration « Fracture glaciale ».
+   */
+  critSlowStacks: number;
   /** Id du joueur tireur (crédit XP/or/vol de vie) ; undefined pour une tourelle. */
   ownerId: string | undefined;
   /** Monstres déjà touchés (évite les doubles impacts en perforation/rebond). */

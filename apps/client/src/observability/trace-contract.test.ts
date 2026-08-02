@@ -1,0 +1,96 @@
+import { trace } from '@opentelemetry/api';
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+  type ReadableSpan,
+} from '@opentelemetry/sdk-trace-web';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { endGameSessionSpan, startGameSessionSpan } from './gameTelemetry.js';
+
+/**
+ * Preuve, et non promesse : on émet réellement des spans dans un exportateur en mémoire, puis on
+ * inspecte ce qui en sort.
+ *
+ * Deux exigences de la stratégie de tests sont vérifiées ici, et toutes deux bloquent la
+ * release : une partie produit une trace exploitable, et **aucune donnée interdite** ne s'y
+ * trouve. La seconde échoue à la moindre adresse e-mail, pseudonyme, jeton ou code de salon en
+ * clair.
+ */
+describe('contrat de trace d’une partie', () => {
+  // Exportateur recréé à chaque test : `provider.shutdown()` arrête aussi le sien, et un
+  // exportateur arrêté ignore silencieusement tout ce qu'on lui envoie ensuite.
+  let exporter: InMemorySpanExporter;
+  let provider: BasicTracerProvider;
+
+  beforeEach(() => {
+    exporter = new InMemorySpanExporter();
+    provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    trace.setGlobalTracerProvider(provider);
+  });
+
+  afterEach(async () => {
+    await provider.shutdown();
+    trace.disable();
+  });
+
+  function emitCoopSession(): ReadableSpan {
+    const span = startGameSessionSpan({
+      seed: 'graine-de-test',
+      mode: 'coop',
+      playersCount: 3,
+      roomCode: 'TOWER7',
+    });
+    endGameSessionSpan(span, 'defeat', { 'vs.wave': 12 });
+    const emitted = exporter.getFinishedSpans().at(-1);
+    expect(emitted).toBeDefined();
+    return emitted!;
+  }
+
+  it('produit un span racine identifiable et terminé', () => {
+    const span = emitCoopSession();
+
+    expect(span.name).toBe('game.session');
+    expect(span.spanContext().traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(span.attributes['vs.mode']).toBe('coop');
+    expect(span.attributes['vs.players.count']).toBe(3);
+    expect(span.attributes['vs.outcome']).toBe('defeat');
+  });
+
+  it('porte le service, sa version et son environnement', () => {
+    const span = emitCoopSession();
+
+    expect(span.attributes['service.version']).toBeDefined();
+    expect(span.attributes['deployment.environment.name']).toBeDefined();
+  });
+
+  it('n’émet aucune donnée interdite', () => {
+    const serialized = JSON.stringify(emitCoopSession().attributes);
+
+    // Le code de salon ouvre le canal temps réel, où l'identité est déclarative : le publier
+    // reviendrait à distribuer une clé d'entrée.
+    expect(serialized).not.toContain('TOWER7');
+    for (const forbidden of ['@', 'password', 'token', 'secret', 'account_id', 'player.id']) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it('marque en erreur une partie interrompue par une exception', () => {
+    const span = startGameSessionSpan({ seed: 'graine', mode: 'solo', playersCount: 1 });
+    endGameSessionSpan(span, 'error');
+    const emitted = exporter.getFinishedSpans().at(-1);
+
+    // Statut 2 = ERROR : c'est ce qui fait ressortir la partie fautive dans une liste de traces.
+    expect(emitted?.status.code).toBe(2);
+  });
+
+  it('n’émet aucun code de salon pour une partie solo', () => {
+    const span = startGameSessionSpan({ seed: 'graine', mode: 'solo', playersCount: 1 });
+    endGameSessionSpan(span, 'left');
+
+    expect(exporter.getFinishedSpans().at(-1)?.attributes['vs.room.code.hash']).toBeUndefined();
+  });
+});

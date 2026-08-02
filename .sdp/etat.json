@@ -1,0 +1,101 @@
+{
+  "schema_version": 3,
+  "version": "v1",
+  "phase": 4,
+  "phase_nom": "developpement",
+  "iteration": 1,
+  "profil": {
+    "code": "non",
+    "discipline_process": "moyenne",
+    "niveau_archi": "notion"
+  },
+  "type_projet": "web",
+  "origine": "existant",
+  "garantie_requise": {
+    "niveau": "renforce",
+    "motifs": [
+      "produit partagé avec des personnes autres que son auteur",
+      "dépendance à un service extérieur pour l'authentification et la coopération",
+      "traitement de données de tiers : adresses e-mail des joueurs invités"
+    ],
+    "reviser_si": [
+      "ouverture publique du jeu à des inconnus",
+      "introduction d'argent réel ou virtuel",
+      "collecte de données personnelles au-delà de l'adresse e-mail",
+      "apparition d'un classement ou d'une compétition entre joueurs"
+    ]
+  },
+  "complexite": {
+    "multi_composants": true,
+    "asynchrone": true,
+    "api_exposee": true,
+    "donnees_persistantes": true
+  },
+  "observabilite": {
+    "niveau": "distribue",
+    "unite_tracee": "une partie, du lancement à sa fin ; jamais un tick",
+    "niveau_log_defaut": "info"
+  },
+  "hypotheses_ouvertes": [
+    {
+      "id": "HYP-001",
+      "decision": "Le critère de réussite est mesuré sur les trois personnes nommées, pas sur un échantillon plus large",
+      "raison": "Le cercle est fermé et le groupe est le seul public réel à ce stade",
+      "impact": "Un résultat positif ne prouve pas l'intérêt pour un joueur extérieur",
+      "confiance": "moyenne",
+      "validation_attendue": "Premiers retours d'un joueur invité hors du groupe"
+    },
+    {
+      "id": "HYP-002",
+      "decision": "Le jeu reste jouable uniquement en réseau local ou en accès privé pendant la période d'observation",
+      "raison": "Aucune licence, aucun hébergement, aucun budget",
+      "impact": "Aucune donnée d'usage venant d'inconnus ne sera collectée",
+      "confiance": "haute",
+      "validation_attendue": "Décision d'ouverture publique"
+    },
+    {
+      "id": "HYP-003",
+      "decision": "Aucune sauvegarde de la base n'est mise en place",
+      "raison": "La perte des comptes et de la progression est explicitement assumée par le propriétaire",
+      "impact": "Une panne disque effacerait toute la progression des joueurs",
+      "confiance": "haute",
+      "validation_attendue": "Première plainte réelle de perte, ou décision d'ouverture publique"
+    },
+    {
+      "id": "HYP-004",
+      "decision": "Sept jours de rétention de télémétrie suffisent",
+      "raison": "La campagne d'observation dure un mois mais s'analyse session par session",
+      "impact": "Une question posée plus de sept jours après une session restera sans réponse",
+      "confiance": "moyenne",
+      "validation_attendue": "Première analyse rétrospective rendue impossible par la purge"
+    },
+    {
+      "id": "HYP-005",
+      "decision": "Un seul collecteur de télémétrie, sans redondance ni surveillance",
+      "raison": "Le volume est négligeable et l'indisponibilité sans conséquence",
+      "impact": "Une panne silencieuse ferait perdre des mesures sans alerte",
+      "confiance": "moyenne",
+      "validation_attendue": "Écart constaté entre parties jouées et parties enregistrées"
+    },
+    {
+      "id": "HYP-006",
+      "decision": "Une partie « de sa propre initiative » est une partie solo lancée depuis le menu, ou un salon créé par le joueur ; rejoindre une invitation ne compte pas",
+      "raison": "Distinguer celui qui a envie de jouer de celui qui répond présent, sans obliger chacun à héberger",
+      "impact": "Un joueur qui ne fait que répondre aux invitations n'atteindra pas le critère, même en jouant beaucoup",
+      "confiance": "moyenne",
+      "validation_attendue": "Première lecture des mesures de la campagne d'observation"
+    },
+    {
+      "id": "HYP-007",
+      "decision": "Aucune durée minimale n'est exigée pour qu'une partie soit comptée",
+      "raison": "Toute règle de durée serait arbitraire avant d'avoir observé des parties réelles",
+      "impact": "Une partie lancée puis quittée en dix secondes compte comme les autres",
+      "confiance": "faible",
+      "validation_attendue": "Écart visible entre parties comptées et parties réellement jouées"
+    }
+  ],
+  "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
+  "derogations": [],
+  "dernier_commit": "1b6948d",
+  "maj": "2026-08-01"
+}

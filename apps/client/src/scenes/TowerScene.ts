@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { recordFrameDuration } from '../observability/gameTelemetry.js';
 import {
   getVisualPreferences,
   subscribeVisualPreferences,
@@ -30,6 +31,12 @@ import type {
 export interface TowerRenderSession {
   subscribe(listener: (state: TowerGameState) => void): () => void;
   getRenderAlpha(): number;
+  /**
+   * Position à laquelle dessiner l'avatar local, quand la session sait l'anticiper — en
+   * coopératif, l'état reçu a toujours quelques ticks de retard sur les touches enfoncées.
+   * `undefined` demande le rendu interpolé ordinaire.
+   */
+  getLocalRenderPosition(): Vector2 | undefined;
 }
 
 const COLORS = {
@@ -179,10 +186,14 @@ export class TowerScene extends Phaser.Scene {
     if (state === undefined) {
       return;
     }
+    // Mesurer le dessin séparément du tick de simulation est ce qui permet, devant une partie
+    // qui rame, de savoir laquelle des deux moitiés coûte cher — sans quoi on optimise au jugé.
+    const startedAt = performance.now();
     this.computeInterpolation(state);
     this.renderWorld(state);
     this.updateCamera(state, delta);
     this.renderMinimap(state);
+    recordFrameDuration(performance.now() - startedAt, state.monsters.length);
   }
 
   /**
@@ -192,13 +203,23 @@ export class TowerScene extends Phaser.Scene {
    * (apparition) est rendue directement à sa position courante ; une entité
    * disparue de l'instantané courant (mort/expiration) n'est simplement plus
    * dessinée.
+   *
+   * L'avatar local fait exception quand la session sait l'anticiper : il est alors dessiné en
+   * avance sur le reste du monde, à l'heure des touches enfoncées plutôt qu'à celle de la
+   * simulation. La caméra le suit, donc le décor suit le geste du joueur.
    */
   private computeInterpolation(state: TowerGameState): void {
     const alpha = this.session.getRenderAlpha();
     const previous = this.previousState;
+    const localId = state.player.id;
+    const localPredicted = this.session.getLocalRenderPosition();
 
     this.renderPlayerPos.clear();
     for (const player of state.players) {
+      if (player.id === localId && localPredicted !== undefined) {
+        this.renderPlayerPos.set(player.id, localPredicted);
+        continue;
+      }
       const before = previous?.players.find((item) => item.id === player.id);
       this.renderPlayerPos.set(
         player.id,

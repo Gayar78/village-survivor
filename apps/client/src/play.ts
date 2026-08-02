@@ -12,6 +12,17 @@ import { authService } from './account/authService.js';
 import { statsService } from './account/statsService.js';
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
+import { gameUrl } from './gameUrl.js';
+import { randomSeed } from './randomSeed.js';
+import { createLogger } from './observability/logger.js';
+import { describeError } from './observability/redact.js';
+import { flushTelemetry, getTracer, initTelemetry } from './observability/telemetry.js';
+import { SpanStatusCode } from '@opentelemetry/api';
+import {
+  endGameSessionSpan,
+  startGameSessionSpan,
+  type GameMode,
+} from './observability/gameTelemetry.js';
 import { TowerScene } from './scenes/TowerScene.js';
 import { EscapeMenu } from './ui/EscapeMenu.js';
 import { GameOverScreen } from './ui/GameOverScreen.js';
@@ -103,20 +114,50 @@ function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
 }
 
 const parameters = new URLSearchParams(location.search);
-const seed = parameters.get('seed') ?? crypto.randomUUID().slice(0, 8);
+const seed = parameters.get('seed') ?? randomSeed();
 
 function goToLobby(): void {
   location.assign('index.html');
 }
 function restartGame(): void {
   sessionStorage.removeItem(NETCODE_KEY);
-  location.assign('play.html');
+  location.assign(gameUrl());
 }
 
 const coopConfig = readCoopConfig();
 const soloMetaBuild = readSoloMetaBuild();
 const activeCoopConfig = coopConfig !== null && coopConfig.roster.length > 1 ? coopConfig : null;
 const isCoopSession = activeCoopConfig !== null;
+
+// La télémétrie démarre avant la partie et ne conditionne rien : sans collecteur configuré,
+// `initTelemetry` ne fait rien et le jeu se déroule à l'identique.
+const telemetry = initTelemetry();
+const log = createLogger('session');
+const gameMode: GameMode = isCoopSession ? 'coop' : 'solo';
+const gameSessionSpan = startGameSessionSpan({
+  seed: activeCoopConfig?.seed ?? seed,
+  mode: gameMode,
+  playersCount: activeCoopConfig?.roster.length ?? 1,
+  ...(activeCoopConfig === null ? {} : { roomCode: activeCoopConfig.code }),
+});
+let gameSessionEnded = false;
+
+/** Une partie ne se termine qu'une fois, quelle qu'en soit la porte de sortie. */
+function endGameSession(outcome: 'defeat' | 'left' | 'error', attributes = {}): void {
+  if (gameSessionEnded) {
+    return;
+  }
+  gameSessionEnded = true;
+  endGameSessionSpan(gameSessionSpan, outcome, attributes);
+  flushTelemetry();
+}
+
+log.info('partie lancée', {
+  'vs.mode': gameMode,
+  'vs.players.count': activeCoopConfig?.roster.length ?? 1,
+  'vs.telemetry.enabled': telemetry.exportEnabled,
+});
+
 const session: TowerRenderableSession =
   activeCoopConfig !== null
     ? createTowerCoopSession(activeCoopConfig)
@@ -207,14 +248,21 @@ async function creditAccountGoldAtEndOfRun(gold: number): Promise<void> {
     return;
   }
   accountGoldCredited = true;
+  const span = getTracer().startSpan('account.gold.credit', { attributes: { 'vs.gold': gold } });
   try {
     const account = await authService.getSession();
     if (account !== null) {
       await statsService.creditAccountGold(gold);
     }
+    span.end();
   } catch (error) {
     // L'écran de fin doit rester utilisable même si Supabase est indisponible.
-    console.error("Échec de l'enregistrement de l'or de cette partie.", error);
+    span.recordException(describeError(error));
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.end();
+    log.error("échec de l'enregistrement de l'or de cette partie", {
+      'vs.error': describeError(error),
+    });
   }
 }
 
@@ -270,6 +318,11 @@ session.subscribe((state) => {
   levelUp.render(state);
   if (state.status === 'defeat') {
     void creditAccountGoldAtEndOfRun(state.player.gold);
+    endGameSession('defeat', {
+      'vs.wave': state.wave,
+      'vs.duration.ms': state.elapsedMs,
+      'vs.tick': state.tick,
+    });
     gameOver.show();
   }
 });
@@ -403,11 +456,19 @@ window.addEventListener(
   'beforeunload',
   () => {
     unsubscribeConnectionIssue();
+    endGameSession('left');
     void session.stop();
     void realtimeService.stop();
   },
   { once: true },
 );
+
+// Une exception non rattrapée est le cas où la trace vaut le plus cher : c'est le seul moment où
+// personne ne pourra raconter ce qui s'est passé.
+window.addEventListener('error', (event) => {
+  log.fatal('exception non rattrapée', { 'vs.error': describeError(event.error) });
+  endGameSession('error', { 'vs.error': describeError(event.error) });
+});
 
 void session.start();
 void publishActiveCoopGame();

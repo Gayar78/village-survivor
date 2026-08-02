@@ -23,7 +23,7 @@ Les règles d'application sont les suivantes :
 
 Les identifiants `REQ-*` sont stables. Ils permettent de relier les exigences aux
 composants, aux tests et aux contrôles de CI dans la
-[`traceability-matrix.md`](traceability-matrix.md).
+[`traceabilite.md`](../qualite/traceabilite.md).
 
 ## 2. Répartition des responsabilités
 
@@ -469,7 +469,7 @@ Le dépôt maintient au minimum :
 README.md
 ROADMAP.md
 CHANGELOG.md
-docs/architecture/overview.md
+docs/architecture.md
 docs/gameplay/current-rules.md
 docs/deployment.md
 docs/decisions/
@@ -609,3 +609,21 @@ l'un des mécanismes suivants :
 - remplacement explicitement indiqué dans ce document ;
 - ADR qui accepte, modifie ou abandonne une décision architecturale ;
 - décision produit datée pour les règles de gameplay.
+
+## 23. Écarts constatés au 31 juillet 2026
+
+Ce document reste normatif et n'est pas réécrit. Plusieurs de ses exigences sont toutefois
+contredites par le code livré fin juillet 2026, sans qu'aucun des mécanismes du chapitre 22 ait
+été employé au préalable. Les écarts sont consignés a posteriori pour qu'aucune exigence ne
+disparaisse en silence.
+
+| Exigence | Écart | Consigné dans |
+|---|---|---|
+| `REQ-STACK-002`, `REQ-NET-001`, `REQ-NET-002` | Aucun serveur autoritaire : la coopération est un lockstep pair-à-pair et chaque client décide de sa propre simulation | [ADR-0008](../decisions/ADR-0008-p2p-lockstep-coop.md) |
+| `REQ-PERSISTENCE-001` | Comptes Supabase et progression persistante livrés sans décision produit préalable | [ADR-0009](../decisions/ADR-0009-account-persistence.md) |
+| `REQ-CONTENT-001`, `REQ-CONTENT-002` | Le contenu du jeu Tower n'a ni schéma ni validation, et une partie de son équilibrage vit dans le moteur | [Index ADR](../decisions/README.md) |
+| `REQ-DEBUG-001`, `REQ-TEST-004`, `REQ-PERF-001`, `REQ-PERF-002` | API de débogage, métriques et tests navigateur supprimés ou inopérants | [`traceabilite.md`](../qualite/traceabilite.md) |
+| `REQ-GOV-002`, `REQ-WORK-002`, `REQ-DOC-003` | Ruptures majeures livrées sans validation humaine, sans note de refactoring préalable et sans mise à jour documentaire dans le même incrément | [`traceabilite.md`](../qualite/traceabilite.md) |
+
+L'état exigence par exigence est tenu à jour dans
+[`traceabilite.md`](../qualite/traceabilite.md).

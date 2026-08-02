@@ -48,8 +48,16 @@ describe('Tower lockstep determinism', () => {
     const changed = { ...state, scrapFund: state.scrapFund + 1 };
     expect(createTowerStateFingerprint(changed)).not.toBe(createTowerStateFingerprint(state));
     expect(createTowerStateFingerprint(state)).toMatch(/^tower-v1:[0-9a-f]{16}$/);
-    // Golden vector: changing canonicalization/hash requires a deliberate `tower-v2` bump.
-    expect(createTowerStateFingerprint(state)).toBe('tower-v1:debc4e945ab0ed92');
+    // Vecteur de référence. Il est calculé sur un état de simulation réel : il change donc aussi
+    // bien si la canonicalisation ou le hachage évoluent — ce qui exigerait un passage en
+    // `tower-v2` — que si les valeurs produites par la simulation changent. Seul le premier cas
+    // est une régression ; le second est une mise à jour légitime, à faire en connaissance de
+    // cause.
+    //
+    // Mis à jour le 1er août 2026 : le passage à une arithmétique exactement reproductible a
+    // modifié les valeurs numériques de la simulation. Les tourelles, notamment, sont désormais
+    // à des coordonnées exactement nulles là où `Math.cos(-π/2) * 240` donnait 1,47e-14.
+    expect(createTowerStateFingerprint(state)).toBe('tower-v1:c87db2e3d4da540d');
   });
 
   it('keeps two same-seed simulations identical through movement, combat, weapons and upgrades', () => {

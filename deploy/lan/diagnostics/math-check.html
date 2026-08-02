@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Village Survivor — Contrôle d'arithmétique</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 46rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+        background: #111a1d;
+        color: #e6edf3;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, monospace;
+      }
+      pre {
+        background: #0a1114;
+        border: 1px solid #223;
+        border-radius: 6px;
+        padding: 0.75rem;
+        overflow-x: auto;
+        user-select: all;
+      }
+      td {
+        padding: 0.2rem 0.9rem 0.2rem 0;
+        vertical-align: top;
+      }
+      .ok {
+        color: #7ee787;
+      }
+      .ko {
+        color: #ff7b72;
+      }
+      .hint {
+        color: #9aa7b1;
+        font-size: 0.92rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Contrôle d'arithmétique entre navigateurs</h1>
+
+    <p>
+      Cette page compare deux familles de fonctions.
+      <strong>Ouvrez-la sur chaque poste et comparez les empreintes.</strong>
+    </p>
+    <ul>
+      <li>
+        <strong>Fonctions du moteur</strong> — <code>Math.cos</code> et compagnie. Elles
+        <em>diffèrent</em> d'un navigateur à l'autre : c'est le défaut constaté le 1<sup>er</sup>
+        août 2026, qui désynchronisait les parties coopératives.
+      </li>
+      <li>
+        <strong>Remplaçants du jeu</strong> — les fonctions déterministes qui les ont remplacées
+        dans la simulation. Elles <em>doivent</em> donner exactement la même empreinte partout. Si
+        ce n'est pas le cas, la correction est incomplète et il faut le signaler.
+      </li>
+    </ul>
+
+    <p class="hint">Aucune donnée n'est envoyée nulle part : tout est calculé dans la page.</p>
+
+    <h2>Résultat</h2>
+    <pre id="out">Calcul en cours…</pre>
+
+    <h2>Valeurs témoins</h2>
+    <p class="hint">Utiles si les empreintes diffèrent : elles montrent où l'écart apparaît.</p>
+    <table id="samples"></table>
+
+    <script>
+      // Générateur entier exact (xorshift32). Les opérations binaires de JavaScript sont
+      // spécifiées sur 32 bits : cette suite est rigoureusement identique sur tout moteur,
+      // ce qui garantit que les deux postes évaluent exactement les mêmes entrées.
+      function makeRandom(seed) {
+        let state = seed | 0;
+        return function next() {
+          state ^= state << 13;
+          state |= 0;
+          state ^= state >>> 17;
+          state ^= state << 5;
+          state |= 0;
+          // Division par une puissance de deux : exacte, donc sans perte.
+          return (state >>> 0) / 4294967296;
+        };
+      }
+
+      // FNV-1a 64 bits sur les huit octets exacts du nombre flottant. N'utilise que de
+      // l'arithmétique entière : le hachage lui-même ne peut pas diverger d'un moteur à l'autre.
+      const OFFSET = 0xcbf29ce484222325n;
+      const PRIME = 0x100000001b3n;
+      const MASK = 0xffffffffffffffffn;
+      const buffer = new DataView(new ArrayBuffer(8));
+
+      function makeDigest() {
+        let hash = OFFSET;
+        return {
+          add(value) {
+            buffer.setFloat64(0, value);
+            for (let i = 0; i < 8; i += 1) {
+              hash ^= BigInt(buffer.getUint8(i));
+              hash = (hash * PRIME) & MASK;
+            }
+          },
+          hex() {
+            return hash.toString(16).padStart(16, '0');
+          },
+        };
+      }
+
+      const ITERATIONS = 200000;
+      const functions = {
+        hypot: makeDigest(),
+        atan2: makeDigest(),
+        cos: makeDigest(),
+        sin: makeDigest(),
+      };
+      const samples = [];
+
+      const random = makeRandom(20260801);
+      for (let i = 0; i < ITERATIONS; i += 1) {
+        // Plages représentatives du jeu : positions et vitesses de l'ordre du millier.
+        const x = (random() - 0.5) * 2000;
+        const y = (random() - 0.5) * 2000;
+        const angle = (random() - 0.5) * 6.283185307179586;
+
+        const h = Math.hypot(x, y);
+        const a = Math.atan2(y, x);
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+
+        functions.hypot.add(h);
+        functions.atan2.add(a);
+        functions.cos.add(c);
+        functions.sin.add(s);
+
+        if (i < 3) {
+          samples.push({ x, y, angle, h, a, c, s });
+        }
+      }
+
+      // ─── Contrôle des remplaçants déterministes ──────────────────────────────────────────
+      // Reprise à l'identique de packages/game-core/src/exact-math.ts. Ces empreintes doivent
+      // être IDENTIQUES sur tous les navigateurs : c'est ce que la correction garantit.
+      const PI = 3.141592653589793;
+      const TWO_PI = 6.283185307179586;
+      const HALF_PI = 1.5707963267948966;
+      const S3 = -0.16666666666666632;
+      const S5 = 0.008333333333224894;
+      const S7 = -0.00019841269829857993;
+      const S9 = 0.0000027557313707070068;
+      const S11 = -2.5050760253406863e-8;
+      const S13 = 1.58969099521155e-10;
+
+      function exactSin(angle) {
+        if (!Number.isFinite(angle)) return 0;
+        let x = angle - TWO_PI * Math.round(angle / TWO_PI);
+        if (x > HALF_PI) x = PI - x;
+        else if (x < -HALF_PI) x = -PI - x;
+        const q = x * x;
+        return x + x * q * (S3 + q * (S5 + q * (S7 + q * (S9 + q * (S11 + q * S13)))));
+      }
+      const exactCos = (angle) => exactSin(angle + HALF_PI);
+      const exactLength = (x, y) => Math.sqrt(x * x + y * y);
+
+      const exact = { length: makeDigest(), cos: makeDigest(), sin: makeDigest() };
+      const exactRandom = makeRandom(20260801);
+      for (let i = 0; i < ITERATIONS; i += 1) {
+        const x = (exactRandom() - 0.5) * 2000;
+        const y = (exactRandom() - 0.5) * 2000;
+        const angle = (exactRandom() - 0.5) * 6.283185307179586;
+        exact.length.add(exactLength(x, y));
+        exact.cos.add(exactCos(angle));
+        exact.sin.add(exactSin(angle));
+      }
+
+      const lines = [
+        'Navigateur : ' + navigator.userAgent,
+        'Itérations : ' + ITERATIONS,
+        '',
+        '── Fonctions du moteur — DOIVENT différer entre navigateurs ──',
+        'Math.hypot : ' + functions.hypot.hex(),
+        'Math.atan2 : ' + functions.atan2.hex(),
+        'Math.cos   : ' + functions.cos.hex(),
+        'Math.sin   : ' + functions.sin.hex(),
+        '',
+        '── Remplaçants du jeu — DOIVENT être identiques partout ──',
+        'exactLength : ' + exact.length.hex(),
+        'exactCos    : ' + exact.cos.hex(),
+        'exactSin    : ' + exact.sin.hex(),
+      ];
+      document.getElementById('out').textContent = lines.join('\n');
+
+      const rows = samples.flatMap((sample, index) => [
+        ['— échantillon ' + (index + 1), ''],
+        ['hypot(' + sample.x + ', ' + sample.y + ')', String(sample.h)],
+        ['atan2(' + sample.y + ', ' + sample.x + ')', String(sample.a)],
+        ['cos(' + sample.angle + ')', String(sample.c)],
+        ['sin(' + sample.angle + ')', String(sample.s)],
+      ]);
+      document.getElementById('samples').innerHTML = rows
+        .map(
+          ([label, value]) =>
+            '<tr><td><code>' + label + '</code></td><td><code>' + value + '</code></td></tr>',
+        )
+        .join('');
+    </script>
+  </body>
+</html>

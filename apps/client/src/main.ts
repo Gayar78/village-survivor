@@ -1,4 +1,5 @@
 import { authService } from './account/authService.js';
+import { spentBlessingBudget } from './account/blessingBudget.js';
 import { metaProgressionService } from './account/metaProgressionService.js';
 import { isSupabaseConfigured } from './account/supabaseClient.js';
 import type { AccountSession, MetaProgressionSnapshot } from './account/types.js';
@@ -19,6 +20,8 @@ import type {
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
+import { gameUrl } from './gameUrl.js';
+import { randomSeed } from './randomSeed.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
@@ -155,9 +158,10 @@ function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewM
       active: profile.isActive,
       isDefault: profile.isDefault,
     })),
-    blessingBudget: { spent: active?.blessingBudget ?? 0, total: META_BLESSING_BUDGET },
+    blessingBudget: { spent: spentBlessingBudget(active), total: META_BLESSING_BUDGET },
     blessings: META_CATALOG.blessings.map((blessing) => {
       const rank = active?.blessingRanks[blessing.id] ?? 0;
+      const remaining = META_BLESSING_BUDGET - spentBlessingBudget(active);
       return {
         id: blessing.id,
         name: blessing.label,
@@ -168,7 +172,12 @@ function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewM
         cost: blessing.goldCosts[Math.min(rank, blessing.goldCosts.length - 1)] ?? 0,
         unlocked: rank > 0,
         available:
-          active !== null && blessing.pathId === active.blessingPathId && rank < blessing.maxRank,
+          active !== null &&
+          blessing.pathId === active.blessingPathId &&
+          rank < blessing.maxRank &&
+          // Sans cette borne, le bouton reste actif une fois le budget épuisé et seule la base
+          // finit par refuser l'achat — le joueur découvre la limite par un message d'erreur.
+          remaining >= blessing.budgetPerRank,
         isMaxed: rank >= blessing.maxRank,
       };
     }),
@@ -308,10 +317,6 @@ metaBuildScreen.hide();
 const compendium = new Compendium(compendiumElement, showMenu);
 compendium.hide();
 
-function randomSeed(): string {
-  return crypto.randomUUID().slice(0, 8);
-}
-
 async function beginClassic(): Promise<void> {
   const seed = randomSeed();
   try {
@@ -324,7 +329,7 @@ async function beginClassic(): Promise<void> {
     console.warn('Build méta indisponible : démarrage avec les statistiques de base.', error);
     sessionStorage.removeItem('vs-solo-meta-build');
   }
-  location.assign(`play.html?seed=${encodeURIComponent(seed)}&players=1`);
+  location.assign(gameUrl({ seed, players: '1' }));
 }
 
 function beginLaunch(payload: LaunchPayload): void {
@@ -353,12 +358,10 @@ function beginLaunch(payload: LaunchPayload): void {
         ),
       }),
     );
-    location.assign('play.html');
+    location.assign(gameUrl());
     return;
   }
-  location.assign(
-    `play.html?seed=${encodeURIComponent(payload.seed)}&players=${String(payload.playerCount)}`,
-  );
+  location.assign(gameUrl({ seed: payload.seed, players: String(payload.playerCount) }));
 }
 
 async function openMultiplayer(): Promise<void> {
@@ -486,16 +489,23 @@ if (!isSupabaseConfigured) {
   });
 
   async function routeAfterSession(): Promise<void> {
+    let situation;
     try {
-      const situation = await authService.getMfaSituation();
-      if (situation === 'needs-verify') {
-        authScreen.resumeVerification();
-      } else if (situation === 'needs-enroll') {
-        authScreen.resumeEnrollment();
-      } else {
-        revealAfterAuth();
-      }
-    } catch {
+      situation = await authService.getMfaSituation();
+    } catch (error) {
+      // Échec fermé. Une erreur ici signifie qu'on n'a PAS pu établir que le second facteur
+      // était satisfait — pas qu'il l'est. Révéler le contenu authentifié dans ce cas
+      // transformait la moindre panne réseau en contournement de la double authentification.
+      console.error("Niveau d'authentification invérifiable : accès refusé.", error);
+      accountSession = null;
+      authScreen.show();
+      return;
+    }
+    if (situation === 'needs-verify') {
+      authScreen.resumeVerification();
+    } else if (situation === 'needs-enroll') {
+      authScreen.resumeEnrollment();
+    } else {
       revealAfterAuth();
     }
   }

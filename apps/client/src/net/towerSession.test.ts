@@ -16,6 +16,10 @@ import {
   TowerReadyBarrier,
   TowerRejoinHistoryReceiver,
   TowerRosterController,
+  towerLocalRenderLead,
+  towerDueLocalTick,
+  towerBuildMismatchMessage,
+  TOWER_MAX_RENDER_LEAD_TICKS,
   type TowerRosterControlEvent,
   type TowerInputBatchMessage,
 } from './towerSession.js';
@@ -287,5 +291,88 @@ describe('empreintes d’intégrité', () => {
     expect(monitor.accept({ senderId: 'outsider', tick: 40, fingerprint: 'evil' })).toEqual({
       status: 'ignored',
     });
+  });
+});
+
+describe('horloge de capture des entrées', () => {
+  it('déduit le tick dû du temps réel, jamais d’un compte de déclenchements', () => {
+    // C'est toute la correction du 2 août 2026 : une horloge qui rattrape ce qu'elle a manqué.
+    expect(towerDueLocalTick(3, 0)).toBe(3);
+    expect(towerDueLocalTick(3, 49)).toBe(3);
+    expect(towerDueLocalTick(3, 50)).toBe(4);
+    expect(towerDueLocalTick(3, 1_000)).toBe(23);
+  });
+
+  it('rattrape une interruption au lieu de perdre les ticks', () => {
+    // Un onglet bloqué 500 ms doit produire les dix entrées manquantes d'un coup. L'ancienne
+    // capture, à un tick par déclenchement de minuteur, les perdait définitivement — et la
+    // partie prenait 11 secondes de retard en deux minutes et demie.
+    const avant = towerDueLocalTick(100, 5_000);
+    const apres = towerDueLocalTick(100, 5_500);
+
+    expect(apres - avant).toBe(10);
+  });
+
+  it('ne réclame jamais un tick antérieur à son origine', () => {
+    // `performance.now()` peut reculer d'une fraction de milliseconde entre deux lectures.
+    expect(towerDueLocalTick(42, -12)).toBe(42);
+  });
+});
+
+describe('contrôle de construction entre pairs', () => {
+  it('signale deux constructions différentes', () => {
+    // Le 2 août 2026, deux postes ont joué une build périmée servie par leur cache pendant
+    // qu'une build corrigée était déployée. Aucun signal ne l'a dit, et la session de test a
+    // mesuré autre chose que ce qu'elle croyait mesurer.
+    const message = towerBuildMismatchMessage('mfhk2z8', 'mfhk9qa');
+
+    expect(message).not.toBeNull();
+    expect(message).toContain('Ctrl+Maj+R');
+  });
+
+  it('ne dit rien quand les constructions concordent', () => {
+    expect(towerBuildMismatchMessage('mfhk2z8', 'mfhk2z8')).toBeNull();
+  });
+
+  it('reste muet devant un pair qui n’annonce pas sa construction', () => {
+    // Compatibilité avec une version antérieure au contrôle : mieux vaut ne rien dire qu'alerter
+    // à tort et apprendre aux joueurs à ignorer le bandeau.
+    expect(towerBuildMismatchMessage(undefined, 'mfhk2z8')).toBeNull();
+    expect(towerBuildMismatchMessage('', 'mfhk2z8')).toBeNull();
+    expect(towerBuildMismatchMessage(42, 'mfhk2z8')).toBeNull();
+  });
+});
+
+describe('avance de rendu de l’avatar local', () => {
+  it('vaut l’âge de la dernière entrée émise en marche normale', () => {
+    // Trois entrées capturées d'avance : celle qui vient d'être prise (indice 102) puis les deux
+    // que le lockstep garde en file. L'avance croît du tick que dure leur capture.
+    expect(towerLocalRenderLead(100, 103, 0)).toBe(2);
+    expect(towerLocalRenderLead(100, 103, 0.5)).toBe(2.5);
+    expect(towerLocalRenderLead(100, 103, 1)).toBe(3);
+  });
+
+  it('ne recule jamais quand une entrée est capturée', () => {
+    // Instant de la capture : le compteur avance d'un tick et la fraction repart de zéro. Un
+    // avatar qui sauterait en arrière à cet instant, vingt fois par seconde, serait injouable.
+    expect(towerLocalRenderLead(100, 104, 0)).toBe(towerLocalRenderLead(100, 103, 1));
+  });
+
+  it('plafonne l’avance quand la simulation attend un pair', () => {
+    // Le tick simulé est bloqué à 100 pendant que la capture locale continue : sans plafond,
+    // l'avatar s'éloignerait indéfiniment du monde dessiné autour de lui.
+    expect(towerLocalRenderLead(100, 160, 0.5)).toBe(TOWER_MAX_RENDER_LEAD_TICKS);
+  });
+
+  it('ne rend aucune avance tant qu’aucune entrée n’est en file', () => {
+    expect(towerLocalRenderLead(100, 100, 0)).toBe(0);
+    expect(towerLocalRenderLead(100, 101, 0)).toBe(0);
+  });
+
+  it('borne une fraction de capture aberrante', () => {
+    // `performance.now()` peut sauter (onglet mis en veille) : la fraction ne doit pas faire
+    // consommer une entrée qui n'existe pas encore.
+    expect(towerLocalRenderLead(100, 103, 12)).toBe(3);
+    expect(towerLocalRenderLead(100, 103, -4)).toBe(2);
   });
 });
