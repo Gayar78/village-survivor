@@ -1,6 +1,6 @@
 # Feuille de route
 
-Dernière mise à jour : 1er août 2026
+Dernière mise à jour : 2 août 2026
 
 ## Convention
 
@@ -313,6 +313,97 @@ Deux sorties existent, toutes deux importantes :
 mesurée, puis l'arbitrage entre le modèle actuel et un retour au client-serveur sera pris **avec
 son fils**, qui joue. C'est le bon ordre : la question n'est pas seulement technique, et elle se
 décide sur des chiffres et sur un ressenti, pas sur une intuition d'architecture.
+
+## Backlog issu de la session longue du 2 août 2026 — À traiter
+
+Partie coopérative de 16 min 32 s, vague 99, deux postes. **Le correctif d'horloge tient** :
+50,04 ms par tick, 0,08 % d'écart entre temps simulé et temps réel, avance d'entrée de 3,3 et
+3,6 ticks pour une conception à 3, aucune divergence. Ce qui suit concerne ce qui se dégrade
+**avec la durée**, et rien d'autre.
+
+### 1. La ferraille au sol croît sans limite — *cause principale*
+
+Mesuré sur la partie, population moyenne relevée toutes les deux minutes :
+
+| Minute | Monstres | Projectiles | Ferraille |
+|---|---|---|---|
+| 2 | 18 | 2 | 41 |
+| 6 | 57 | 12 | 245 |
+| 10 | 95 | 20 | 463 |
+| 14 | 107 | 109 | 761 |
+| 16 | 111 | 165 | **1005** |
+
+Les monstres plafonnent vers 110, la ferraille non : environ **60 pièces par minute, sans fin**.
+`NATURAL_SCRAP` en dépose 5 toutes les 7 secondes n'importe où à plus de 300 unités du Cœur, sur
+une carte de 12 000 × 12 000 ; les monstres en déposent aussi. **Rien ne la supprime jamais**,
+sauf un joueur passant à moins de 60 unités — or les joueurs défendent le Cœur. L'essentiel de
+cette ferraille est donc hors d'atteinte par construction.
+
+Ce que chaque pièce coûte, à mille pièces :
+
+- **40 000 calculs de distance par seconde** — le test de ramassage est en `pièces × joueurs`,
+  à chaque tick ;
+- **20 000 allocations d'objets par seconde** — `createSnapshot()` recrée chaque pièce à chaque
+  tick ;
+- **~130 000 opérations BigInt par seconde** — l'empreinte d'intégrité sérialise l'état public
+  entier en JSON canonique et le hache caractère par caractère, une fois par seconde ;
+- un dessin par pièce et par image, plus la minicarte.
+
+**Correctifs proposés**, cumulables, tous purement déterministes :
+
+- **fusion de proximité** : une pièce déposée près d'une autre s'y ajoute au lieu de créer un
+  objet. Réduit fortement le nombre sans rien retirer au joueur, et rend les tas plus lisibles ;
+- **plafond avec éviction de la plus ancienne** (~150) : garantit une borne dure quoi qu'il
+  arrive ;
+- **durée de vie** (60 à 90 s, avec un fondu) : simple, et cohérent avec le fait que personne ne
+  revient chercher une pièce.
+
+Recommandation : **fusion + plafond**. Ne pas optimiser l'algorithme de ramassage — corriger la
+population suffit, et un index spatial serait disproportionné à cette échelle.
+
+### 2. Décider du sort de la ferraille naturelle lointaine — *question de conception*
+
+À quoi sert de déposer 43 pièces par minute là où personne n'ira ? Soit on la fait apparaître
+**autour des joueurs et du Cœur**, et elle devient un enjeu ; soit on assume qu'elle est
+décorative et on la fait expirer. C'est un arbitrage de jeu, pas de performance.
+
+### 3. Mesurer ce qui ne l'est pas — *angle mort constaté*
+
+`vs.simulation.tick.duration` n'entoure que `step()`. **La projection d'état et le calcul
+d'empreinte sont juste à côté, hors mesure**, alors que leur coût croît avec la taille de l'état.
+À ajouter : deux histogrammes pour ces deux coûts, et un journal en `warn` lorsqu'une image
+rattrape plus de dix ticks, avec les populations au moment du blocage.
+
+Motif concret : sur un des deux postes, **79 images ont rattrapé plus de 5 ticks, dont 13 plus de
+25 ticks** — treize blocages de plus d'une seconde et quart. L'autre poste, aucun. Les vingt mille
+allocations par seconde sont une cause plausible de pauses de ramasse-miettes, mais **rien ne le
+mesure** : c'est une hypothèse, pas un fait.
+
+### 4. Rattacher les spans enfants à la trace de la partie — *défaut d'instrumentation*
+
+`coop.channel.join`, `coop.start.barrier`, `coop.rejoin.replay` et `account.gold.credit` sont
+créés sans contexte parent : chacun forme **sa propre trace** au lieu d'être un enfant de
+`game.session`. Vérifié dans le backend. La gate « trace racine → spans enfants → logs corrélés »
+de la phase 4 n'est donc pas tenue, alors que les spans existent bel et bien.
+
+Correctif : ouvrir le span racine dans un contexte actif et créer les enfants dedans. Portée
+réduite, mais c'est une gate de méthode, pas un confort.
+
+### 5. La fenêtre de reconnexion arrive à saturation — *dette connue, désormais chiffrée*
+
+Cette partie a atteint **19 826 ticks sur un plafond de 24 000, soit 83 %**. Une partie de vingt
+minutes l'épuise : au-delà, un joueur déconnecté ne peut plus revenir, et l'historique retenu
+approche les 15 Mo. Le correctif de fond — des instantanés périodiques de l'état — est le même que
+celui qu'exigerait un rejeu avec retour arrière. Un seul travail sert les deux.
+
+### Ce qui n'est pas en cause
+
+- **la simulation** : 0,19 ms par tick sur un poste, 0,71 ms sur l'autre, à 100-200 monstres,
+  pour un budget d'une milliseconde ;
+- **le rendu** : 0,57 ms et 1,28 ms par image, sur un budget de 16 ms ;
+- **l'écart entre les deux machines** — 56 images par seconde contre 31 — est réel, mais notre
+  code n'occupe que 1,3 ms des 33 ms disponibles sur la plus lente. La cause est ailleurs :
+  fréquence d'écran, GPU ou navigateur.
 
 ## Dette à résorber — Prochain
 
