@@ -116,19 +116,23 @@ Ces trois conditions ne suffisent pas, et une divergence réelle l'a montré.
 > conception défendable — détecter tôt — mais il implique que l'alerte ne dit rien de la gravité
 > réelle de l'écart.
 >
-> **Cause établie le 1er août 2026** par mesure directe sur les deux postes : les fonctions
-> mathématiques ne renvoient pas les mêmes valeurs d'un moteur JavaScript à l'autre.
-> `Math.hypot`, `Math.cos` et `Math.sin` divergent entre Firefox 153 et Chromium ; seul
-> `Math.atan2` concordait, sans que la spécification le garantisse. Les mesures sont consignées
-> dans [`feedback.md`](feedback.md).
+> **Cause établie le 1er août 2026** par mesure directe sur trois navigateurs : les fonctions
+> mathématiques ne renvoient pas les mêmes valeurs d'un navigateur à l'autre. `Math.cos`,
+> `Math.sin` et `Math.atan2` diffèrent **y compris entre deux versions du même moteur** —
+> Chromium 148 et Edge 150 ne s'accordent pas. `Math.hypot` diffère entre moteurs. Les mesures
+> sont consignées dans [`feedback.md`](feedback.md).
+>
+> Le critère n'est donc pas « même moteur » mais **« exactement le même build »**, ce qu'aucune
+> consigne d'usage ne peut garantir sur des logiciels à mise à jour automatique.
 >
 > En JavaScript, seuls les opérateurs arithmétiques, `Math.sqrt` et `Math.round` sont exactement
 > spécifiés. Les fonctions trigonométriques sont explicitement « approximées par
 > l'implémentation ». La simulation en appelle à vingt-huit endroits du chemin critique, à chaque
 > tick, pour produire positions et vitesses : l'écart se réinjecte dans l'état et s'accumule.
 >
-> **Conséquence immédiate : la coopération n'est fiable qu'entre navigateurs partageant le même
-> moteur.** Firefox et un navigateur Chromium ne peuvent pas jouer ensemble.
+> **Conséquence immédiate : la coopération n'est fiable qu'entre postes exécutant exactement le
+> même build de navigateur.** Une mise à jour automatique chez un seul joueur suffit à rompre
+> l'accord, sans aucun signal.
 >
 > Le correctif n'exige pas d'implémenter des fonctions trigonométriques déterministes. Les
 > appels se répartissent en trois motifs, tous remplaçables par des opérations exactement

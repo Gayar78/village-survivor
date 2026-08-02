@@ -51,9 +51,14 @@ roster et les empreintes d'état.
 > partir du même code** : ils prouvent la reproductibilité, pas l'accord entre deux postes.
 >
 > Une divergence a été constatée en conditions réelles au tick 2160, puis sa cause **établie par
-> mesure** le même jour : `Math.hypot`, `Math.cos` et `Math.sin` ne renvoient pas les mêmes
-> valeurs sous Firefox et sous un moteur Chromium. La simulation les emploie à vingt-huit
-> endroits du chemin critique.
+> mesure** le même jour sur trois navigateurs : `Math.cos`, `Math.sin` et `Math.atan2` ne
+> renvoient pas les mêmes valeurs, **y compris entre deux versions du même moteur**, et
+> `Math.hypot` diffère entre moteurs. La simulation les emploie à vingt-huit endroits du chemin
+> critique.
+>
+> Le lockstep exige donc aujourd'hui que tous les joueurs exécutent **exactement le même build de
+> navigateur** — condition qu'aucune consigne ne peut tenir, les navigateurs se mettant à jour
+> seuls.
 >
 > **Le modèle repose donc sur une hypothèse fausse en l'état** : le lockstep exige un accord au
 > bit près, que JavaScript ne garantit pas entre moteurs. La coopération n'est aujourd'hui

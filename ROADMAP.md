@@ -144,10 +144,16 @@ l'objectif : canaux temps réel usurpables, montant d'or déclaré par le client
 Constatées en partie réelle à plusieurs postes, **à traiter avant toute évolution
 fonctionnelle** sur décision du propriétaire. Détail dans [`docs/feedback.md`](docs/feedback.md).
 
-1. **Désynchronisation entre pairs — cause établie.** Mesurée le 1er août 2026 :
-   `Math.hypot`, `Math.cos` et `Math.sin` renvoient des valeurs différentes sous Firefox 153 et
-   sous un moteur Chromium. La simulation les appelle à vingt-huit endroits du chemin critique,
-   à chaque tick. **La coopération n'est fiable qu'entre navigateurs partageant le même moteur.**
+1. **Désynchronisation entre pairs — cause établie, et bloquante pour la coopération.** Mesurée
+   le 1er août 2026 sur trois navigateurs : `Math.cos`, `Math.sin` et `Math.atan2` renvoient des
+   valeurs différentes **y compris entre deux versions du même moteur** — Chromium 148 et
+   Edge 150 ne s'accordent pas — et `Math.hypot` diffère entre moteurs. La simulation les appelle
+   à vingt-huit endroits du chemin critique, à chaque tick.
+
+   **Aucune consigne d'usage ne peut protéger** : il faudrait imposer le même navigateur *et* la
+   même version, sur des logiciels qui se mettent à jour seuls. Une mise à jour silencieuse chez
+   un seul joueur rompt l'accord. Le correctif dans le code est donc la seule voie fiable, et il
+   conditionne l'existence du mode coopératif.
 
    Le correctif n'exige **pas** d'implémenter des fonctions trigonométriques déterministes. Les
    appels se répartissent en trois motifs, tous remplaçables par des opérations exactement
@@ -169,10 +175,12 @@ fonctionnelle** sur décision du propriétaire. Détail dans [`docs/feedback.md`
    d'architecture interdisant tout appel à une fonction non exactement spécifiée** dans
    `game-core`, faute de quoi le problème reviendra sans prévenir.
 
-   Indépendamment, deux protections restent utiles contre une divergence d'origine différente :
-   servir les pages avec un en-tête `Cache-Control` explicite, et **échanger un identifiant de
-   build à la jonction** pour refuser une partie entre versions différentes plutôt que de la
-   laisser diverger en silence.
+   **Parade partielle, applicable avant le correctif** : échanger à la jonction l'identité du
+   navigateur en plus de celle du build du jeu, et avertir — ou refuser — quand les pairs ne
+   partagent pas exactement le même build. Cela ne répare rien, mais transforme une
+   désynchronisation inexplicable en un message compréhensible **avant** la partie plutôt qu'au
+   bout de deux minutes. Utile aussi contre une divergence d'origine différente, tout comme
+   servir les pages avec un en-tête `Cache-Control` explicite.
 2. **Délai ressenti entre l'action et le déplacement.** Comportement inhérent au lockstep, déjà
    consigné comme conséquence négative dans l'ADR-0008 : 100 ms de retard par conception, plus
    l'attente du pair le plus lent. Deux pistes :

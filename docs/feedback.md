@@ -94,25 +94,43 @@ Math.sin   : fc8960a37b3a400b
 
 ### Cause établie le 1er août 2026
 
-Relevé depuis Firefox 153 sur le second poste :
+Relevé sur les trois postes :
 
-| Fonction | Chromium | Firefox 153 | |
+| Fonction | Chromium 148 | Firefox 153 | Edge 150 |
 |---|---|---|---|
-| `Math.hypot` | `f7f3f67607b620e6` | `e28fa4b046ac2d9e` | **diffère** |
-| `Math.atan2` | `297ed15f72ad7f79` | `297ed15f72ad7f79` | identique |
-| `Math.cos` | `547d5fdb55663325` | `a8631c792eb4f9ae` | **diffère** |
-| `Math.sin` | `fc8960a37b3a400b` | `06b8429d1dbde769` | **diffère** |
+| `Math.hypot` | `f7f3f67607b620e6` | `e28fa4b046ac2d9e` | `f7f3f67607b620e6` |
+| `Math.atan2` | `297ed15f72ad7f79` | `297ed15f72ad7f79` | `c15c5453c345de92` |
+| `Math.cos` | `547d5fdb55663325` | `a8631c792eb4f9ae` | `c836e13d9c4a7e1a` |
+| `Math.sin` | `fc8960a37b3a400b` | `06b8429d1dbde769` | `b9fee2745a61f59e` |
 
-**Trois fonctions sur quatre ne calculent pas la même chose selon le moteur.** La simulation les
-emploie à chaque tick pour produire des positions et des vitesses ; l'écart se réinjecte dans
-l'état et s'accumule jusqu'à franchir une frontière de décision. Le lockstep ne peut pas tenir
-entre Firefox et un navigateur Chromium. Ce n'est plus une hypothèse.
+**Les quatre fonctions divergent, et pas seulement entre moteurs différents.** Edge 150 et
+Chromium 148 partagent le même moteur JavaScript, et leurs résultats diffèrent pourtant sur
+`cos`, `sin` et `atan2`. Le critère n'est donc pas « même moteur » mais **« exactement le même
+build de navigateur »**.
 
-`Math.atan2` concorde sur ces 200 000 entrées, mais **cela ne le garantit pas** : la
-spécification l'autorise à diverger comme les autres. Il doit être traité comme non fiable.
+`Math.cos` et `Math.sin` produisent trois valeurs distinctes sur trois navigateurs.
+
+`Math.atan2` concordait entre Firefox et Chromium 148 : on aurait pu le croire sûr. Edge 150 le
+dément. Cette concordance était une coïncidence sur ces entrées, pas une propriété.
 
 Ce qui est hors de cause : `Math.sqrt` et `Math.round`, exactement spécifiés par le langage, de
 même que les opérateurs arithmétiques.
+
+### Conséquence : aucune consigne d'usage ne protège
+
+Une première lecture des mesures avait fait envisager une parade sans développement — demander
+aux joueurs d'utiliser le même navigateur. **Le relevé d'Edge l'invalide** : il faudrait
+imposer le même navigateur *et* la même version, sur des logiciels qui se mettent à jour
+automatiquement et sans prévenir. Deux joueurs alignés aujourd'hui divergeront après une mise à
+jour silencieuse, sans que rien ne le signale.
+
+**Le correctif dans le code est donc la seule voie fiable.** Il cesse d'être une option de
+confort pour devenir la condition d'existence du mode coopératif.
+
+En attendant, une parade partielle reste possible sans toucher au cœur : **échanger l'identité
+du moteur à la jonction** et avertir — ou refuser — quand les pairs ne partagent pas exactement
+le même build. Cela ne répare rien, mais transforme une divergence inexplicable en un message
+compréhensible avant la partie.
 
 ### Ce que cette session valide
 
