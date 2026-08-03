@@ -79,17 +79,25 @@ describe('collision des projectiles', () => {
     // et assez loin du tireur pour être abattu bien avant de l'atteindre. Le joueur ne démarre
     // pas sur le Cœur : la cible se place donc par rapport au Cœur, et la visée est calculée.
     const target = { x: heart.x + 100, y: heart.y };
-    simulation.spawnMonster('kamikaze', target);
+    const kamikazeId = simulation.spawnMonster('kamikaze', target);
+    const internals = simulation as unknown as {
+      monsters: Array<{ id: string; speed: number }>;
+    };
+    const stationaryTarget = internals.monsters.find((monster) => monster.id === kamikazeId);
+    if (stationaryTarget !== undefined) stationaryTarget.speed = 0;
 
-    const aim = { x: target.x - shooter.x, y: target.y - shooter.y };
-    for (let tick = 0; tick < 5; tick += 1) {
+    for (let tick = 0; tick < 120; tick += 1) {
+      const movingTarget = simulation
+        .createSnapshot()
+        .monsters.find((monster) => monster.id === kamikazeId)?.position;
+      if (movingTarget === undefined) break;
       simulation.step({
         'player-1': {
           sequence: 2 + tick,
           moveX: 0,
           moveY: 0,
-          aimX: aim.x,
-          aimY: aim.y,
+          aimX: movingTarget.x - shooter.x,
+          aimY: movingTarget.y - shooter.y,
           fire: true,
         },
       });

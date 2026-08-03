@@ -140,7 +140,7 @@ describe('Tower shared quests and merchant', () => {
 
     killSpawnedMonster(simulation, 'common');
     expect(simulation.createSnapshot().sharedQuest.progress).toBe(0);
-    killSpawnedMonster(simulation, 'elite');
+    killSpawnedMonster(simulation, 'legendary');
     expect(simulation.createSnapshot().sharedQuest).toMatchObject({
       rotationId: 0,
       id: 'cull-the-horde',

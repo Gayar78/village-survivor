@@ -6,7 +6,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
-import { MONSTERS } from '../src/tower/tuning.js';
+import { MONSTERS, monsterThreatBudgetScale } from '../src/tower/tuning.js';
 
 const NEUTRAL_INPUT: TowerInput = {
   sequence: 0,
@@ -23,6 +23,21 @@ function runNeutral(simulation: TowerSimulation, ticks: number): void {
 }
 
 describe('Tower dynamic roster', () => {
+  it('applique exactement la courbe de budget de menace validée de un à dix joueurs', () => {
+    expect(Array.from({ length: 10 }, (_, index) => monsterThreatBudgetScale(index + 1))).toEqual([
+      1, 1.65, 2.2, 2.65, 3.1, 3.55, 4, 4.45, 4.9, 5.35,
+    ]);
+  });
+
+  it('plafonne déterministement la foule à 160 monstres pour dix joueurs', () => {
+    const simulation = new TowerSimulation('ten-player-monster-cap', {
+      playerIds: Array.from({ length: 10 }, (_, index) => `player-${index + 1}`),
+    });
+    const spawnWave = (simulation as unknown as { spawnWave(): void }).spawnWave.bind(simulation);
+    for (let wave = 0; wave < 15; wave += 1) spawnWave();
+    expect(simulation.createSnapshot().monsters.length).toBeLessThanOrEqual(160);
+  });
+
   it('appends a standard active player, preserves order and guards invalid transitions and the cap', () => {
     const initialIds = Array.from(
       { length: TOWER_MAX_ACTIVE_PLAYERS - 1 },
@@ -162,7 +177,7 @@ describe('Tower dynamic roster', () => {
     expect(soloWave.every((monster) => monster.maxHp === MONSTERS[monster.kind].hp)).toBe(true);
     expect(leftWave.every((monster) => monster.maxHp === MONSTERS[monster.kind].hp)).toBe(true);
     expect(
-      joinedWave.every((monster) => monster.maxHp === Math.round(MONSTERS[monster.kind].hp * 1.12)),
+      joinedWave.every((monster) => monster.maxHp === Math.round(MONSTERS[monster.kind].hp * 1.02)),
     ).toBe(true);
   });
 });

@@ -7,10 +7,17 @@ import type {
   TowerBiomeId,
   TowerMonsterAffinity,
   TowerMonsterKind,
+  TowerLegacyMonsterKind,
   TowerMonsterRarity,
   TowerMonsterTrait,
   TurretDir,
 } from '@village-survivor/protocol';
+import {
+  TOWER_ACTIVE_MONSTERS,
+  TOWER_TIMELANDS_MONSTERS,
+  type TowerMonsterCatalogEntry,
+  type TowerMonsterFaction,
+} from '@village-survivor/content';
 
 /** Durée d'un tick de simulation (ms). 20 Hz. */
 export const TICK_MS = 50;
@@ -112,12 +119,79 @@ export interface MonsterDefinition {
   reward: number;
 }
 
-export const MONSTERS: Readonly<Record<TowerMonsterKind, MonsterDefinition>> = {
+const MONSTER_RADIUS_BY_SIZE = {
+  'very-small': 6,
+  small: 10,
+  medium: 14,
+  large: 20,
+  'very-large': 28,
+} as const;
+
+/**
+ * Première passe d'équilibrage commune au catalogue. Les valeurs sont dérivées du
+ * coût de menace afin que l'ajout d'une fiche reste jouable avant son réglage fin.
+ */
+function catalogStats(monster: TowerMonsterCatalogEntry): MonsterDefinition {
+  const timelands = TOWER_TIMELANDS_MONSTERS.find((candidate) => candidate.id === monster.id);
+  if (timelands !== undefined) {
+    return {
+      hp: timelands.hp,
+      speed: timelands.speed,
+      radius: timelands.radius,
+      contactDamage: timelands.contactDamage,
+      reward: timelands.reward,
+    };
+  }
+  if (monster.id === 'ancient-guardian') {
+    return { hp: 5_000, speed: 70, radius: 46, contactDamage: 55, reward: 80 };
+  }
+  const radius = MONSTER_RADIUS_BY_SIZE[monster.sizeClass];
+  const speedByShape = {
+    circle: 90,
+    triangle: 145,
+    square: 58,
+    pentagon: 78,
+    hexagon: 70,
+    star: 105,
+  } as const;
+  return {
+    hp: Math.round(24 + monster.threatCost * 24 + radius * 2),
+    speed: speedByShape[monster.roleShape],
+    radius,
+    contactDamage: Math.round(5 + monster.threatCost * 2.2),
+    reward: Math.max(1, Math.round(monster.threatCost / 2)),
+  };
+}
+
+function timelandsStats(
+  id: 'time-deer' | 'time-controller' | 'time-watch' | 'time-warden',
+): MonsterDefinition {
+  const monster = TOWER_TIMELANDS_MONSTERS.find((candidate) => candidate.id === id);
+  if (monster === undefined) {
+    throw new Error(`Monstre Timelands absent du catalogue: ${id}`);
+  }
+  return {
+    hp: monster.hp,
+    speed: monster.speed,
+    radius: monster.radius,
+    contactDamage: monster.contactDamage,
+    reward: monster.reward,
+  };
+}
+
+const LEGACY_MONSTERS: Readonly<Record<TowerLegacyMonsterKind, MonsterDefinition>> = {
   chaser: { hp: 40, speed: 90, radius: 12, contactDamage: 12, reward: 1 },
   runner: { hp: 20, speed: 170, radius: 9, contactDamage: 8, reward: 1 },
   brute: { hp: 160, speed: 55, radius: 18, contactDamage: 25, reward: 3 },
-  kamikaze: { hp: 25, speed: 120, radius: 11, contactDamage: 0, reward: 2 },
+  'time-deer': timelandsStats('time-deer'),
 };
+
+export const MONSTERS: Readonly<Record<TowerMonsterKind, MonsterDefinition>> = Object.freeze({
+  ...LEGACY_MONSTERS,
+  ...Object.fromEntries(
+    TOWER_ACTIVE_MONSTERS.map((monster) => [monster.id, catalogStats(monster)]),
+  ),
+}) as Readonly<Record<TowerMonsterKind, MonsterDefinition>>;
 
 /** Rotation des décors. Une entrée décrit aussi l'affinité dominante de ses vagues. */
 export const TOWER_BIOMES: readonly Readonly<{
@@ -130,6 +204,15 @@ export const TOWER_BIOMES: readonly Readonly<{
   { id: 'tempest', affinity: 'storm' },
 ];
 
+/** Incursions thématiques validées : une ou deux factions dominent trois vagues. */
+export const TOWER_MONSTER_INCURSIONS: readonly (readonly TowerMonsterFaction[])[] = [
+  ['forest', 'cave'],
+  ['desert', 'graveyard'],
+  ['mercenary', 'mountain'],
+  ['tribe', 'hell'],
+  ['machines'],
+];
+
 /** Nombre de vagues consécutives passées dans le même biome. */
 export const BIOME_DURATION_WAVES = 3;
 
@@ -139,6 +222,7 @@ export const MONSTER_AFFINITY_TRAITS: Readonly<Record<TowerMonsterAffinity, Towe
   fire: 'ferocious',
   frost: 'armored',
   storm: 'swift',
+  time: 'temporal',
 };
 
 export interface MonsterStatModifiers {
@@ -153,10 +237,10 @@ export interface MonsterStatModifiers {
 export const MONSTER_RARITY_MODIFIERS: Readonly<Record<TowerMonsterRarity, MonsterStatModifiers>> =
   {
     common: { hp: 1, speed: 1, contactDamage: 1, radius: 1, reward: 1 },
-    uncommon: { hp: 1.3, speed: 1.05, contactDamage: 1.15, radius: 1.05, reward: 2 },
-    rare: { hp: 1.8, speed: 1.08, contactDamage: 1.35, radius: 1.1, reward: 3 },
-    elite: { hp: 2.7, speed: 1.12, contactDamage: 1.65, radius: 1.2, reward: 5 },
-    boss: { hp: 6, speed: 0.85, contactDamage: 2.25, radius: 1.5, reward: 12 },
+    rare: { hp: 1.2, speed: 1.01, contactDamage: 1.1, radius: 1, reward: 1.3 },
+    epic: { hp: 1.45, speed: 1.02, contactDamage: 1.2, radius: 1.05, reward: 1.75 },
+    legendary: { hp: 1.8, speed: 1.03, contactDamage: 1.35, radius: 1.1, reward: 2.5 },
+    boss: { hp: 1, speed: 1, contactDamage: 1, radius: 1, reward: 1 },
   };
 
 /** Poids progressifs : les raretés supérieures n'entrent qu'aux vagues indiquées. */
@@ -166,9 +250,9 @@ export const WAVE_RARITY_RULES: readonly Readonly<{
   weight: number;
 }>[] = [
   { rarity: 'common', minimumWave: 1, weight: 70 },
-  { rarity: 'uncommon', minimumWave: 2, weight: 20 },
-  { rarity: 'rare', minimumWave: 4, weight: 8 },
-  { rarity: 'elite', minimumWave: 7, weight: 2 },
+  { rarity: 'rare', minimumWave: 2, weight: 20 },
+  { rarity: 'epic', minimumWave: 4, weight: 8 },
+  { rarity: 'legendary', minimumWave: 7, weight: 2 },
 ];
 
 /** Explosion du kamikaze (au contact d'un joueur/tourelle/cœur OU à sa mort). */
@@ -232,8 +316,6 @@ export const WAVE = {
   budgetPerStep: 2,
   budgetStepSeconds: 30,
   budgetCap: 90,
-  /** Facteur additionnel de budget par joueur supplémentaire. */
-  perPlayerFactor: 0.6,
   /** Anneau d'apparition, en fraction de `spawnZoneRadius`. */
   ringMinFactor: 0.6,
   ringMaxFactor: 0.95,
@@ -243,16 +325,30 @@ export const WAVE = {
   biomeAffinityChance: 0.7,
   /** Chaque multiple de cette valeur reçoit exactement un boss supplémentaire. */
   bossEvery: 5,
-  bossKind: 'brute' as TowerMonsterKind,
+  bossKind: 'ancient-guardian' as TowerMonsterKind,
 } as const;
 
+/** Courbe validée du budget de menace coopératif, plafonnée à dix joueurs. */
+export function monsterThreatBudgetScale(playerCount: number): number {
+  const activePlayers = Math.max(1, Math.min(10, Math.floor(playerCount)));
+  if (activePlayers === 1) return 1;
+  if (activePlayers === 2) return 1.65;
+  return Math.round((2.2 + (activePlayers - 3) * 0.45) * 100) / 100;
+}
+
 /** Coût (budget) de chaque type de monstre dans une vague. */
-export const WAVE_MONSTER_COST: Readonly<Record<TowerMonsterKind, number>> = {
+export const WAVE_MONSTER_COST: Readonly<Record<TowerMonsterKind, number>> = Object.freeze({
   chaser: 1,
   runner: 1,
-  kamikaze: 2,
   brute: 4,
-};
+  'time-deer': 12,
+  ...Object.fromEntries(
+    TOWER_ACTIVE_MONSTERS.map((monster) => [monster.id, Math.max(1, monster.threatCost)]),
+  ),
+}) as Readonly<Record<TowerMonsterKind, number>>;
+
+/** Premiere vague du biome final: un cycle complet de chaque biome ordinaire. */
+export const TIMELANDS_START_WAVE = TOWER_MONSTER_INCURSIONS.length * BIOME_DURATION_WAVES + 1;
 
 /** Poids de tirage de chaque rareté de carte de montée de niveau. */
 export const UPGRADE_RARITY_WEIGHTS = {

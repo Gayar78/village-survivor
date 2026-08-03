@@ -48,20 +48,110 @@ export type TurretShopAction =
   | `priority:${TurretTargetPriority}`
   | `global:${TowerGlobalDefenseOfferId}`;
 
-/** Types de monstres du set MVP (Phase 1). Le roster complet viendra plus tard. */
-export type TowerMonsterKind = 'chaser' | 'runner' | 'brute' | 'kamikaze';
+/**
+ * Identifiants temporaires du prototype Tower. Ils restent acceptés pendant la
+ * migration des sauvegardes/tests, mais le spawner de production ne doit plus les
+ * générer une fois le nouveau bestiaire branché.
+ */
+export type TowerLegacyMonsterKind = 'chaser' | 'runner' | 'brute' | 'time-deer';
+
+/** Monstres actifs issus du catalogue Torri validé (exclusions non comprises). */
+export type TowerMonsterKind =
+  | TowerLegacyMonsterKind
+  | 'slime'
+  | 'goblin'
+  | 'wolf'
+  | 'harpy'
+  | 'protector'
+  | 'shepherd'
+  | 'grand-wolf'
+  | 'greedy-slime'
+  | 'bat'
+  | 'dark-slime'
+  | 'spider'
+  | 'coward'
+  | 'cave-giant'
+  | 'bowler'
+  | 'giant-spider'
+  | 'weaver-spider'
+  | 'spider-queen'
+  | 'sand-slime'
+  | 'mummy'
+  | 'hyena'
+  | 'sand-worm'
+  | 'scorpion'
+  | 'beetle'
+  | 'mini-beetle'
+  | 'djinn'
+  | 'sand-golem'
+  | 'zombie'
+  | 'necromancer'
+  | 'virus-f'
+  | 'stalker'
+  | 'dark-knight'
+  | 'skeleton-small'
+  | 'skeleton-medium'
+  | 'skeleton-large'
+  | 'vampire'
+  | 'life-thief'
+  | 'decomposed-slime'
+  | 'mini-slime'
+  | 'shooter'
+  | 'thug'
+  | 'sniper'
+  | 'mauga'
+  | 'looter'
+  | 'super-looter'
+  | 'chief'
+  | 'grenadier'
+  | 'frosty'
+  | 'grumpy-dwarf'
+  | 'cannoneer'
+  | 'yeti'
+  | 'blizzard-spirit'
+  | 'polar-bear'
+  | 'summoner'
+  | 'healer'
+  | 'banner'
+  | 'paramedic'
+  | 'chanter'
+  | 'kamikaze'
+  | 'demon'
+  | 'infernal-tank'
+  | 'kidnapper'
+  | 'enchainer'
+  | 'burning-soul'
+  | 'explosive-slime'
+  | 'infernal-angel'
+  | 'explosive-robot'
+  | 'scrap-reaver'
+  | 'drillbot'
+  | 'siege-engine'
+  | 'squad-launcher'
+  | 'squadling'
+  | 'time-controller'
+  | 'time-watch'
+  | 'time-warden'
+  | 'ancient-guardian';
 
 /** Biomes du monde vivant. Leur rotation ne dépend que de la seed et de la vague. */
-export type TowerBiomeId = 'grove' | 'badlands' | 'tundra' | 'tempest';
+export type TowerBiomeId = 'grove' | 'badlands' | 'tundra' | 'tempest' | 'timelands';
 
 /** Affinité élémentaire visible d'un monstre et couleur dominante de son biome. */
-export type TowerMonsterAffinity = 'nature' | 'fire' | 'frost' | 'storm';
+export type TowerMonsterAffinity = 'nature' | 'fire' | 'frost' | 'storm' | 'time';
 
 /** Rareté de combat ; `boss` est réservée au monstre périodique unique d'une vague. */
-export type TowerMonsterRarity = 'common' | 'uncommon' | 'rare' | 'elite' | 'boss';
+export type TowerMonsterRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'boss';
 
 /** Trait synthétique exposé au rendu. Les traits ordinaires découlent de l'affinité. */
-export type TowerMonsterTrait = 'hardened' | 'ferocious' | 'armored' | 'swift' | 'colossus';
+export type TowerMonsterTrait =
+  'hardened' | 'ferocious' | 'armored' | 'swift' | 'colossus' | 'temporal';
+
+/** Altérations persistantes que le Warden peut appliquer à un monstre libéré. */
+export type TowerTemporalAlteration = 'none' | 'slow' | 'haste' | 'blink';
+
+/** Identifiants ordonnés des cinq paliers cumulatifs de fin de partie. */
+export type TowerEndgameTierId = 1 | 2 | 3 | 4 | 5;
 
 /** Arsenal personnel disponible dès le début d'une partie Tower. */
 export type TowerWeaponId = 'rifle' | 'shotgun' | 'marksman';
@@ -277,6 +367,99 @@ export type TowerBiomeState = Readonly<{
   durationWaves: number;
 }>;
 
+/**
+ * Arrivée unique des Timelands. La forme discriminée interdit les combinaisons
+ * impossibles (par exemple une annonce sans tick d'arrivée).
+ */
+export type TowerTimelandsArrivalState =
+  | Readonly<{ status: 'pending' }>
+  | Readonly<{
+      status: 'announcing';
+      arrivedAtTick: number;
+      announcementEndsAtTick: number;
+    }>
+  | Readonly<{ status: 'active'; arrivedAtTick: number }>;
+
+/** Ralenti, accélération ou gel actif, borné exclusivement par des ticks lockstep. */
+export type TowerTemporalEffectState =
+  | Readonly<{
+      id: number;
+      kind: 'slow' | 'haste' | 'freeze';
+      scope: 'global';
+      scale: number;
+      activatedAtTick: number;
+      expiresAtTick: number;
+      sourceMonsterId: string | null;
+    }>
+  | Readonly<{
+      id: number;
+      kind: 'slow' | 'haste' | 'freeze';
+      scope: 'player';
+      playerId: string;
+      scale: number;
+      activatedAtTick: number;
+      expiresAtTick: number;
+      sourceMonsterId: string | null;
+    }>;
+
+/** Cycle de vie public du Warden singleton invoqué à l'arrivée des Timelands. */
+export type TowerTimelandsWardenState =
+  | Readonly<{ status: 'not-spawned' }>
+  | Readonly<{
+      status: 'active';
+      monsterId: string;
+      nextReleaseAtTick: number;
+      releasedMonsterIds: readonly string[];
+      lowHpRelocationUsed: boolean;
+    }>
+  | Readonly<{
+      status: 'defeated';
+      monsterId: string;
+      defeatedAtTick: number;
+    }>;
+
+/** Projection publique complète du biome final et de ses effets temporels. */
+export type TowerTimelandsState = Readonly<{
+  arrival: TowerTimelandsArrivalState;
+  activeEffects: readonly TowerTemporalEffectState[];
+  warden: TowerTimelandsWardenState;
+}>;
+
+export type TowerEndgameActiveTierState = Readonly<{
+  id: TowerEndgameTierId;
+  activatedAtTick: number;
+}>;
+
+/**
+ * Paliers cumulatifs de fin de partie. `nextTier` rend le prochain déclenchement
+ * affichable sans que le client ne recalcule le calendrier du moteur.
+ */
+export type TowerEndgameState = Readonly<{
+  phaseStartedAtTick: number | null;
+  activeTiers: readonly TowerEndgameActiveTierState[];
+  nextTier: Readonly<{ id: TowerEndgameTierId; triggersAtTick: number }> | null;
+  announcement: Readonly<{ tierId: TowerEndgameTierId; endsAtTick: number }> | null;
+}>;
+
+/** État temporel optionnel d'un monstre ; l'absence signifie qu'il n'est pas affecté. */
+export type TowerMonsterTemporalState =
+  | Readonly<{ status: 'frozen' }>
+  | Readonly<{
+      status: 'warden-controlled';
+      wardenMonsterId: string;
+      alteration: TowerTemporalAlteration;
+    }>;
+
+/** TÃ©lÃ©graphe public d'une capacitÃ© ennemie, calculÃ© uniquement par la simulation. */
+export type TowerMonsterAbilityState = Readonly<{
+  kind: 'ranged' | 'heal' | 'bolster' | 'summon' | 'control' | 'slam' | 'disable';
+  phase: 'telegraph';
+  remainingMs: number;
+  totalMs: number;
+  radius: number;
+  targetPosition?: Vector2;
+}>;
+
 export type TowerMonsterState = Readonly<{
   id: string;
   kind: TowerMonsterKind;
@@ -287,6 +470,25 @@ export type TowerMonsterState = Readonly<{
   hp: number;
   maxHp: number;
   radius: number;
+  shieldRatio?: number;
+  camouflaged?: boolean;
+  empowered?: boolean;
+  temporal?: TowerMonsterTemporalState;
+  /** Absent entre deux capacitÃ©s afin de garder les snapshots rÃ©seau compacts. */
+  ability?: TowerMonsterAbilityState;
+}>;
+
+export type TowerMonsterZoneKind = 'poison' | 'web' | 'sand' | 'ice' | 'fire' | 'time' | 'ray';
+
+/** Zone hostile bornÃ©e et persistante. Aucun timestamp mural ne transite sur le fil. */
+export type TowerMonsterZoneState = Readonly<{
+  id: string;
+  kind: TowerMonsterZoneKind;
+  position: Vector2;
+  radius: number;
+  remainingMs: number;
+  durationMs: number;
+  endPosition?: Vector2;
 }>;
 
 /** Ferraille au sol (ramassable). L'or n'a pas d'entité : gagné directement au kill. */
@@ -306,6 +508,10 @@ export type TowerEventType =
   | 'upgrade-selected'
   | 'scrap-collected'
   | 'quest-completed'
+  | 'timelands-arrived'
+  | 'time-rewound'
+  | 'warden-defeated'
+  | 'endgame-tier-activated'
   | 'defeat';
 
 export type TowerEvent = Readonly<{
@@ -324,6 +530,10 @@ export type TowerGameState = Readonly<{
   world: Readonly<{ width: number; height: number; spawnZoneRadius: number }>;
   /** Biome actif, calculé uniquement depuis `seed` et `wave`. */
   biome: TowerBiomeState;
+  /** État du biome final, présent dès le début afin d'exposer son arrivée à venir. */
+  timelands: TowerTimelandsState;
+  /** Calendrier et paliers cumulatifs activés après l'arrivée des Timelands. */
+  endgame: TowerEndgameState;
   /** Numéro de vague courant + budget d'apparition (pour le HUD/debug). */
   wave: number;
   /** Ferraille COMMUNE (fonds de défense partagé pour la boutique de tourelle). */
@@ -342,6 +552,7 @@ export type TowerGameState = Readonly<{
   heart: HeartState;
   turrets: readonly TurretState[];
   monsters: readonly TowerMonsterState[];
+  monsterZones: readonly TowerMonsterZoneState[];
   projectiles: readonly TowerProjectileState[];
   scraps: readonly ScrapPickupState[];
   events: readonly TowerEvent[];

@@ -11,3 +11,4 @@
  * par Zod. Le rétablir est un point ouvert de la feuille de route.
  */
 export * from './tower.js';
+export * from './tower-monsters.js';

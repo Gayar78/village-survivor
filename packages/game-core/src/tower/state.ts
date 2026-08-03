@@ -6,6 +6,7 @@ import type {
   TowerMonsterAffinity,
   TowerMonsterKind,
   TowerMonsterRarity,
+  TowerMonsterTemporalState,
   TowerMonsterTrait,
   TurretModuleId,
   TurretTargetPriority,
@@ -44,6 +45,7 @@ export interface MutableTowerPlayer {
   pendingUpgrades: number;
   upgradeChoices: TowerUpgradeCard[];
   downedRemainingMs: number;
+  hostileSlowRemainingMs: number;
   /** Intention persistante reçue par l'entrée lockstep courante. */
   turretWorkshopOpen: boolean;
   activeWeaponId: TowerWeaponId;
@@ -73,7 +75,7 @@ export interface MutableTowerPlayer {
   explodeOnKill: boolean;
   /** Croissance du calibre de la balle en vol (px/s). */
   growingBullet: number;
-  /** Piles de ralentissement appliquées par les coups critiques de ce joueur. */
+  /** Piles de « crit-slow » (stockées, effet fin — pas encore rendu). */
   critSlowStacks: number;
 }
 
@@ -97,17 +99,38 @@ export interface MutableTowerMonster {
   burnStacks: number;
   /** Joueur crédité des dégâts de brûlure (id) ; undefined sinon. */
   burnOwnerId: string | undefined;
-  /** Ralentissement en cours : durée restante (ms) et piles cumulées. */
   slowRemainingMs: number;
   slowStacks: number;
-  /**
-   * Kamikaze uniquement : sa charge a-t-elle déjà sauté ?
-   *
-   * Les points de vie ne peuvent pas servir de garde d'unicité, `damageMonster` les mettant à
-   * zéro avant d'appeler `killMonster`. Ce drapeau n'est pas projeté dans l'état public et
-   * n'entre donc pas dans l'empreinte comparée par le lockstep.
-   */
+  /** Prevents any death explosion from being applied twice. */
   detonated: boolean;
+  /** Etat public des interactions Timelands; toute transition est projetee au snapshot. */
+  temporal: TowerMonsterTemporalState | undefined;
+  /** Deterministic timers used by the Torri behavior primitives. */
+  abilityCooldownRemainingMs: number;
+  abilityTelegraphRemainingMs: number;
+  abilityTelegraphTotalMs: number;
+  abilityTargetPosition: Vector2 | undefined;
+  abilityUses: number;
+  behaviorElapsedMs: number;
+  lastDamagedTick: number;
+  reviveCount: number;
+  shieldHp: number;
+  camouflageRemainingMs: number;
+  supportBuffRemainingMs: number;
+  targetPlayerId: string | undefined;
+  targetLockRemainingMs: number;
+}
+
+export interface MutableTowerMonsterZone {
+  id: string;
+  kind: 'poison' | 'web' | 'sand' | 'ice' | 'fire' | 'time' | 'ray';
+  position: Vector2;
+  radius: number;
+  remainingMs: number;
+  durationMs: number;
+  pulseCooldownRemainingMs: number;
+  damagePerPulse: number;
+  endPosition: Vector2 | undefined;
 }
 
 export interface MutableTowerProjectile {
@@ -126,15 +149,11 @@ export interface MutableTowerProjectile {
   /** Rebonds restants (bounce/ricochet). */
   bounce: number;
   burnStacks: number;
+  critSlowStacks: number;
   explodeOnKill: boolean;
   lifestealPct: number;
   /** Croissance du calibre en vol (px/s). */
   growingBullet: number;
-  /**
-   * Piles de ralentissement à appliquer à l'impact. Non nul uniquement lorsque le tir a été
-   * critique et que son tireur possède l'amélioration « Fracture glaciale ».
-   */
-  critSlowStacks: number;
   /** Id du joueur tireur (crédit XP/or/vol de vie) ; undefined pour une tourelle. */
   ownerId: string | undefined;
   /** Monstres déjà touchés (évite les doubles impacts en perforation/rebond). */

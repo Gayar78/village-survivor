@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 
 import { recordFrameDuration } from '../observability/gameTelemetry.js';
 import {
+  TOWER_MONSTER_CATALOG,
+  type TowerMonsterCatalogEntry,
+  type TowerMonsterFaction,
+  type TowerMonsterRoleShape,
+} from '@village-survivor/content';
+
+import {
   getVisualPreferences,
   subscribeVisualPreferences,
   type VisualPreferences,
@@ -68,18 +75,47 @@ const COLORS = {
   hpBack: 0x07100c,
 } as const;
 
-const MONSTER_COLORS: Readonly<Record<TowerMonsterKind, number>> = {
+const LEGACY_MONSTER_COLORS: Readonly<Partial<Record<TowerMonsterKind, number>>> = {
   chaser: 0x8f6254,
   runner: 0xd0a749,
   brute: 0x765a82,
-  kamikaze: 0xd66a3f,
+  'time-deer': 0x9b59b6,
 };
+
+const MONSTER_FACTION_COLORS: Readonly<Record<TowerMonsterFaction, number>> = {
+  forest: 0x21a66f,
+  cave: 0x633a91,
+  desert: 0xd68a32,
+  graveyard: 0x62bf71,
+  mercenary: 0xa84e45,
+  mountain: 0x65afe8,
+  tribe: 0x25bbb4,
+  hell: 0xe34b35,
+  machines: 0x71899b,
+  timelands: 0x914fd4,
+  unique: 0x8e44ad,
+};
+
+const MONSTER_CATALOG_BY_ID = new Map(
+  TOWER_MONSTER_CATALOG.map((monster) => [monster.id, monster] as const),
+);
+
+function monsterCatalogEntry(kind: TowerMonsterKind): TowerMonsterCatalogEntry | undefined {
+  return MONSTER_CATALOG_BY_ID.get(kind);
+}
+
+function monsterColor(kind: TowerMonsterKind): number {
+  const monster = monsterCatalogEntry(kind);
+  return monster === undefined
+    ? (LEGACY_MONSTER_COLORS[kind] ?? 0x8f6254)
+    : MONSTER_FACTION_COLORS[monster.faction];
+}
 
 const RARITY_MARKER_RADIUS: Readonly<Record<TowerMonsterRarity, number>> = {
   common: 0,
-  uncommon: 3,
-  rare: 5,
-  elite: 7,
+  rare: 3,
+  epic: 5,
+  legendary: 7,
   boss: 11,
 };
 
@@ -213,6 +249,11 @@ export class TowerScene extends Phaser.Scene {
     const previous = this.previousState;
     const localId = state.player.id;
     const localPredicted = this.session.getLocalRenderPosition();
+    const previousPlayers = new Map(previous?.players.map((item) => [item.id, item] as const));
+    const previousMonsters = new Map(previous?.monsters.map((item) => [item.id, item] as const));
+    const previousProjectiles = new Map(
+      previous?.projectiles.map((item) => [item.id, item] as const),
+    );
 
     this.renderPlayerPos.clear();
     for (const player of state.players) {
@@ -220,7 +261,7 @@ export class TowerScene extends Phaser.Scene {
         this.renderPlayerPos.set(player.id, localPredicted);
         continue;
       }
-      const before = previous?.players.find((item) => item.id === player.id);
+      const before = previousPlayers.get(player.id);
       this.renderPlayerPos.set(
         player.id,
         before === undefined ? player.position : lerpVec(before.position, player.position, alpha),
@@ -229,7 +270,7 @@ export class TowerScene extends Phaser.Scene {
 
     this.renderMonsterPos.clear();
     for (const monster of state.monsters) {
-      const before = previous?.monsters.find((item) => item.id === monster.id);
+      const before = previousMonsters.get(monster.id);
       this.renderMonsterPos.set(
         monster.id,
         before === undefined ? monster.position : lerpVec(before.position, monster.position, alpha),
@@ -238,7 +279,7 @@ export class TowerScene extends Phaser.Scene {
 
     this.renderProjectilePos.clear();
     for (const projectile of state.projectiles) {
-      const before = previous?.projectiles.find((item) => item.id === projectile.id);
+      const before = previousProjectiles.get(projectile.id);
       this.renderProjectilePos.set(
         projectile.id,
         before === undefined
@@ -270,12 +311,44 @@ export class TowerScene extends Phaser.Scene {
     const graphics = this.graphics;
     graphics.clear();
     this.drawGround(state);
+    this.drawMonsterZones(state);
     this.drawScraps(state);
     this.drawHeart(state.heart);
     this.drawTurrets(state.turrets);
     this.drawProjectiles(state);
     this.drawMonsters(state);
     this.drawPlayers(state);
+  }
+
+  private drawMonsterZones(state: TowerGameState): void {
+    const colors = {
+      poison: 0x62d96b,
+      web: 0xd8e5f2,
+      sand: 0xd6a254,
+      ice: 0x6ed8ff,
+      fire: 0xff6238,
+      time: 0xa768ff,
+      ray: 0xff5f8f,
+    } as const;
+    for (const zone of state.monsterZones) {
+      const start = this.toScreen(zone.position);
+      const color = colors[zone.kind];
+      const life = Math.max(0, zone.remainingMs / Math.max(1, zone.durationMs));
+      if (zone.endPosition !== undefined) {
+        const end = this.toScreen(zone.endPosition);
+        this.graphics.lineStyle(Math.max(2, zone.radius * 2), color, 0.18 + life * 0.55);
+        this.graphics.lineBetween(start.x, start.y, end.x, end.y);
+        this.graphics.lineStyle(1.5, 0xffffff, 0.2 + life * 0.45);
+        this.graphics.lineBetween(start.x, start.y, end.x, end.y);
+        continue;
+      }
+      this.graphics.fillStyle(color, 0.05 + life * 0.09);
+      this.graphics.fillCircle(start.x, start.y, zone.radius);
+      this.graphics.lineStyle(1.5, color, 0.3 + life * 0.55);
+      this.graphics.strokeCircle(start.x, start.y, zone.radius);
+      this.graphics.lineStyle(1, color, 0.18 + life * 0.35);
+      this.graphics.strokeCircle(start.x, start.y, zone.radius * life);
+    }
   }
 
   private drawGround(state: TowerGameState): void {
@@ -467,24 +540,24 @@ export class TowerScene extends Phaser.Scene {
     const graphics = this.graphics;
     for (const monster of state.monsters) {
       const { x, y } = this.toScreen(this.monsterRenderPos(monster));
-      const color = MONSTER_COLORS[monster.kind];
+      const color = monsterColor(monster.kind);
+      const catalog = monsterCatalogEntry(monster.kind);
+      this.drawMonsterAbilityTelegraph(monster);
       this.drawMonsterRarityAura(x, y, monster);
-      graphics.fillStyle(color, 1);
-      if (monster.kind === 'runner' || monster.kind === 'kamikaze') {
-        graphics.fillTriangle(
-          x,
-          y - monster.radius,
-          x + monster.radius,
-          y + monster.radius * 0.8,
-          x - monster.radius,
-          y + monster.radius * 0.8,
-        );
-      } else {
-        graphics.fillCircle(x, y, monster.radius);
-      }
-      if (monster.kind === 'brute') {
+      graphics.fillStyle(color, monster.camouflaged === true ? 0.34 : 1);
+      this.drawMonsterSilhouette(x, y, monster.radius, catalog?.roleShape ?? 'circle');
+      if (monster.kind === 'brute' || catalog?.roleShape === 'square') {
         graphics.lineStyle(3, COLORS.root, 0.7);
         graphics.strokeCircle(x, y, monster.radius * 0.65);
+      }
+      this.drawMonsterSignatureMark(x, y, monster.radius, catalog?.signature ?? '');
+      if (monster.shieldRatio !== undefined) {
+        graphics.lineStyle(2.5, 0x66d9ff, 0.35 + monster.shieldRatio * 0.6);
+        graphics.strokeCircle(x, y, monster.radius + 4);
+      }
+      if (monster.empowered === true) {
+        graphics.lineStyle(2, 0x71f0c5, 0.75);
+        graphics.strokeCircle(x, y, monster.radius * 0.78);
       }
       this.drawMonsterRarityMarker(x, y, monster);
       graphics.lineStyle(1, 0x15130d, 0.8);
@@ -502,32 +575,188 @@ export class TowerScene extends Phaser.Scene {
     }
   }
 
+  private drawMonsterAbilityTelegraph(monster: TowerMonsterState): void {
+    const ability = monster.ability;
+    if (ability === undefined) return;
+    const center = this.toScreen(ability.targetPosition ?? this.monsterRenderPos(monster));
+    const progress = 1 - ability.remainingMs / Math.max(1, ability.totalMs);
+    const color =
+      ability.kind === 'heal'
+        ? 0x65f2a0
+        : ability.kind === 'bolster'
+          ? 0x62b6ff
+          : ability.kind === 'summon'
+            ? 0xc879ff
+            : ability.kind === 'control'
+              ? 0x7ad7ff
+              : ability.kind === 'disable'
+                ? 0xffd54f
+                : 0xff665f;
+    const radius = Math.max(18, ability.radius || monster.radius * 1.5);
+    this.graphics.fillStyle(color, 0.035 + progress * 0.08);
+    this.graphics.fillCircle(center.x, center.y, radius);
+    this.graphics.lineStyle(1.5 + progress * 2, color, 0.35 + progress * 0.55);
+    this.graphics.strokeCircle(center.x, center.y, radius * (1 - progress * 0.18));
+    if (ability.kind === 'ranged' || ability.kind === 'disable') {
+      const origin = this.toScreen(this.monsterRenderPos(monster));
+      this.graphics.lineStyle(1.5, color, 0.28 + progress * 0.5);
+      this.graphics.lineBetween(origin.x, origin.y, center.x, center.y);
+    }
+  }
+
+  /** Marque intÃ©rieure : elle porte le pouvoir, sans dÃ©passer la zone de collision. */
+  private drawMonsterSignatureMark(x: number, y: number, radius: number, signature: string): void {
+    const graphics = this.graphics;
+    const extent = radius * 0.42;
+    graphics.lineStyle(Math.max(1.5, radius * 0.1), 0x08101d, 0.82);
+    if (
+      signature.includes('heal') ||
+      signature.includes('repair') ||
+      signature.includes('revive')
+    ) {
+      graphics.lineBetween(x - extent, y, x + extent, y);
+      graphics.lineBetween(x, y - extent, x, y + extent);
+      return;
+    }
+    if (signature.includes('explosion') || signature.includes('volatile')) {
+      graphics.strokeCircle(x, y, extent * 0.62);
+      for (let index = 0; index < 4; index += 1) {
+        const angle = index * (Math.PI / 2);
+        graphics.lineBetween(
+          x + Math.cos(angle) * extent * 0.7,
+          y + Math.sin(angle) * extent * 0.7,
+          x + Math.cos(angle) * extent,
+          y + Math.sin(angle) * extent,
+        );
+      }
+      return;
+    }
+    if (
+      signature.includes('shot') ||
+      signature.includes('projectile') ||
+      signature.includes('snipe') ||
+      signature.includes('cannon') ||
+      signature.includes('barrage')
+    ) {
+      graphics.lineBetween(x - extent, y + extent * 0.45, x + extent, y - extent * 0.45);
+      graphics.fillStyle(0x08101d, 0.82);
+      graphics.fillCircle(x + extent * 0.62, y - extent * 0.28, Math.max(1.5, radius * 0.1));
+      return;
+    }
+    if (
+      signature.includes('web') ||
+      signature.includes('freeze') ||
+      signature.includes('slow') ||
+      signature.includes('control') ||
+      signature.includes('curse')
+    ) {
+      graphics.lineBetween(x - extent, y - extent, x + extent, y + extent);
+      graphics.lineBetween(x + extent, y - extent, x - extent, y + extent);
+      return;
+    }
+    if (
+      signature.includes('summon') ||
+      signature.includes('brood') ||
+      signature.includes('squad') ||
+      signature.includes('carry')
+    ) {
+      graphics.fillStyle(0x08101d, 0.82);
+      graphics.fillCircle(x, y - extent * 0.55, Math.max(1.5, radius * 0.1));
+      graphics.fillCircle(x - extent * 0.55, y + extent * 0.4, Math.max(1.5, radius * 0.1));
+      graphics.fillCircle(x + extent * 0.55, y + extent * 0.4, Math.max(1.5, radius * 0.1));
+      return;
+    }
+    // Marque neutre mais stable pour les combattants de contact.
+    graphics.strokeCircle(x, y, Math.max(2, extent * 0.48));
+  }
+
+  private regularPolygonPoints(
+    x: number,
+    y: number,
+    radius: number,
+    sides: number,
+    rotation = -Math.PI / 2,
+  ): Phaser.Math.Vector2[] {
+    return Array.from({ length: sides }, (_, index) => {
+      const angle = rotation + (index / sides) * Math.PI * 2;
+      return new Phaser.Math.Vector2(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+    });
+  }
+
+  private drawMonsterSilhouette(
+    x: number,
+    y: number,
+    radius: number,
+    shape: TowerMonsterRoleShape,
+  ): void {
+    const graphics = this.graphics;
+    if (shape === 'circle') {
+      graphics.fillCircle(x, y, radius);
+      return;
+    }
+    if (shape === 'triangle') {
+      graphics.fillTriangle(
+        x,
+        y - radius,
+        x + radius * 0.88,
+        y + radius * 0.72,
+        x - radius * 0.88,
+        y + radius * 0.72,
+      );
+      return;
+    }
+    if (shape === 'square') {
+      const half = radius * 0.72;
+      graphics.fillRect(x - half, y - half, half * 2, half * 2);
+      return;
+    }
+    if (shape === 'star') {
+      const points: Phaser.Math.Vector2[] = [];
+      for (let index = 0; index < 10; index += 1) {
+        const pointRadius = index % 2 === 0 ? radius : radius * 0.48;
+        const angle = -Math.PI / 2 + (index / 10) * Math.PI * 2;
+        points.push(
+          new Phaser.Math.Vector2(
+            x + Math.cos(angle) * pointRadius,
+            y + Math.sin(angle) * pointRadius,
+          ),
+        );
+      }
+      graphics.fillPoints(points, true);
+      return;
+    }
+    graphics.fillPoints(
+      this.regularPolygonPoints(x, y, radius, shape === 'pentagon' ? 5 : 6),
+      true,
+    );
+  }
+
   /**
    * Les formes de rareté s'ajoutent à la silhouette native, sans la remplacer :
    * le type reste lisible même si les couleurs de préférence sont proches.
    */
   private rarityMarkerColor(rarity: TowerMonsterRarity): number {
     switch (rarity) {
-      case 'uncommon':
-        return hexToPhaserColor(this.visualPreferences.accentSecondaryColor, COLORS.ally);
       case 'rare':
-        return hexToPhaserColor(this.visualPreferences.accentColor, COLORS.turretRange);
-      case 'elite':
+        return 0x3498db;
+      case 'epic':
+        return 0x9b59b6;
+      case 'legendary':
+        return 0xf1c40f;
       case 'boss':
-        return hexToPhaserColor(this.visualPreferences.hudColor, COLORS.heartOutline);
+        return 0xd252e1;
       case 'common':
         return 0;
     }
   }
 
   private drawMonsterRarityAura(x: number, y: number, monster: TowerMonsterState): void {
-    if (monster.rarity !== 'boss') {
-      return;
-    }
+    if (monster.rarity === 'common') return;
     const graphics = this.graphics;
     const color = this.rarityMarkerColor(monster.rarity);
-    graphics.fillStyle(color, 0.12);
-    graphics.fillCircle(x, y, monster.radius + RARITY_MARKER_RADIUS.boss + 7);
+    const alpha = monster.rarity === 'rare' ? 0.06 : monster.rarity === 'epic' ? 0.1 : 0.13;
+    graphics.fillStyle(color, alpha);
+    graphics.fillCircle(x, y, monster.radius + RARITY_MARKER_RADIUS[monster.rarity] + 7);
   }
 
   private drawDiamond(x: number, y: number, radius: number, color: number, alpha: number): void {
@@ -547,21 +776,40 @@ export class TowerScene extends Phaser.Scene {
     const color = this.rarityMarkerColor(monster.rarity);
     const radius = monster.radius + RARITY_MARKER_RADIUS[monster.rarity];
 
-    if (monster.rarity === 'uncommon') {
+    if (monster.rarity === 'rare') {
       graphics.lineStyle(1.5, color, 0.9);
       graphics.strokeCircle(x, y, radius);
       return;
     }
 
-    if (monster.rarity === 'rare') {
+    if (monster.rarity === 'epic') {
       this.drawDiamond(x, y, radius, color, 0.95);
+      graphics.fillStyle(color, 0.95);
+      for (let index = 0; index < 4; index += 1) {
+        const angle = index * (Math.PI / 2) + Math.PI / 4;
+        graphics.fillCircle(
+          x + Math.cos(angle) * (radius + 4),
+          y + Math.sin(angle) * (radius + 4),
+          1.8,
+        );
+      }
       return;
     }
 
-    if (monster.rarity === 'elite') {
+    if (monster.rarity === 'legendary') {
       graphics.lineStyle(2, color, 0.96);
       graphics.strokeCircle(x, y, radius);
       this.drawDiamond(x, y, radius + 3, color, 0.96);
+      graphics.lineStyle(1.5, color, 0.96);
+      for (let index = 0; index < 8; index += 1) {
+        const angle = (index / 8) * Math.PI * 2;
+        graphics.lineBetween(
+          x + Math.cos(angle) * (radius + 4),
+          y + Math.sin(angle) * (radius + 4),
+          x + Math.cos(angle) * (radius + 8),
+          y + Math.sin(angle) * (radius + 8),
+        );
+      }
       return;
     }
 
@@ -769,7 +1017,7 @@ export class TowerScene extends Phaser.Scene {
 
   private drawMinimapMonster(point: Vector2, monster: TowerMonsterState): void {
     const graphics = this.minimap;
-    const baseColor = MONSTER_COLORS[monster.kind];
+    const baseColor = monsterColor(monster.kind);
     const markerColor = this.rarityMarkerColor(monster.rarity);
 
     if (monster.rarity === 'boss') {
@@ -786,16 +1034,16 @@ export class TowerScene extends Phaser.Scene {
 
     graphics.fillStyle(baseColor, 0.95);
     graphics.fillCircle(point.x, point.y, 2);
-    if (monster.rarity === 'uncommon') {
+    if (monster.rarity === 'rare') {
       graphics.lineStyle(1, markerColor, 1);
       graphics.strokeCircle(point.x, point.y, 3.5);
       return;
     }
-    if (monster.rarity === 'rare') {
+    if (monster.rarity === 'epic') {
       this.drawMinimapDiamond(point, 4, markerColor);
       return;
     }
-    if (monster.rarity === 'elite') {
+    if (monster.rarity === 'legendary') {
       graphics.lineStyle(1.5, markerColor, 1);
       graphics.strokeCircle(point.x, point.y, 4.5);
       this.drawMinimapDiamond(point, 5.5, markerColor);

@@ -12,6 +12,7 @@ const BIOME_LABELS: Readonly<Record<TowerGameState['biome']['id'], string>> = {
   badlands: 'Terres arides',
   tundra: 'Toundra',
   tempest: 'Front des tempêtes',
+  timelands: 'Terres du Temps',
 };
 
 const AFFINITY_LABELS: Readonly<Record<TowerGameState['biome']['affinity'], string>> = {
@@ -19,6 +20,7 @@ const AFFINITY_LABELS: Readonly<Record<TowerGameState['biome']['affinity'], stri
   fire: 'Feu',
   frost: 'Givre',
   storm: 'Foudre',
+  time: 'Temps',
 };
 
 const TRAIT_LABELS: Readonly<Record<TowerGameState['monsters'][number]['trait'], string>> = {
@@ -27,6 +29,7 @@ const TRAIT_LABELS: Readonly<Record<TowerGameState['monsters'][number]['trait'],
   armored: 'Blindé',
   swift: 'Fulgurant',
   colossus: 'Colosse',
+  temporal: 'Temporel',
 };
 
 function percentage(value: number, maximum: number): number {

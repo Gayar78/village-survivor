@@ -5,6 +5,249 @@
 // (stats joueur/arme/tourelle/monstres, courbe d'XP, budget de vagues…) appartient au
 // moteur (game-core, Lot A).
 
+/** Identifiants canoniques du roster du biome final. */
+export type TowerTimelandsMonsterId =
+  'time-deer' | 'time-controller' | 'time-watch' | 'time-warden';
+
+export type TowerTimelandsMechanic =
+  | Readonly<{
+      kind: 'warden-control';
+      releaseIntervalTicks: number;
+      releaseCount: number;
+      resurrectionChance: number;
+      resurrectionHpFraction: number;
+      alterations: readonly ['slow', 'haste', 'blink'];
+      lowHpRelocationThreshold: number;
+    }>
+  | Readonly<{
+      kind: 'deer-escape';
+      teleportCooldownTicks: number;
+      minimumTeleportDistance: number;
+      guaranteedUpgradeDrop: true;
+    }>
+  | Readonly<{
+      kind: 'controller-strike';
+      freezeDurationTicks: number;
+      vanishAfterHit: true;
+      rollbackChance: number;
+      rollbackCooldownTicks: number;
+    }>
+  | Readonly<{
+      kind: 'watch-death-effect';
+      rewindChance: number;
+      rewindTicks: number;
+      globalSlow: Readonly<{ scale: number; durationTicks: number }>;
+      globalHaste: Readonly<{ scale: number; durationTicks: number }>;
+      playerSlow: Readonly<{ scale: number; durationTicks: number }>;
+      playerHaste: Readonly<{ scale: number; durationTicks: number }>;
+    }>;
+
+/** Fiche partagée moteur/UI d'un monstre Timelands. */
+export type TowerTimelandsMonsterDefinition = Readonly<{
+  id: TowerTimelandsMonsterId;
+  label: string;
+  unique: boolean;
+  hp: number;
+  speed: number;
+  radius: number;
+  contactDamage: number;
+  reward: number;
+  spawnWeight: number;
+  minimumWaveInBiome: number;
+  maxAlive: number;
+  mechanic: TowerTimelandsMechanic;
+}>;
+
+/**
+ * Biome final et fenêtre de rembobinage, exprimés en ticks de simulation (20 Hz).
+ * Aucun consommateur n'a à convertir une durée murale pour prendre une décision.
+ */
+export const TOWER_TIMELANDS_BIOME = Object.freeze({
+  id: 'timelands' as const,
+  label: 'Terres du Temps',
+  affinity: 'time' as const,
+  finalBiome: true as const,
+  arrivalAnnouncementTicks: 80,
+  historySampleIntervalTicks: 5,
+  historyDepthTicks: 120,
+  rosterIds: Object.freeze(['time-deer', 'time-controller', 'time-watch', 'time-warden'] as const),
+});
+
+/** Roster minimal Timelands. Le Warden est exclu du tirage (`spawnWeight: 0`). */
+export const TOWER_TIMELANDS_MONSTERS: readonly TowerTimelandsMonsterDefinition[] = Object.freeze([
+  Object.freeze({
+    id: 'time-deer',
+    label: 'Cerf du Temps',
+    unique: false,
+    hp: 4_600,
+    speed: 80,
+    radius: 32,
+    contactDamage: 0,
+    reward: 45,
+    spawnWeight: 50,
+    minimumWaveInBiome: 2,
+    maxAlive: 3,
+    mechanic: Object.freeze({
+      kind: 'deer-escape',
+      teleportCooldownTicks: 30,
+      minimumTeleportDistance: 500,
+      guaranteedUpgradeDrop: true,
+    }),
+  }),
+  Object.freeze({
+    id: 'time-controller',
+    label: 'Contrôleur',
+    unique: false,
+    hp: 5_400,
+    speed: 280,
+    radius: 22,
+    contactDamage: 64,
+    reward: 18,
+    spawnWeight: 28,
+    minimumWaveInBiome: 4,
+    maxAlive: 4,
+    mechanic: Object.freeze({
+      kind: 'controller-strike',
+      freezeDurationTicks: 60,
+      vanishAfterHit: true,
+      rollbackChance: 0.25,
+      rollbackCooldownTicks: 15,
+    }),
+  }),
+  Object.freeze({
+    id: 'time-watch',
+    label: 'La Montre',
+    unique: false,
+    hp: 3_600,
+    speed: 105,
+    radius: 27,
+    contactDamage: 50,
+    reward: 16,
+    spawnWeight: 24,
+    minimumWaveInBiome: 1,
+    maxAlive: 8,
+    mechanic: Object.freeze({
+      kind: 'watch-death-effect',
+      rewindChance: 0.05,
+      rewindTicks: 80,
+      globalSlow: Object.freeze({ scale: 0.35, durationTicks: 100 }),
+      globalHaste: Object.freeze({ scale: 2.2, durationTicks: 80 }),
+      playerSlow: Object.freeze({ scale: 0.4, durationTicks: 100 }),
+      playerHaste: Object.freeze({ scale: 2.6, durationTicks: 100 }),
+    }),
+  }),
+  Object.freeze({
+    id: 'time-warden',
+    label: 'Manieur du Temps',
+    unique: true,
+    hp: 36_000,
+    speed: 50,
+    radius: 42,
+    contactDamage: 220,
+    reward: 70,
+    spawnWeight: 0,
+    minimumWaveInBiome: 0,
+    maxAlive: 1,
+    mechanic: Object.freeze({
+      kind: 'warden-control',
+      releaseIntervalTicks: 280,
+      releaseCount: 1,
+      resurrectionChance: 0.35,
+      resurrectionHpFraction: 0.9,
+      alterations: Object.freeze(['slow', 'haste', 'blink'] as const),
+      lowHpRelocationThreshold: 0.2,
+    }),
+  }),
+]);
+
+export type TowerEndgameTierDefinition = Readonly<{
+  id: 1 | 2 | 3 | 4 | 5;
+  label: string;
+  description: string;
+  /** Décalage depuis l'arrivée des Timelands ; le palier 1 est immédiat. */
+  triggerOffsetTicks: number;
+  effect:
+    | Readonly<{
+        kind: 'spawn-pressure';
+        excludedMonsterKinds: readonly ['chaser', 'runner'];
+        waveBudgetCap: number;
+      }>
+    | Readonly<{
+        kind: 'event-polarity';
+        allowedPolarities: readonly ['neutral', 'negative'];
+      }>
+    | Readonly<{ kind: 'minimum-rarity'; rarity: 'rare' }>
+    | Readonly<{
+        kind: 'turret-energy-drain';
+        basePerSecond: number;
+        rampPerMinute: number;
+      }>
+    | Readonly<{
+        kind: 'monster-adaptation';
+        hpPerMinute: number;
+        damagePerMinute: number;
+        speedPerMinute: number;
+      }>;
+}>;
+
+export const TOWER_ENDGAME_TIER_INTERVAL_TICKS = 3_000;
+export const TOWER_ENDGAME_ANNOUNCEMENT_TICKS = 80;
+
+/** Cinq paliers cumulatifs, triés par id et déclenchés sans horloge murale. */
+export const TOWER_ENDGAME_TIERS: readonly TowerEndgameTierDefinition[] = Object.freeze([
+  Object.freeze({
+    id: 1,
+    label: 'Monstres plus puissants',
+    description: 'Les petits monstres disparaissent des vagues et leur budget augmente.',
+    triggerOffsetTicks: 0,
+    effect: Object.freeze({
+      kind: 'spawn-pressure',
+      excludedMonsterKinds: Object.freeze(['chaser', 'runner'] as const),
+      waveBudgetCap: 160,
+    }),
+  }),
+  Object.freeze({
+    id: 2,
+    label: 'Événements hostiles',
+    description: 'Seuls les événements neutres ou négatifs peuvent survenir.',
+    triggerOffsetTicks: 3_000,
+    effect: Object.freeze({
+      kind: 'event-polarity',
+      allowedPolarities: Object.freeze(['neutral', 'negative'] as const),
+    }),
+  }),
+  Object.freeze({
+    id: 3,
+    label: 'Rareté forcée',
+    description: 'Tout nouveau monstre est au minimum rare.',
+    triggerOffsetTicks: 6_000,
+    effect: Object.freeze({ kind: 'minimum-rarity', rarity: 'rare' }),
+  }),
+  Object.freeze({
+    id: 4,
+    label: 'Fuite énergétique',
+    description: "L'énergie des tourelles décroît continuellement et de plus en plus vite.",
+    triggerOffsetTicks: 9_000,
+    effect: Object.freeze({
+      kind: 'turret-energy-drain',
+      basePerSecond: 3.5,
+      rampPerMinute: 1.5,
+    }),
+  }),
+  Object.freeze({
+    id: 5,
+    label: 'Adaptation des monstres',
+    description: 'Les monstres gagnent sans limite en robustesse, puissance et vitesse.',
+    triggerOffsetTicks: 12_000,
+    effect: Object.freeze({
+      kind: 'monster-adaptation',
+      hpPerMinute: 0.08,
+      damagePerMinute: 0.08,
+      speedPerMinute: 0.08,
+    }),
+  }),
+]);
+
 /** Une amélioration achetable à la boutique de tourelle (payée en Ferraille commune). */
 export interface TowerTurretShopEntry {
   id: string;

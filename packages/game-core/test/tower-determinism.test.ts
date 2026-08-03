@@ -57,7 +57,7 @@ describe('Tower lockstep determinism', () => {
     // Mis à jour le 1er août 2026 : le passage à une arithmétique exactement reproductible a
     // modifié les valeurs numériques de la simulation. Les tourelles, notamment, sont désormais
     // à des coordonnées exactement nulles là où `Math.cos(-π/2) * 240` donnait 1,47e-14.
-    expect(createTowerStateFingerprint(state)).toBe('tower-v1:c87db2e3d4da540d');
+    expect(createTowerStateFingerprint(state)).toBe('tower-v1:327a9b83a38acca3');
   });
 
   it('keeps two same-seed simulations identical through movement, combat, weapons and upgrades', () => {

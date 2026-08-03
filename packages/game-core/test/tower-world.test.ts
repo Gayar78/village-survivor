@@ -1,4 +1,5 @@
 import type { TowerMonsterAffinity, TowerMonsterTrait } from '@village-survivor/protocol';
+import { TOWER_MONSTER_CATALOG } from '@village-survivor/content';
 import { describe, expect, it } from 'vitest';
 
 import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
@@ -21,6 +22,26 @@ function spawnWaves(simulation: TowerSimulation, count: number): void {
 }
 
 describe('Tower deterministic living world', () => {
+  it('remplace les monstres génériques par la première incursion Forêt/Grottes', () => {
+    const simulation = new TowerSimulation('torri-first-incursion');
+    spawnWaves(simulation, 3);
+    const monsters = simulation.createSnapshot().monsters;
+    const catalog = new Map(TOWER_MONSTER_CATALOG.map((monster) => [monster.id, monster]));
+
+    expect(monsters.length).toBeGreaterThan(0);
+    expect(
+      monsters.every(
+        (monster) => !['chaser', 'runner', 'brute', 'time-deer'].includes(monster.kind),
+      ),
+    ).toBe(true);
+    expect(
+      monsters.every((monster) => {
+        const faction = catalog.get(monster.kind)?.faction;
+        return faction === 'forest' || faction === 'cave';
+      }),
+    ).toBe(true);
+  });
+
   it('choisit le biome depuis seed/vague, le garde trois vagues puis garantit une transition', () => {
     const first = new TowerSimulation('living-biome-seed');
     const second = new TowerSimulation('living-biome-seed');

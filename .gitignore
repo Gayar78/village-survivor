@@ -1,4 +1,6 @@
 node_modules/
+.pnpm-store/
+.audit-torri/
 dist/
 coverage/
 playwright-report/

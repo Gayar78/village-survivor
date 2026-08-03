@@ -1,5 +1,8 @@
 # Documentation de Village Survivor
 
+SpÃ©cification du bestiaire adaptÃ© :
+[`gameplay/torri-monster-integration-spec.md`](gameplay/torri-monster-integration-spec.md).
+
 La porte d'entrée de la documentation est **[`index.md`](index.md)**.
 
 Ce fichier n'existe que parce que les forges Git affichent automatiquement le `README.md` d'un

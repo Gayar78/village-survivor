@@ -160,7 +160,7 @@ describe('Tower turret workshop protection', () => {
     const exposedPlayer = player(outOfRange);
     exposedPlayer.position = { x: 600, y: 600 };
     const exposedHpBefore = exposedPlayer.hp;
-    outOfRange.spawnMonster('kamikaze', { ...exposedPlayer.position });
+    outOfRange.spawnMonster('explosive-robot', { ...exposedPlayer.position });
     outOfRange.step({ 'player-1': input({ turretWorkshopOpen: true }) });
     expect(exposedPlayer.hp).toBeLessThan(exposedHpBefore);
   });
