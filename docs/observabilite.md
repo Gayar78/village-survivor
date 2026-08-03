@@ -1,6 +1,6 @@
 # Village Survivor — Observabilité v2
 
-> Statut : cible approuvée — migration en cours
+> Statut : instrumentation v2 implémentée — preuve LAN finale à collecter
 > Version du projet : v2
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
@@ -12,29 +12,22 @@ L'observabilité doit expliquer la vie d'une room, localiser une panne entre nav
 et base, et vérifier les budgets de charge. Elle ne mesure pas l'usage produit et ne doit jamais
 ralentir ou arrêter une partie.
 
-L'instrumentation P2P v1 reste utile pendant la transition, mais disparaît avec le netcode
-lockstep. La v2 déplace l'autorité de mesure de la simulation vers `apps/server`.
-
-**Boucle 1 livrée dans le moteur :** l'événement déterministe `scrap-expired` rend l'expiration
-testable sans introduire OpenTelemetry dans `game-core`. Son agrégation en métrique serveur est
-planifiée avec `apps/server`.
-
-**Boucle 2 livrée sur le flux solo :** les erreurs réseau affichées ne contiennent ni JWT ni
-corps de message, et le test navigateur utilise un jeton sentinelle pour vérifier la frontière
-réelle. L'instrumentation `game.room` et les métriques agrégées restent volontairement prévues
-pour la boucle 4 : aucun span par tick n'a été ajouté prématurément.
+L'instrumentation P2P a été retirée avec le netcode lockstep. La simulation et ses mesures vivent
+désormais dans `apps/server`; le navigateur ne conserve que la session, la création/jonction,
+les erreurs de connexion et le coût du rendu. L'événement déterministe `scrap-expired` reste dans
+`game-core` pour rendre le cycle de vie testable sans y introduire OpenTelemetry.
 
 ## Traces
 
 | Unité | Span | Enfants autorisés |
 |---|---|---|
-| Room serveur | `game.room` | `game.room.create`, `game.room.admit`, `game.room.start`, `game.room.reconnect`, `game.room.persist`, `game.room.end` |
-| Session navigateur | `game.client.session` | création/jonction, état de connexion, retour au lobby |
-| Lobby | `hub.launch` | résolution du roster, création de room, diffusion du `roomId` |
+| Room serveur | `game.room` | `game.room.create`, `game.room.admission`, `game.room.start`, `game.room.reconnect`, `game.room.persistence`, `game.room.end` |
+| Session navigateur | `game.client.session` | `game.client.room.create`, état de connexion, retour au lobby |
+| Lobby | création de room | `game.client.room.create`, diffusion du `roomId` |
 
-Le contexte W3C est propagé sur les appels HTTP et la jonction à la room quand le transport le
-permet. Les traces ne contiennent jamais de JWT ni d'identité. `runId`, `roomId` et seed ne sont
-acceptés que sous une forme opaque ou hachée et bornée.
+Le client injecte un `traceparent` W3C dans `POST /rooms`. Le serveur n'accepte que sa grammaire
+fermée et utilise ce contexte comme parent de `game.room`; la valeur n'est jamais un attribut.
+Les traces ne contiennent ni JWT, ni identité, ni `runId`, ni `roomId`, ni seed.
 
 **Interdiction absolue :** aucun span par tick, commande, image, projectile ou entité. Un tick
 est une mesure agrégée, pas une unité de trace.
@@ -43,19 +36,20 @@ est une mesure agrégée, pas une unité de trace.
 
 | Métrique | Type | Attributs de faible cardinalité |
 |---|---|---|
-| `vs.game.rooms.active` | jauge | mode, phase |
+| `vs.game.rooms.active` | jauge | mode |
 | `vs.game.players.active` | jauge | mode |
 | `vs.game.room.duration` | histogramme | mode, résultat |
 | `vs.game.tick.duration` | histogramme ms | mode, tranche de monstres |
 | `vs.game.tick.lag` | histogramme ms | mode |
 | `vs.game.patch.size` | histogramme octets | mode |
 | `vs.game.command.rejected` | compteur | type, raison fermée |
-| `vs.game.reconnect` | compteur | résultat fermé |
+| `vs.game.reconnection` | compteur | mode, résultat fermé |
 | `vs.game.scrap.entities` | histogramme | mode |
-| `vs.game.scrap.expired` | compteur | mode |
-| `vs.game.gold.credited` | compteur | résultat fermé |
+| `vs.game.gold.credits` | compteur | mode |
 
-Le client conserve les métriques de rendu et de délai commande→état. Aucun identifiant de
+La taille est celle du buffer différentiel réellement encodé par Colyseus, mesurée autour de
+`broadcastPatch`, pas une ré-estimation JSON. Le client conserve la métrique de rendu ; le délai
+commande→état est vérifié par le test LAN multi-client. Aucun identifiant de
 compte, pseudonyme, courriel, adresse IP ou room brute ne devient un attribut de métrique.
 
 ## Logs
@@ -64,9 +58,9 @@ Le serveur lit `APP_LOG_LEVEL`, défaut `info` en LAN et `debug` en développeme
 `VITE_APP_LOG_LEVEL`. Les logs d'une trace portent `trace_id` et `span_id`, mais jamais de corps
 de JWT, de secret, de courriel, de clé de service ou de message réseau brut.
 
-Les événements utiles sont structurés : création/annulation de room, refus d'admission, changement
-de phase, reconnexion, retrait, persistance et arrêt. Les commandes valides et ticks normaux ne
-sont pas journalisés individuellement.
+Les changements de cycle de vie sont portés par les spans. Les logs structurés restent limités
+au démarrage du service et aux erreurs exploitables, notamment un retry de persistance. Les
+commandes valides et ticks normaux ne sont pas journalisés individuellement.
 
 ## Export et résilience
 
@@ -90,7 +84,7 @@ uniquement au démarrage ; les secrets ne sont pas des attributs de ressource.
 | commandes refusées | hausse anormale = client incompatible ou abus |
 | reconnexions tardives | résultat `expired` attendu après 30 secondes |
 | ferraille active | croissance continue sans retour = fuite de cycle de vie |
-| persistance | tout échec ouvre le span `game.room.persist` en erreur, sans double crédit au retry |
+| persistance | tout échec ouvre `game.room.persistence` en erreur, sans double crédit au retry |
 
 ## Données interdites et tests
 

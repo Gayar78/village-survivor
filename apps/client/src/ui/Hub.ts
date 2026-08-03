@@ -1,8 +1,7 @@
 import { friendsService } from '../hub/friendsService.js';
-import { isActiveGameDescriptor, realtimeService } from '../hub/realtimeService.js';
-import { createTowerServerRoom, TOWER_SERVER_ROOM_KEY } from '../net/TowerServerSession.js';
+import { realtimeService } from '../hub/realtimeService.js';
+import { createTowerServerRoom } from '../net/TowerServerSession.js';
 import {
-  type ActiveGameDescriptor,
   HUB_CAPACITY,
   type HubInvite,
   type HubMember,
@@ -31,7 +30,6 @@ export interface HubCallbacks {
 interface PresenceSnapshot {
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 }
 
 /** Échappe le texte dynamique injecté dans du innerHTML. */
@@ -62,15 +60,10 @@ function initialsOf(name: string): string {
 }
 
 /** Construit un instantané de présence sans propriété optionnelle undefined. */
-function toSnapshot(
-  status: PresenceStatus,
-  hubCode: string | undefined,
-  game: ActiveGameDescriptor | undefined,
-): PresenceSnapshot {
+function toSnapshot(status: PresenceStatus, hubCode: string | undefined): PresenceSnapshot {
   return {
     status,
     ...(hubCode === undefined ? {} : { hubCode }),
-    ...(game === undefined ? {} : { game }),
   };
 }
 
@@ -141,7 +134,7 @@ export class Hub {
       realtimeService.onPresence((entries) => {
         const snapshot = new Map<string, PresenceSnapshot>();
         entries.forEach((entry, userId) => {
-          snapshot.set(userId, toSnapshot(entry.status, entry.hubCode, entry.game));
+          snapshot.set(userId, toSnapshot(entry.status, entry.hubCode));
         });
         this.presence = snapshot;
         this.friendsPanel?.updatePresence();
@@ -192,11 +185,9 @@ export class Hub {
     const friendsMount = this.element.querySelector<HTMLElement>('#hub-friends-mount');
     if (friendsMount) {
       this.friendsPanel = new FriendsPanel(friendsMount, {
-        currentUserId: this.session.userId,
         presenceProvider: () => this.presenceProvider(),
         onJoinHub: (code) => this.joinHub(code),
         onInvite: (friendUserId) => this.inviteFriend(friendUserId),
-        onRejoinGame: (game) => this.rejoinGame(game),
       });
     }
 
@@ -342,18 +333,9 @@ export class Hub {
   private presenceProvider(): Map<string, PresenceSnapshot> {
     const copy = new Map<string, PresenceSnapshot>();
     this.presence.forEach((entry, userId) => {
-      copy.set(userId, toSnapshot(entry.status, entry.hubCode, entry.game));
+      copy.set(userId, toSnapshot(entry.status, entry.hubCode));
     });
     return copy;
-  }
-
-  private rejoinGame(game: ActiveGameDescriptor): void {
-    if (!isActiveGameDescriptor(game)) {
-      this.toasts?.info('Cette partie ne peut plus être rejointe.');
-      return;
-    }
-    sessionStorage.setItem(TOWER_SERVER_ROOM_KEY, JSON.stringify({ roomId: game.roomId }));
-    location.assign(gameUrl());
   }
 
   private copyCode(): void {

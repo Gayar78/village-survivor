@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+.git
+.codex
+.sdp
+docs
+test-results
+playwright-report
+deploy/lan/.env
+.env
+

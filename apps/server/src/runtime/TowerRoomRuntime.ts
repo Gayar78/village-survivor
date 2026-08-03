@@ -17,6 +17,8 @@ import type {
   TowerRoomPhase,
 } from '@village-survivor/protocol';
 
+import type { GameRunReward } from '../rewards/postgrestGameRun.js';
+
 const CONTROL_LIMIT_PER_SECOND = 30;
 const ACTION_LIMIT_PER_SECOND = 10;
 const MAX_PENDING_ACTIONS = 16;
@@ -149,6 +151,7 @@ export class TowerRoomRuntime {
   private readonly simulation: TowerSimulation;
   private readonly expectedUserIds: readonly string[];
   private readonly commandsByUserId = new Map<string, PlayerCommands>();
+  private readonly goldByUserId = new Map<string, number>();
   private phaseValue: TowerRoomPhase = 'waiting';
 
   public constructor(options: TowerRoomRuntimeOptions) {
@@ -159,6 +162,7 @@ export class TowerRoomRuntime {
       throw new Error('Le roster réservé doit contenir des identités uniques.');
     }
     this.expectedUserIds = [...options.expectedUserIds];
+    for (const userId of this.expectedUserIds) this.goldByUserId.set(userId, 0);
     this.simulation = new TowerSimulation(options.seed, {
       playerIds: this.expectedUserIds,
       metaBuildsByPlayerId: options.metaBuildsByPlayerId,
@@ -334,7 +338,12 @@ export class TowerRoomRuntime {
     return { accepted: true };
   }
 
-  public step(nowMs: number): Readonly<{ state: TowerGameState; events: readonly TowerEvent[] }> {
+  public step(nowMs: number): Readonly<{
+    state: TowerGameState;
+    events: readonly TowerEvent[];
+    removedPlayerCount: number;
+  }> {
+    let removedPlayerCount = 0;
     if (this.phaseValue === 'running') {
       for (const [userId, commands] of this.commandsByUserId) {
         if (
@@ -342,7 +351,7 @@ export class TowerRoomRuntime {
           commands.reconnectUntilMs !== undefined &&
           nowMs >= commands.reconnectUntilMs
         ) {
-          this.removePlayer(userId);
+          if (this.removePlayer(userId)) removedPlayerCount += 1;
         }
       }
     }
@@ -370,24 +379,45 @@ export class TowerRoomRuntime {
       this.simulation.step(inputs);
     }
     const state = this.simulation.createSnapshot();
+    this.captureGold(state);
     if (state.status === 'defeat') this.phaseValue = 'defeat';
-    return { state, events: state.events };
+    return { state, events: state.events, removedPlayerCount };
   }
 
   public snapshot(): TowerGameState {
-    return this.simulation.createSnapshot();
+    const state = this.simulation.createSnapshot();
+    this.captureGold(state);
+    return state;
+  }
+
+  /** Registre indépendant du roster actif : un joueur retiré conserve l'or déjà gagné. */
+  public rewards(): readonly GameRunReward[] {
+    this.captureGold(this.simulation.createSnapshot());
+    return this.expectedUserIds.map((userId) => ({
+      userId,
+      amount: this.goldByUserId.get(userId) ?? 0,
+    }));
   }
 
   private removePlayer(userId: string): boolean {
     if (!this.commandsByUserId.delete(userId)) return false;
+    const snapshot = this.simulation.createSnapshot();
+    this.captureGold(snapshot);
     if (this.commandsByUserId.size === 0) {
       this.phaseValue = 'abandoned';
       return true;
     }
-    const tick = this.simulation.createSnapshot().tick;
+    const tick = snapshot.tick;
     if (!this.simulation.applyRosterEvent({ type: 'leave', tick, playerId: userId })) {
       throw new Error('Retrait de joueur refusé à la frontière autoritaire.');
     }
     return true;
+  }
+
+  private captureGold(state: TowerGameState): void {
+    for (const player of state.players) {
+      if (this.goldByUserId.has(player.id) && Number.isSafeInteger(player.gold) && player.gold >= 0)
+        this.goldByUserId.set(player.id, player.gold);
+    }
   }
 }

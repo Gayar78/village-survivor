@@ -163,8 +163,18 @@ describe('frontière autoritaire Tower', () => {
     const room = cooperativeRuntime(['user-1', 'user-2']);
     room.admit('user-1', 0);
     room.admit('user-2', 0);
+    const internal = room as unknown as {
+      simulation: { players: Array<{ id: string; gold: number }> };
+    };
+    const departingPlayer = internal.simulation.players.find(({ id }) => id === 'user-1');
+    if (departingPlayer === undefined) throw new Error('Joueur de test absent.');
+    departingPlayer.gold = 41;
     expect(room.leaveVoluntarily('user-1')).toBe(true);
     expect(room.phase).toBe('running');
     expect(room.snapshot().players.map(({ id }) => id)).toEqual(['user-2']);
+    expect(room.rewards()).toEqual([
+      { userId: 'user-1', amount: 41 },
+      { userId: 'user-2', amount: 0 },
+    ]);
   });
 });

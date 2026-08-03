@@ -75,6 +75,11 @@ async function waitFor(
   expect(predicate()).toBe(true);
 }
 
+function percentile(values: readonly number[], ratio: number): number {
+  const ordered = [...values].sort((left, right) => left - right);
+  return ordered[Math.min(ordered.length - 1, Math.floor(ordered.length * ratio))] ?? 0;
+}
+
 test('sert le build de production sans capacité de débogage ni erreur console', async ({
   page,
   request,
@@ -167,6 +172,42 @@ test('affiche une erreur lisible puis revient au lobby sans fallback local', asy
   await expect(page.locator('canvas')).toHaveCount(0);
 });
 
+test('revient proprement au lobby quand le serveur de jeu est injoignable', async ({ page }) => {
+  const accessToken = createAccessToken('server-outage-user');
+  await page.addInitScript(
+    ({ token, expiresAt }) => {
+      const serializedSession = JSON.stringify({
+        access_token: token,
+        token_type: 'bearer',
+        expires_in: 3_600,
+        expires_at: expiresAt,
+        refresh_token: 'outage-refresh-token',
+        user: {
+          id: 'server-outage-user',
+          aud: 'authenticated',
+          role: 'authenticated',
+          email: 'outage@village.test',
+          app_metadata: { provider: 'email', providers: ['email'] },
+          user_metadata: {},
+          identities: [],
+          created_at: new Date().toISOString(),
+        },
+      });
+      const nativeGetItem = Storage.prototype.getItem;
+      Storage.prototype.getItem = function getOutageSession(key: string): string | null {
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) return serializedSession;
+        return nativeGetItem.call(this, key);
+      };
+    },
+    { token: accessToken, expiresAt: Math.floor(Date.now() / 1_000) + 3_600 },
+  );
+  await page.route(`${GAME_SERVER_URL}/rooms`, (route) => route.abort('failed'));
+  await page.goto('/play.html');
+  await expect(page.locator('#tower-sync-status')).toContainText('Partie indisponible');
+  await page.waitForURL('**/index.html', { timeout: 6_000 });
+  await expect(page.locator('canvas')).toHaveCount(0);
+});
+
 test('synchronise exactement deux puis quatre clients sur la même simulation', async ({
   request,
 }) => {
@@ -200,6 +241,55 @@ test('synchronise exactement deux puis quatre clients sur la même simulation', 
       expect(snapshot).not.toHaveProperty('seed');
       expect(snapshot).not.toHaveProperty('player');
       expect(snapshot).not.toHaveProperty('events');
+    }
+
+    if (count === 2) {
+      const latencies: number[] = [];
+      let sequence = 0;
+      for (let sample = 0; sample < 20; sample += 1) {
+        sequence += 1;
+        rooms[0].send('control', {
+          sequence,
+          moveX: 0,
+          moveY: 0,
+          aimX: 1,
+          aimY: 0,
+        });
+        // Stabilise l'entrée neutre au-delà de la conservation serveur de 250 ms. La mesure
+        // suivante observe ainsi le premier état produit par la nouvelle impulsion, et non le
+        // temps nécessaire pour annuler un déplacement de sens opposé.
+        await new Promise((resolve) => setTimeout(resolve, 280));
+        const before = roomSnapshot(rooms[0]).players as Record<
+          string,
+          { position: { x: number } }
+        >;
+        const beforeX = before[userIds[0]]?.position.x ?? 0;
+        sequence += 1;
+        const sentAt = performance.now();
+        rooms[0].send('control', {
+          sequence,
+          moveX: 1,
+          moveY: 0,
+          aimX: 1,
+          aimY: 0,
+        });
+        await waitFor(
+          () => {
+            const players = roomSnapshot(rooms[0]).players as Record<
+              string,
+              { position: { x: number } }
+            >;
+            const currentX = players[userIds[0]]?.position.x ?? beforeX;
+            return currentX > beforeX;
+          },
+          1_000,
+          2,
+        );
+        latencies.push(performance.now() - sentAt);
+      }
+      const p95LatencyMs = percentile(latencies, 0.95);
+      console.info(`[server-lan] commande→état p95 ${p95LatencyMs.toFixed(1)} ms`);
+      expect(p95LatencyMs).toBeLessThan(150);
     }
     await Promise.all(rooms.map((room) => room.leave(true)));
   }

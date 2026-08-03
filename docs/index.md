@@ -1,7 +1,7 @@
 # Village Survivor — Documentation
 
 > Statut : en construction
-> Version du projet : v2 — la v1 est figée par [`releases/v1.md`](releases/v1.md)
+> Version du projet : v2 — candidate dans [`releases/v2.md`](releases/v2.md), v1 figée
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
@@ -65,7 +65,7 @@ spans aux seules frontières significatives.
 | Stratégie de tests | [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | approuvée |
 | Rapport de tests | [`qualite/rapport-tests.md`](qualite/rapport-tests.md) | à jour |
 | Runbooks | `runbooks/` | **absent** — au premier incident réellement rencontré |
-| Releases | [`releases/v1.md`](releases/v1.md) | figé |
+| Releases | [`releases/v2.md`](releases/v2.md), [`releases/v1.md`](releases/v1.md) | v2 candidate, v1 figée |
 | Backlog | [`../BACKLOG.md`](../BACKLOG.md) | à jour — v2 |
 
 La traçabilité des exigences ([`qualite/traceabilite.md`](qualite/traceabilite.md)) est un

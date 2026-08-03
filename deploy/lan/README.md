@@ -1,9 +1,8 @@
 # Déploiement LAN auto-hébergé
 
-Prépare *Village Survivor* sur un réseau local, **sans dépendance à internet**. À l'issue de la
-boucle 3, base, comptes, lobby temps réel et client sont conteneurisés ; le processus de jeu
-autoritaire fonctionne localement mais son ajout au Compose et au proxy `/game/` appartient à la
-boucle 4. La stack canonique n'est donc pas encore jouable seule.
+Prépare *Village Survivor* sur un réseau local, **sans dépendance à internet**. La stack
+canonique contient la base, les comptes, le lobby temps réel, le collecteur, le client statique
+et le serveur de jeu autoritaire. Nginx publie l'ensemble sur une seule origine.
 
 ## Pourquoi une stack complète
 
@@ -17,7 +16,8 @@ progression et le lobby : le chef y diffuse uniquement le `roomId` créé par le
 | `rest` | tables et RPC sous politiques RLS | `postgrest/postgrest` |
 | `realtime` | présence, invitations et diffusion du `roomId` dans le hub | `supabase/realtime` |
 | `otel` | reçoit traces, métriques et journaux du navigateur, et les affiche | `grafana/otel-lgtm` |
-| `web` | sert le jeu et fait passerelle vers les quatre autres | `nginx` |
+| `game-server` | authentifie, simule les rooms Colyseus et finalise les récompenses | image locale Node 24 |
+| `web` | sert le jeu et fait passerelle vers les cinq autres services applicatifs | `nginx` |
 
 Ni Studio, ni Storage, ni Edge Functions, ni pooler : le jeu ne s'en sert pas.
 
@@ -45,14 +45,13 @@ docker compose -f deploy/lan/docker-compose.yml up -d
 # 4. Applique les migrations du jeu (après que l'authentification soit saine)
 ./deploy/lan/apply-migrations.ps1
 
-# 5. Vérifie que le transport du lobby répond
+# 5. Vérifie le lobby et la frontière transactionnelle des récompenses
 node deploy/lan/check-realtime.mjs
+./deploy/lan/check-game-rewards.ps1
 ```
 
-Ces étapes ne lancent pas encore `game-server`. Pour une validation provisoire de la boucle 3,
-lancez `apps/server` séparément avec `JWT_SECRET`, `SERVICE_ROLE_KEY` et `POSTGREST_URL`, compilez
-le client avec `VITE_GAME_SERVER_URL=http://<adresse>:2567`, puis ouvrez temporairement les ports
-8080 et 2567. La boucle 4 ramènera l'exposition au seul port 8080 grâce au proxy `/game/`.
+Compose construit et lance `game-server`. Son port 2567 reste interne au réseau Docker ; les
+navigateurs utilisent `/game/` via Nginx. Seul le port 8080 doit être ouvert sur le LAN.
 
 Puis, **dans une console PowerShell en administrateur**, autorisez le port du site :
 
@@ -64,8 +63,7 @@ Les autres joueurs ouvrent alors l'adresse affichée par `setup.mjs`, par exempl
 `http://192.168.1.24:8080`. Chacun crée un compte — l'inscription est auto-confirmée, aucun
 courriel n'est envoyé — puis le hub permet de former un salon et de lancer une partie.
 
-**La cible de boucle 4 ne demandera que le port 8080.** La validation provisoire décrite ci-dessus
-demande aussi 2567. L'interface de télémétrie écoute sur 3001 et reste
+L'interface de télémétrie écoute sur 3001 et reste
 joignable depuis la machine hôte sans rien ouvrir ; n'ajoutez une règle pour ce port que si vous
 voulez la consulter depuis un autre poste :
 
@@ -116,7 +114,7 @@ depuis internet. En LAN, utilisez la connexion par courriel et mot de passe.
 **Le nom du conteneur `realtime-dev.supabase-realtime` n'est pas cosmétique.** Realtime déduit
 l'identifiant de son locataire du sous-domaine de l'en-tête `Host`. C'est pourquoi `nginx.conf`
 force cet en-tête sur la route `/realtime/v1/`. Renommer le conteneur sans adapter nginx casse
-tout le multijoueur, en laissant le reste du jeu parfaitement fonctionnel.
+le lobby et les invitations, mais pas une room Colyseus déjà démarrée.
 
 **Les migrations ne peuvent pas être jouées à l'initialisation de Postgres.** La migration
 `0001` référence `auth.users`, table que GoTrue crée à son premier démarrage. D'où l'étape 4,
@@ -127,17 +125,18 @@ séparée. Toutes les migrations sont idempotentes : relancer le script est sans
 ```powershell
 docker compose -f deploy/lan/docker-compose.yml ps
 node deploy/lan/check-realtime.mjs
+./deploy/lan/check-game-rewards.ps1
 ```
 
 `check-realtime.mjs` ouvre deux connexions sur un même canal et vérifie qu'un message diffusé
 par l'une parvient à l'autre — le mécanisme utilisé par le lobby pour transmettre `roomId`. Il ne
-vérifie ni le serveur Colyseus ni une partie. Avant la boucle 4, la preuve réseau du jeu est
-`pnpm test:smoke`, qui démarre le vrai serveur et des clients réels.
+vérifie ni le serveur Colyseus ni une partie. `check-game-rewards.ps1` crée deux comptes isolés,
+lance deux finalisations concurrentes, contrôle les droits puis nettoie ses données.
 
 Deux contrôles complètent le tableau :
 
-- **serveur joignable** — pendant la validation provisoire,
-  `Invoke-WebRequest http://<adresse>:2567/health` doit répondre `200` depuis le second poste ;
+- **serveur joignable** — `Invoke-WebRequest http://<adresse>:8080/game/health` doit répondre
+  `200` depuis le second poste ;
 - **télémétrie reçue** — la route de la passerelle doit répondre :
 
   ```powershell
@@ -161,8 +160,8 @@ localStorage.setItem('vs.log.level', 'trace'); // puis recharger la page
 ```
 
 ```powershell
-# Journaux
-docker compose -f deploy/lan/docker-compose.yml logs -f realtime
+# Journaux du serveur de jeu
+docker compose -f deploy/lan/docker-compose.yml logs -f game-server
 
 # Arrêter sans rien perdre
 docker compose -f deploy/lan/docker-compose.yml stop
@@ -186,18 +185,19 @@ Ce déploiement est prévu pour **un réseau local de confiance**, et rien d'aut
   public ;
 - n'exposez pas ce port sur internet, et ne redirigez pas de port depuis votre box.
 
-La simulation est autoritaire côté serveur depuis l'ADR-0011. Le crédit d'or reste encore déclaré
-par le navigateur jusqu'à la boucle 4 ; cette limite est décrite dans
-[ADR-0009](../../docs/decisions/ADR-0009-account-persistence.md).
+La simulation et le crédit d'or sont autoritaires côté serveur depuis l'ADR-0011. La clé
+`service_role` n'est injectée que dans `game-server`; elle ne doit jamais être préfixée `VITE_`,
+journalisée ou copiée dans le client.
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
-| `docker-compose.yml` | les six services |
-| `nginx.conf` | passerelle : jeu, `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/otel`, `/diagnostics` |
+| `docker-compose.yml` | les sept services et leurs contrôles de santé |
+| `nginx.conf` | passerelle : jeu, `/game`, `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/otel`, `/diagnostics` |
 | `setup.mjs` | détection d'adresse, génération des secrets et des deux `.env` |
 | `apply-migrations.ps1` | applique les migrations du jeu |
 | `check-realtime.mjs` | contrôle du transport du lobby |
+| `check-game-rewards.ps1` | contrôle concurrence/idempotence/droits de la RPC d'or |
 | `volumes/db/*.sql` | initialisation Postgres, dérivée de `supabase/docker` |
 | `.env` | **secrets générés, jamais committés** |

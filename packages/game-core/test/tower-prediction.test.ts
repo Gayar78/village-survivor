@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 import { PLAYER, WORLD } from '../src/tower/tuning.js';
 
 import type { TowerInput } from '@village-survivor/protocol';
@@ -80,9 +80,7 @@ describe('prédiction de position pour le rendu', () => {
       without.step({ 'player-1': MOVE_RIGHT });
     }
 
-    expect(createTowerStateFingerprint(withPredictions.createSnapshot())).toBe(
-      createTowerStateFingerprint(without.createSnapshot()),
-    );
+    expect(withPredictions.createSnapshot()).toEqual(without.createSnapshot());
   });
 
   it('immobilise un avatar à terre', () => {

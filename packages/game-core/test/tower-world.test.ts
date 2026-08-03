@@ -1,7 +1,7 @@
 import type { TowerMonsterAffinity, TowerMonsterTrait } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 import {
   MONSTER_AFFINITY_TRAITS,
   MONSTER_RARITY_MODIFIERS,
@@ -84,11 +84,11 @@ describe('Tower deterministic living world', () => {
     ).toHaveLength(2);
   });
 
-  it('conserve une parité lockstep complète avec les mêmes seed et vagues', () => {
-    const first = new TowerSimulation('living-lockstep-seed', {
+  it('conserve une parité complète avec les mêmes seed et vagues', () => {
+    const first = new TowerSimulation('living-authoritative-seed', {
       playerIds: ['alpha', 'bravo'],
     });
-    const second = new TowerSimulation('living-lockstep-seed', {
+    const second = new TowerSimulation('living-authoritative-seed', {
       playerIds: ['alpha', 'bravo'],
     });
 
@@ -96,9 +96,6 @@ describe('Tower deterministic living world', () => {
       spawnWaves(first, 1);
       spawnWaves(second, 1);
       expect(second.createSnapshot()).toEqual(first.createSnapshot());
-      expect(createTowerStateFingerprint(second.createSnapshot())).toBe(
-        createTowerStateFingerprint(first.createSnapshot()),
-      );
     }
   });
 });

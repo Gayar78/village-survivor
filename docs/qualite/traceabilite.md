@@ -120,7 +120,7 @@ jeu sans victoire ni ressources.
 La table historique ci-dessus reste inchangée pour conserver la preuve des écarts v1. Les
 exigences approuvées par ADR-0011 sont suivies séparément pendant la migration.
 
-| Exigence v2 | Décision | Implémentation réelle | Vérification | État boucle 2 |
+| Exigence v2 | Décision | Implémentation réelle | Vérification | État boucle 4 |
 |---|---|---|---|---|
 | `REQ-V2-AUTH-001` — JWT et roster réservés | [ADR-0011](../decisions/ADR-0011-authoritative-game-server.md) | `apps/server/src/auth`, `http/createRoom.ts`, ticket interne | tests JWT/HTTP/registre + smoke JWT invalide et bypass | **Solo implémenté** |
 | `REQ-V2-SIM-001` — simulation serveur unique à 50 ms | [Architecture v2](../architecture.md) | `TowerRoomRuntime`, `TowerRoom` | tests runtime, Schema et smoke réel | **Solo implémenté** |
@@ -128,5 +128,5 @@ exigences approuvées par ADR-0011 sont suivies séparément pendant la migratio
 | `REQ-V2-NET-002` — état sans alias local | [Spécification F-005](../spec-fonctionnelle.md) | `TowerStateSchema`, `TowerServerSession` | tests Schema et conversion locale | **Implémenté** |
 | `REQ-V2-UX-001` — interpolation et prédiction visuelle | [ADR-0010](../decisions/ADR-0010-local-render-prediction.md) | deux snapshots + avance locale de deux ticks | tests adaptateur et smoke | **Solo implémenté** |
 | `REQ-V2-COOP-001` — roster, départs et reconnexion | [Spécification F-003/F-007](../spec-fonctionnelle.md) | réservation serveur, `roomId` seul, runtime et callbacks Colyseus | multi-client 2/4, attente 15 s, 10 s/31 s, départs unitaires | **Implémenté** |
-| `REQ-V2-GOLD-001` — crédit serveur idempotent | [Spécification F-008](../spec-fonctionnelle.md) | à faire en boucle 4 | concurrence SQL | Planifié |
-| `REQ-V2-OPS-001` — Compose, Nginx et OTel | [Spécification F-009](../spec-fonctionnelle.md) | à faire en boucle 4 | santé, panne, charge et trace réelle | Planifié |
+| `REQ-V2-GOLD-001` — crédit serveur idempotent | [Spécification F-008](../spec-fonctionnelle.md) | migration `0006`, registre runtime, finaliseur PostgREST, crédit client retiré | deux appels concurrents réels, montants invalides et droits SQL | **Implémenté** |
+| `REQ-V2-OPS-001` — Compose, Nginx et OTel | [Spécification F-009](../spec-fonctionnelle.md) | `game-server`, proxy `/game/`, healthcheck 512 Mio, traces/métriques/logs | santé proxy, panne serveur/OTLP, charge 24 000 ticks, 2/4 clients | **Implémenté ; preuve deux postes restante** |

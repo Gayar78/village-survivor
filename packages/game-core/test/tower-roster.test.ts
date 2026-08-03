@@ -5,7 +5,7 @@ import {
 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 import { MONSTERS } from '../src/tower/tuning.js';
 
 const NEUTRAL_INPUT: TowerInput = {
@@ -97,7 +97,7 @@ describe('Tower dynamic roster', () => {
     expect(simulation.applyRosterEvent({ type: 'leave', tick: 2, playerId: 'alpha' })).toBe(false);
   });
 
-  it('keeps peers identical through scheduled joins and leaves over many ticks', () => {
+  it('keeps simulations identical through scheduled joins and leaves over many ticks', () => {
     const first = new TowerSimulation('dynamic-roster-parity');
     const second = new TowerSimulation('dynamic-roster-parity');
     first.start();
@@ -134,7 +134,6 @@ describe('Tower dynamic roster', () => {
     const secondState = second.createSnapshot();
     expect(firstState.players.map((player) => player.id)).toEqual(['player-1', 'charlie']);
     expect(secondState).toEqual(firstState);
-    expect(createTowerStateFingerprint(secondState)).toBe(createTowerStateFingerprint(firstState));
   });
 
   it('uses the live roster for the next wave budget and power while retaining the solo baseline', () => {

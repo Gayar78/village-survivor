@@ -14,7 +14,7 @@ import type {
 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 
 function input(overrides: Partial<TowerInput> = {}): TowerInput {
   return { sequence: 0, moveX: 0, moveY: 0, aimX: 0, aimY: 0, ...overrides };
@@ -206,7 +206,7 @@ describe('Tower advanced defense', () => {
     expect(after.heart).toEqual(before.heart);
   });
 
-  it('fait tourner trois offres par vague sans horloge ni hasard ambiant et reste lockstep', () => {
+  it('fait tourner trois offres par vague sans horloge ni hasard ambiant et reste reproductible', () => {
     const first = new TowerSimulation('deterministic-defense-rotation');
     const second = new TowerSimulation('deterministic-defense-rotation');
     first.start();
@@ -221,9 +221,7 @@ describe('Tower advanced defense', () => {
       });
       expect(firstSnapshot.globalDefenseShop.offerIds).toHaveLength(3);
       expect(new Set(firstSnapshot.globalDefenseShop.offerIds).size).toBe(3);
-      expect(createTowerStateFingerprint(secondSnapshot)).toBe(
-        createTowerStateFingerprint(firstSnapshot),
-      );
+      expect(secondSnapshot).toEqual(firstSnapshot);
 
       if (wave < 2) {
         for (let tick = 0; tick < 200; tick += 1) {

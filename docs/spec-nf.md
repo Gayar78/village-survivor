@@ -78,7 +78,7 @@ persistance. Une room abandonnée ne crédite aucun or.
 | Transport | HTTP non chiffré sur LAN de confiance ; TLS obligatoire avant toute ouverture |
 
 Les canaux Realtime du lobby restent une surface déclarative assumée dans le LAN. En revanche,
-le crédit d'or déclaré par le navigateur et le bus P2P disparaissent du chemin de production.
+le crédit d'or déclaré par le navigateur et le bus P2P ont disparu du chemin de production.
 Le serveur neutralise immédiatement un joueur déconnecté, conserve son avatar vulnérable
 30 secondes, puis le retire à une frontière de tick. Un retour tardif est refusé.
 
@@ -91,7 +91,7 @@ Le serveur neutralise immédiatement un joueur déconnecté, conserve son avatar
 | Granularité | aucun span par tick, image, commande ou entité |
 | Métriques | rooms, joueurs, durée/retard des ticks, patches, refus, reconnexions, ferraille, crédits d'or |
 | Logs | `APP_LOG_LEVEL` côté serveur, `VITE_APP_LOG_LEVEL` côté client |
-| Données interdites | identité, courriel, pseudonyme, JWT, secret, clé de service |
+| Données interdites | identité, courriel, pseudonyme, JWT, secret, clé de service, seed, `roomId`, `runId` |
 | Panne OTLP | perte de télémétrie acceptée ; aucune conséquence sur la partie |
 
 Le détail se trouve dans [observabilite.md](observabilite.md).
@@ -112,7 +112,7 @@ client proprement au lobby ; il n'existe plus de mode hors ligne.
 
 ## Stratégie de livraison
 
-La migration se fait en quatre boucles : ferraille bornée, solo autoritaire, coopération et
+La migration technique a été menée en quatre boucles : ferraille bornée, solo autoritaire, coopération et
 reconnexion, puis récompenses/exploitation/suppression du P2P. Chaque boucle suit
 développement → documentation → tests → revue Claude indépendante → arbitrage → corrections et
 nouveaux tests → clôture. Une contre-revue exige une confirmation explicite du propriétaire.

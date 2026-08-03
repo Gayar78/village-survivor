@@ -35,6 +35,9 @@ export default defineConfig({
         SERVICE_ROLE_KEY: 'smoke-service-role-key',
         POSTGREST_URL: 'http://127.0.0.1:31981',
         PORT: '2567',
+        APP_LOG_LEVEL: 'error',
+        // Export volontairement impossible : la partie doit rester fonctionnelle.
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:1',
       },
     },
     {

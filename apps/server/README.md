@@ -6,7 +6,8 @@ production passent tous deux par ce serveur et ne disposent d'aucun repli local 
 
 ## Démarrage local
 
-Le processus exige quatre variables dans son environnement :
+Le processus exige ses secrets Supabase côté serveur et accepte les réglages d'exploitation
+suivants :
 
 | Variable | Usage |
 |---|---|
@@ -14,6 +15,8 @@ Le processus exige quatre variables dans son environnement :
 | `SERVICE_ROLE_KEY` | lecture serveur des profils via PostgREST |
 | `POSTGREST_URL` | origine PostgREST, sans chemin final `/` |
 | `PORT` | port HTTP/WebSocket, `2567` par défaut |
+| `APP_LOG_LEVEL` | seuil `trace` à `fatal`, `info` par défaut |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | origine OTLP/HTTP optionnelle ; aucune exportation si absente |
 
 ```powershell
 $env:JWT_SECRET = '<jwt-secret-supabase>'
@@ -40,15 +43,20 @@ doivent rejoindre avant quinze secondes ; sinon la room est annulée sans lancer
 
 Le endpoint de matchmaking public ne peut pas forger une création : sans ticket interne, le
 constructeur de room refuse roster, seed et bonus fournis par un appelant. `GET /health` vérifie
-que le processus répond. Le préfixe public `/game/` sera ajouté par Nginx à la boucle 4.
+que le processus répond. Dans la stack LAN, Nginx publie cette API et le WebSocket sous
+`/game/`, sur la même origine que le client.
 
 Une identité peut demander au plus cinq créations par minute. L'excédent reçoit HTTP 429 et le
 code fermé `rate-limited` ; cette limite en mémoire est réinitialisée avec le processus.
+Une authentification Colyseus qui n'atteint jamais `onJoin` libère sa réservation après cinq
+secondes, afin qu'une coupure pendant le handshake ne bloque pas durablement un membre du roster.
 
 ## Commandes et erreurs
 
-- `control` : non fiable, au plus 30/s, séquence strictement croissante, déplacement `[-1, 1]`,
-  visée finie et bornée ; après 250 ms de silence, l'entrée devient neutre ;
+- `control` : remplaçable, au plus 30/s, séquence strictement croissante, déplacement `[-1, 1]`,
+  visée finie et bornée ; après 250 ms de silence, l'entrée devient neutre. Le transport
+  WebSocket est fiable par nature : Colyseus ignore `sendUnreliable`, donc le client utilise
+  `send` et le serveur élimine les séquences périmées ;
 - `action` : fiable, au plus 10/s, union fermée niveau/arme/boutique, file de 16 et déduplication
   par `actionId` ;
 - les champs supplémentaires, positions, dégâts, ticks, récompenses et états calculés sont
@@ -66,6 +74,28 @@ volontaire le retire immédiatement. Une room vide devient `abandoned`.
 Une panne terminale affiche son motif puis ramène au lobby après 3,5 secondes. Un simple refus de
 commande n'est pas terminal et ne provoque aucune navigation.
 
+## Fin de partie et récompenses
+
+Le runtime conserve dans un registre serveur l'or de chaque participant, y compris après son
+retrait. À la défaite, `finalize_game_run` reçoit le lot complet. La migration `0006` verrouille
+le run, écrit les récompenses et crédite les portefeuilles dans la même transaction ; la clé
+`(run_id, user_id)` et le verrou rendent les répétitions et appels concurrents idempotents. Une
+room abandonnée n'appelle jamais la RPC. Une room terminée reste disponible 60 secondes et une
+panne PostgREST déclenche une nouvelle tentative toutes les 5 secondes pendant cette fenêtre.
+Chaque appel PostgREST expire après 4 secondes. Si la fenêtre terminale se ferme sans
+persistance, le serveur émet explicitement un span et un journal d'erreur, sans identifiant.
+
+Le navigateur ne contient plus aucune fonction de crédit d'or. La RPC est réservée à
+`service_role` et l'ancien `credit_account_gold` est révoqué pour `authenticated`.
+
+## Observabilité
+
+Une room ouvre une racine `game.room`; création, admission, démarrage, reconnexion, persistance
+et fin sont des enfants. Aucun tick ni commande valide ne crée de span. Les métriques agrègent
+rooms/joueurs actifs, durée, durée et retard de tick, octets réellement encodés par patch,
+commandes refusées, reconnexions, ferraille et crédits. Aucun identifiant, courriel, jeton,
+`roomId`, `runId` ou seed n'est émis. Les exports OTLP sont asynchrones, bornés et facultatifs.
+
 ## Vérifications
 
 ```powershell
@@ -73,9 +103,14 @@ pnpm --filter @village-survivor/server typecheck
 pnpm exec vitest run apps/server/src
 pnpm --filter @village-survivor/client build
 pnpm test:smoke
+pnpm exec vitest run apps/server/src/load/authoritativeLoad.test.ts --reporter=verbose
+./deploy/lan/check-game-rewards.ps1
 ```
 
 Le smoke démarre le vrai serveur, un faux PostgREST hermétique et Chromium avec un JWT de test.
 Il prouve le parcours solo, le refus d'un JWT invalide, l'impossibilité de créer directement une
 room forgée, les rosters réels de deux et quatre clients, l'annulation à quinze secondes, la
-reconnexion à dix secondes et le refus après trente et une secondes.
+reconnexion à dix secondes, le refus après trente et une secondes, la panne du serveur et une
+panne d'export OTLP. Le scénario multi-client mesure aussi le délai commande→état. Les tests de
+room couvrent en plus l'expiration d'une authentification interrompue, la capture d'un vrai patch
+Schema encodé et l'erreur terminale après épuisement de la persistance.

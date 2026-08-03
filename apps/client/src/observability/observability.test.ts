@@ -7,7 +7,7 @@ import {
   resolveLogLevel,
   type LogLevelStorage,
 } from './config.js';
-import { boundedAttribute, describeError, hashRoomCode, MAX_ATTRIBUTE_LENGTH } from './redact.js';
+import { boundedAttribute, describeError, MAX_ATTRIBUTE_LENGTH } from './redact.js';
 import { monstersBucket } from './gameTelemetry.js';
 
 /**
@@ -87,17 +87,6 @@ describe('niveau de journalisation', () => {
 });
 
 describe('assainissement des valeurs émises', () => {
-  it('n’émet jamais le code de salon en clair', () => {
-    const code = 'TOWER7';
-    const hashed = hashRoomCode(code);
-
-    expect(hashed).not.toContain(code);
-    expect(hashed).toMatch(/^[0-9a-f]{16}$/);
-    // Stable : deux pairs d'une même partie se corrèlent sans publier leur clé d'entrée.
-    expect(hashRoomCode(code)).toBe(hashed);
-    expect(hashRoomCode('TOWER8')).not.toBe(hashed);
-  });
-
   it('borne un attribut de longueur arbitraire', () => {
     const bounded = boundedAttribute('x'.repeat(1_000));
 

@@ -236,5 +236,6 @@ sont listés ici pour qu'aucun ne disparaisse silencieusement.
 4. **Le contenu Tower n'est pas validé.** ADR-0005 exige un schéma explicite et une validation au
    chargement pour chaque catégorie de contenu. Le catalogue Tower est un ensemble de constantes
    TypeScript sans schéma, et une partie du réglage vit dans le moteur plutôt que dans le contenu.
-5. **L'or de compte est déclaré par le client.** La simulation étant hébergée par le navigateur,
-   rien n'empêche un client modifié de déclarer un montant arbitraire en fin de partie.
+5. ~~L'or de compte était déclaré par le client.~~ **Résolu par le serveur autoritaire** : le
+   serveur conserve les gains, et seule la RPC `finalize_game_run` réservée à `service_role`
+   crédite les portefeuilles de manière transactionnelle et idempotente.

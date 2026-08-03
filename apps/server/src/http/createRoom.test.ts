@@ -84,4 +84,41 @@ describe('POST /rooms', () => {
     expect(recorded.status).toHaveBeenCalledWith(429);
     expect(recorded.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'rate-limited' }));
   });
+
+  it('propage uniquement un traceparent W3C valide vers la room', async () => {
+    const traceParent = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    const createRoom = vi.fn().mockResolvedValue({ roomId: 'room-traced' });
+    const recorded = responseRecorder();
+    const handler = createTowerRoomHandler({
+      verifyToken: () => ({ userId: 'user-1' }),
+      metaBuilds: { loadActiveBuild: vi.fn().mockResolvedValue(BUILD) },
+      rateLimiter: { allow: vi.fn().mockReturnValue(true) },
+      createRoom,
+      now: () => 1_000,
+      createId: () => 'generated-id',
+    });
+    await handler(
+      {
+        body: { mode: 'solo' },
+        header: (name: string) => (name === 'traceparent' ? traceParent : 'Bearer valid'),
+      } as unknown as Request,
+      recorded.response,
+      vi.fn(),
+    );
+    expect(createRoom).toHaveBeenCalledWith(expect.objectContaining({ traceParent }));
+
+    createRoom.mockClear();
+    await handler(
+      {
+        body: { mode: 'solo' },
+        header: (name: string) =>
+          name === 'traceparent' ? 'identity@example.test' : 'Bearer valid',
+      } as unknown as Request,
+      recorded.response,
+      vi.fn(),
+    );
+    expect(createRoom).toHaveBeenCalledWith(
+      expect.not.objectContaining({ traceParent: expect.anything() }),
+    );
+  });
 });

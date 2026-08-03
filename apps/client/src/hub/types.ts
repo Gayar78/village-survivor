@@ -47,14 +47,6 @@ export interface HubInvite {
   hubCode: string;
 }
 
-/**
- * Descripteur public minimal d'une partie co-op encore active. Le serveur reste
- * seul juge du roster et de la fenêtre de reconnexion.
- */
-export interface ActiveGameDescriptor {
-  roomId: string;
-}
-
 /** Paramètres d'un lancement de partie diffusé par le chef à tout le hub. */
 export interface LaunchPayload {
   /** Référence opaque créée par le serveur autoritaire. Aucun roster ni seed ne transite ici. */

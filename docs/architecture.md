@@ -1,6 +1,6 @@
 # Village Survivor — Architecture v2
 
-> Statut : cible approuvée — migration en cours
+> Statut : architecture implémentée — validation LAN finale à réaliser
 > Version du projet : v2
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
@@ -85,7 +85,9 @@ la scène, le HUD et les boutiques indépendants du transport.
 
 Deux familles de messages remontent au serveur :
 
-- `control`, non fiable, 30/s maximum : séquence, mouvement, visée et tir continu ;
+- `control`, remplaçable, 30/s maximum : séquence, mouvement, visée et tir continu. WebSocket
+  étant fiable et Colyseus n'envoyant pas `sendUnreliable`, le client utilise `send`; le serveur
+  rejette les séquences périmées et neutralise après 250 ms ;
 - `action`, fiable, 10/s maximum : union fermée niveau/arme/boutique, `actionId` et file de 16.
 
 Le serveur refuse les séquences anciennes, nombres non finis, bornes dépassées, actions
@@ -153,12 +155,14 @@ hors du chemin critique et sa panne n'affecte pas la simulation.
 
 ## 11. État de migration au 3 août 2026
 
-La boucle 3 rend **solo et coopération effectivement autoritaires**. Le chef réserve le roster
-auprès du serveur, Supabase ne diffuse que `roomId`, tous les clients rejoignent la même
-`TowerSimulation` et le chemin de production n'instancie plus `TowerLockstepSession`. Le roster
-exact, l'attente de quinze secondes, les départs et la reconnexion de trente secondes sont
-implémentés et vérifiés sur deux et quatre clients réels.
+Les quatre boucles sont implémentées. Solo et coopération utilisent exclusivement
+`TowerServerSession`; le code de session locale/lockstep, l'historique de replay et les
+empreintes P2P ont été retirés. Le chef ne diffuse que `roomId`, et les scénarios deux/quatre
+clients ainsi que les coupures de 10/31 secondes sont vérifiés sur le vrai serveur.
 
-Le code P2P historique reste présent mais mort jusqu'à son retrait physique en boucle 4. Le
-crédit d'or reste provisoirement dans le navigateur ; persistance idempotente, conteneur, Nginx
-et instrumentation serveur appartiennent encore à cette dernière boucle.
+La migration `0006`, le finaliseur PostgREST, le conteneur `game-server`, le proxy `/game/`, la
+limite de 512 Mio et l'instrumentation serveur sont en place. Deux finalisations concurrentes
+ont été éprouvées sur la base LAN sans double crédit. La charge de 24 000 ticks avec quatre
+joueurs et 200 monstres respecte les budgets automatiques. La seule preuve encore attendue pour
+clore la validation produit est une partie solo et une partie coopérative sur deux postes LAN,
+avec inspection des traces distribuées.

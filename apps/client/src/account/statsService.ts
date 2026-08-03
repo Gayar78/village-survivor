@@ -8,8 +8,6 @@ export interface StatsService {
   recordGameResult(summary: GameRunSummary): Promise<void>;
   /** Charge le solde d'or persistant du compte connecté. */
   loadAccountGold(): Promise<AccountGoldBalance>;
-  /** Crédite atomiquement le compte connecté et renvoie son nouveau solde. */
-  creditAccountGold(amount: number): Promise<AccountGoldBalance>;
 }
 
 /** Ligne brute renvoyée par la table player_stats. */
@@ -62,12 +60,6 @@ function parseAccountGold(value: unknown, context: string): AccountGoldBalance {
     throw new Error(`${context} : le solde d'or reçu est invalide.`);
   }
   return value;
-}
-
-function validateCreditAmount(amount: number): void {
-  if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new Error("Le montant d'or à créditer doit être un entier sûr et non négatif.");
-  }
 }
 
 class SupabaseStatsService implements StatsService {
@@ -128,20 +120,6 @@ class SupabaseStatsService implements StatsService {
     }
 
     return parseAccountGold(data.balance, "Échec du chargement du solde d'or");
-  }
-
-  async creditAccountGold(amount: number): Promise<AccountGoldBalance> {
-    validateCreditAmount(amount);
-
-    const { data, error } = await supabase.rpc('credit_account_gold', {
-      p_amount: amount,
-    });
-
-    if (error) {
-      throw toError("Impossible de créditer l'or du compte", error);
-    }
-
-    return parseAccountGold(data, "Impossible de créditer l'or du compte");
   }
 }
 

@@ -244,3 +244,72 @@ bonus persistants sont retirés de la présence du hub puisqu'aucune UI ne les c
 tests verrouillent désormais l'absence de `seed` dans les snapshots réseau et la projection
 minimale de présence. Après correction, la suite compte 205 tests Vitest ; aucune contre-revue
 n'est lancée sans confirmation explicite du propriétaire.
+
+## Boucle v2.4 — récompenses, exploitation et retrait du P2P (3 août 2026)
+
+### Périmètre éprouvé avant revue indépendante
+
+- registre d'or serveur conservant les gains après retrait d'un participant ;
+- tables `game_runs`/`game_run_rewards` et RPC `finalize_game_run` transactionnelle, idempotente
+  et réservée à `service_role` ;
+- suppression du crédit navigateur et révocation de `credit_account_gold` pour `authenticated` ;
+- rétention terminale de 60 secondes et retry de persistance toutes les 5 secondes ;
+- conteneur `game-server`, healthcheck, limite 512 Mio et proxy HTTP/WebSocket `/game/` ;
+- racine `game.room`, propagation W3C et métriques agrégées sans identité, jeton, seed, `roomId`
+  ou `runId` ;
+- retrait physique de la session locale/lockstep, des replays, empreintes P2P et métriques de
+  simulation navigateur devenues mortes ;
+- charge de vingt minutes simulées, pannes serveur/OTLP et délai commande→état.
+
+### Résultats avant revue
+
+| Contrôle | Résultat | Preuve |
+|---|:---:|---|
+| `pnpm check` | **PASS** | format, lint, types, 37 fichiers/175 tests et tous les builds |
+| `pnpm benchmark` | **PASS** | 263 µs/tick avec 200 monstres ; 1 000 projections en 20 ms |
+| charge 24 000 ticks | **PASS** | 4 joueurs/200 monstres, tick p95 0,096 ms, maximum < 50 ms, projection p95 36 Kio, ferraille max 9 |
+| `pnpm test:smoke` | **PASS** | 7 scénarios ; 2/4 clients, 10/31 s, pannes serveur/OTLP, commande→état p95 79,2 ms |
+| migrations rejouées | **PASS** | six migrations appliquées une seconde fois sur PostgreSQL LAN |
+| `check-game-rewards.ps1` | **PASS** | deux appels concurrents, refus d'un montant négatif, aucun crédit partiel, droits RPC fermés |
+| image et Compose | **PASS** | configuration valide, image reconstruite, conteneur sain, 536 870 912 octets, `/game/health` 200 |
+
+Le harnais de charge a d'abord laissé les vagues invulnérables s'accumuler au-delà du scénario :
+2,922 ms p95 et 915 Kio décrivaient plusieurs milliers de monstres, pas la charge demandée de
+200. Après borne explicite du harnais, les 24 000 ticks restent réellement exécutés et la
+projection est échantillonnée chaque seconde simulée. De même, la première mesure de latence
+alternait les directions et comptait le temps d'annulation du mouvement précédent ; chaque
+impulsion part désormais d'une entrée neutre stabilisée.
+
+### Limite explicite de cette preuve
+
+Les clients automatisés tournent sur une seule machine. La gate finale reste une partie solo et
+une partie coopérative sur deux postes LAN, avec inspection d'une trace distribuée complète dans
+le backend.
+
+### Arbitrage de la revue Claude
+
+Le rapport indépendant
+`2026-08-03-214806-loop4-recompenses-exploitation-p2p-claude.md` rend un verdict favorable, sans
+P0–P2, et formule quatre P3. Les quatre sont retenus :
+
+- la charge passe désormais par `TowerRoomRuntime.step` et sa validation de commandes, tout en
+  conservant 24 000 ticks et 200 monstres ;
+- un test initialise réellement une room Colyseus et prouve que `client.raw` reçoit un patch non
+  vide dont la taille est transmise à la métrique ;
+- une authentification interrompue avant `onJoin` est libérée après cinq secondes, avec test de
+  retry ;
+- les appels PostgREST bloqués expirent après quatre secondes et une persistance encore absente
+  à la disposition produit un span/log d'erreur terminal sans identifiant.
+
+### Contrôles après correction
+
+| Contrôle | Résultat | Preuve |
+|---|:---:|---|
+| `pnpm check` | **PASS** | 38 fichiers/179 tests, format, lint, types et tous les builds |
+| `pnpm benchmark` | **PASS** | 232 µs/tick ; 1 000 projections en 20 ms |
+| charge via runtime | **PASS** | 24 000 ticks, p95 0,169 ms, projection p95 48 Kio, ferraille max 9 |
+| `pnpm test:smoke` | **PASS** | 7 scénarios ; commande→état p95 143,0 ms, sous le budget de 150 ms |
+| image LAN finale | **PASS** | reconstruite, conteneur sain, limite 512 Mio, `/game/health` 200 |
+
+Aucune contre-revue n'a été demandée ni lancée. La résolution séparée conserve l'arbitrage ; les
+artefacts de revue restent non committés conformément à la politique.

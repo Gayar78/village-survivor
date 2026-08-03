@@ -28,6 +28,11 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 03/08 | Coopération autoritaire | Le lobby ne diffuse plus seed, roster, bonus ou autorité d'hôte : seulement le `roomId` opaque déjà réservé | L'admission et la reprise sont désormais décidées par la room ; Supabase reste un transport de lobby non fiable | `architecture.md`, `apps/server/README.md` |
 | 03/08 | Reconnexion Colyseus | La coupure réseau est distinguée de la sortie volontaire par `onDrop`/`onLeave` | Cette frontière permet de neutraliser immédiatement sans supprimer l'avatar avant trente secondes | `gameplay/current-rules.md`, `qualite/rapport-tests.md` |
 | 03/08 | Revue indépendante de la boucle 3 | Aucun P0–P2 ; deux P3 de minimisation retenus et corrigés | La seed quitte le Schema et les bonus persistants quittent la présence du hub | `qualite/rapport-tests.md` |
+| 03/08 | Transport des contrôles | `control` utilise `send` malgré l'intention initiale « non fiable » | Le transport WebSocket Colyseus ignore `sendUnreliable`; séquence, cadence et expiration conservent la sémantique remplaçable | `ADR-0011`, `apps/server/README.md` |
+| 03/08 | Récompenses autoritaires | Journal de run et crédit d'or réunis dans une RPC transactionnelle réservée à `service_role` | Deux appels concurrents doivent rester sans double crédit et le navigateur ne doit plus créer de valeur | `0006_authoritative_game_rewards.sql`, `spec-fonctionnelle.md` |
+| 03/08 | Mesure des patches | Instrumentation du buffer réellement encodé autour de `broadcastPatch` | Une projection JSON complète surestimait le trafic et ne mesurait pas le contrat annoncé | `observabilite.md`, `TowerRoom.ts` |
+| 03/08 | Propagation distribuée | Injection/extraction explicite du `traceparent` sur `POST /rooms` | Enregistrer des spans des deux côtés ne suffit pas à produire une trace distribuée | `observabilite.md`, `TowerServerSession.ts` |
+| 03/08 | Revue indépendante de la boucle 4 | Aucun P0–P2 ; quatre P3 retenus et corrigés | La charge traverse le runtime, la mesure de patch est testée, les authentifications incomplètes expirent et une perte de persistance devient explicitement observable | `qualite/rapport-tests.md`, `apps/server/README.md` |
 
 ## Difficultés et dette potentielle
 
@@ -49,12 +54,14 @@ Dette identifiée pendant le développement, reprise au backlog :
 
 - ~~la ferraille au sol croît sans limite~~ — **résolu dans la boucle 1 de la v2** : aucun tas
   naturel et expiration après 600 ticks ;
-- **la projection d'état et le calcul d'empreinte ne sont pas mesurés**, alors que leur coût croît
-  avec la taille de l'état ;
-- **la fenêtre de reconnexion** a été remplie à 83 % par une partie de seize minutes ;
-- **une divergence est survenue au tick 18220** d'une partie de seize minutes, sans cause établie ;
-- **le crédit d'or de fin de partie est déclaré par le navigateur**, et `recordGameResult` n'est
-  toujours appelé par personne : les statistiques de profil restent à zéro.
+- ~~la projection d'état et le calcul d'empreinte ne sont pas mesurés~~ — le P2P et ses empreintes
+  ont été retirés ; la taille encodée des patches serveur est maintenant mesurée ;
+- ~~la fenêtre de reconnexion P2P a été remplie à 83 %~~ — remplacée par un état complet serveur
+  et une fenêtre fixe de trente secondes ;
+- ~~une divergence est survenue au tick 18220~~ — la migration élimine cette classe de défaut en
+  n'exécutant plus plusieurs simulations clientes ;
+- ~~le crédit d'or est déclaré par le navigateur~~ — remplacé par `finalize_game_run`; les
+  statistiques historiques de profil restent un sujet distinct.
 
 ## Ce que la méthode a fait gagner
 

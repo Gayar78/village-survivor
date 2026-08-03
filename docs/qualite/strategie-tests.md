@@ -14,18 +14,18 @@ son cycle de vie deviennent des gates de release, au même titre que la simulati
 
 | Domaine | État | Volume |
 |---|---|---|
-| Logique métier et frontières solo | **couvert** | 198 tests Vitest après arbitrage Claude |
+| Logique métier et frontières solo | **couvert** | suite Vitest complète, total consigné dans le rapport |
 | Contrat de session et roster coopératif | **couvert** | inclus ci-dessus |
 | Interface (HUD, boutique, méta-build) | **couvert** | inclus ci-dessus |
-| Démarrage du jeu dans un navigateur réel | **couvert** | 6 scénarios Playwright, en intégration continue |
+| Démarrage du jeu dans un navigateur réel | **couvert** | 7 scénarios Playwright, en intégration continue |
 | Performance de la simulation | **couvert** | 1 scénario, hors navigateur |
-| **Accès non autorisés** | **partiel** | JWT solo, roster, création Colyseus forgée et commandes |
-| **Dépendance externe indisponible** | **partiel** | PostgREST et création solo |
-| **Contrat d'observabilité** | **couvert** | trace réelle exportée et inspectée, données interdites, seuil de journalisation |
+| **Accès non autorisés** | **couvert sur la frontière v2** | JWT, roster, création forgée, commandes et RPC d'or |
+| **Dépendance externe indisponible** | **couvert sur la frontière v2** | PostgREST, serveur et export OTLP |
+| **Contrat d'observabilité** | **couvert automatiquement, preuve v2 finale manuelle** | propagation, données interdites, seuil et panne OTLP ; trace serveur LAN à relire |
 | **Garde d'architecture du moteur** | **couvert** | dépendances, imports, horloge, aléatoire, navigateur |
 | Parcours du lobby de bout en bout | **absent** | — |
 | Serveur autoritaire et contrats réseau | **solo et coop couverts** | Vitest serveur + clients Colyseus réels 2/4 et 10/31 s |
-| Récompenses serveur idempotentes | **planifié v2** | boucle 4 |
+| Récompenses serveur idempotentes | **couvert** | unitaires + deux appels concurrents sur PostgreSQL LAN |
 
 La couverture mesurée, 86 % des instructions, ne porte que sur `game-core` et `content`. Les
 services de compte, l'authentification, les canaux temps réel et le schéma SQL n'y figurent
@@ -68,7 +68,7 @@ rassurant à tort, et ne doit pas servir d'indicateur de confiance globale.
 | Bout en bout du lobby | connexion, second facteur, salon, lancement | navigateur + pile locale | *différé — voir ci-dessous* |
 
 **Pourquoi l'intégration des autorisations n'est pas en intégration continue.** Elle exige une
-base Postgres avec les cinq migrations et un service d'authentification. La monter dans le
+base Postgres avec les six migrations et un service d'authentification. La monter dans le
 pipeline coûterait plusieurs minutes par exécution pour un projet qui n'a ni budget ni urgence.
 Elle est donc **exécutée à la main contre la pile locale avant une release**, et cette exécution
 fait partie des critères de sortie. C'est un compromis assumé, pas un oubli : le risque couvert

@@ -26,6 +26,7 @@ export interface InternalTowerRoomOptions {
   expectedUserIds: readonly string[];
   metaBuildsByPlayerId: Readonly<Record<string, MetaBuildModifiers>>;
   expiresAtMs: number;
+  traceParent?: string;
 }
 
 export interface CreatedRoom {
@@ -47,6 +48,15 @@ function errorBody(code: TowerRoomError['code'], message: string): TowerRoomErro
 
 function validUserId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 128;
+}
+
+function validTraceParent(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/iu.test(value) &&
+    !value.includes('00000000000000000000000000000000') &&
+    !value.includes('-0000000000000000-')
+  );
 }
 
 function parseRequest(
@@ -127,6 +137,8 @@ export function createTowerRoomHandler(dependencies: CreateRoomDependencies): Re
       );
       const createId = dependencies.createId ?? randomUUID;
       const expiresAtMs = now + ROOM_ADMISSION_WINDOW_MS;
+      const traceParentHeader = request.header('traceparent');
+      const traceParent = validTraceParent(traceParentHeader) ? traceParentHeader : undefined;
       const created = await dependencies.createRoom({
         mode: parsed.request.mode,
         runId: createId(),
@@ -134,6 +146,7 @@ export function createTowerRoomHandler(dependencies: CreateRoomDependencies): Re
         expectedUserIds: parsed.roster,
         metaBuildsByPlayerId: Object.fromEntries(builds),
         expiresAtMs,
+        ...(traceParent === undefined ? {} : { traceParent }),
       });
       const result: CreateTowerRoomResponse = {
         roomId: created.roomId,

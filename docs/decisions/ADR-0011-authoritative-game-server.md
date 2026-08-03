@@ -24,6 +24,12 @@ Une `TowerRoom` Colyseus possède l'unique `TowerSimulation` et avance à 20 Hz.
 des commandes, reçoit des états différentiels et conserve uniquement une interpolation et une
 prédiction visuelle bornée.
 
+Le déploiement retenu utilise WebSocket derrière Nginx. Ce transport est fiable et ordonné ; le
+SDK Colyseus ignore `sendUnreliable` avec WebSocket. Les contrôles continus utilisent donc
+`send`, mais restent remplaçables : cadence de 30/s, séquence croissante, rejet des anciennes
+valeurs et neutralisation après 250 ms. Un transport réellement non fiable nécessiterait
+WebTransport et une autre frontière de déploiement, hors de cette décision.
+
 Colyseus serveur est fixé à `0.17.10`, son SDK client à `0.17.43` et Schema à `4.0.30` pendant
 la migration. Supabase reste l'autorité des comptes et du lobby. Le serveur vérifie les JWT,
 charge les bonus avec `service_role` et persiste les récompenses par une RPC idempotente.
@@ -46,7 +52,7 @@ retour possible.
 - une panne du serveur interrompt le solo comme la coopération ;
 - le déploiement gagne un conteneur limité initialement à 512 Mio ;
 - les contrats réseau, l'adaptateur client, la persistance idempotente et les tests multi-clients
-  doivent être construits ;
+  augmentent la surface à maintenir ;
 - aucune reprise de room après redémarrage n'est fournie ;
 - HTTP sans TLS reste acceptable uniquement sur le LAN de confiance.
 
@@ -72,3 +78,10 @@ complexité pour une indisponibilité explicitement sans conséquence. Cette opt
 - la charge de 20 minutes respecte les budgets de la spécification non-fonctionnelle ;
 - une partie solo et une coop sur deux postes produisent une trace distribuée complète.
 
+## État d'application au 3 août 2026
+
+Les quatre boucles techniques sont implémentées : session serveur unique en solo/coop, roster et
+reconnexion, ferraille bornée, finalisation transactionnelle, conteneur, proxy et observabilité.
+Le code local/lockstep, les replays et les empreintes P2P ont été retirés. Les tests automatiques
+et l'intégration SQL/Docker sont verts ; le dernier critère ci-dessus, sur deux postes avec
+inspection de traces, reste une validation manuelle à réaliser.

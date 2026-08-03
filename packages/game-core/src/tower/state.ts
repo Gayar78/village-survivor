@@ -44,7 +44,7 @@ export interface MutableTowerPlayer {
   pendingUpgrades: number;
   upgradeChoices: TowerUpgradeCard[];
   downedRemainingMs: number;
-  /** Intention persistante reçue par l'entrée lockstep courante. */
+  /** Intention persistante reçue par l'entrée autoritaire courante. */
   turretWorkshopOpen: boolean;
   activeWeaponId: TowerWeaponId;
   weapons: MutableTowerWeapon[];
@@ -105,7 +105,7 @@ export interface MutableTowerMonster {
    *
    * Les points de vie ne peuvent pas servir de garde d'unicité, `damageMonster` les mettant à
    * zéro avant d'appeler `killMonster`. Ce drapeau n'est pas projeté dans l'état public et
-   * n'entre donc pas dans l'empreinte comparée par le lockstep.
+   * ne change donc pas l'état de gameplay projeté.
    */
   detonated: boolean;
 }

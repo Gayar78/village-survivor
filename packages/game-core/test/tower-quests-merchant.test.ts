@@ -12,7 +12,7 @@ import type {
 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 
 function input(overrides: Partial<TowerInput> = {}): TowerInput {
   return { sequence: 0, moveX: 0, moveY: 0, aimX: 0, aimY: 0, ...overrides };
@@ -204,8 +204,8 @@ describe('Tower shared quests and merchant', () => {
   });
 
   it('fait tourner les offres canoniques et reste identique pour seed et inputs égaux', () => {
-    const first = new TowerSimulation('quests-merchant-lockstep');
-    const second = new TowerSimulation('quests-merchant-lockstep');
+    const first = new TowerSimulation('quests-merchant-authoritative');
+    const second = new TowerSimulation('quests-merchant-authoritative');
     first.start();
     second.start();
 
@@ -222,7 +222,7 @@ describe('Tower shared quests and merchant', () => {
         sequence: tick,
         ...(tick === 0
           ? {
-              discreteActionId: 'lockstep-super-module',
+              discreteActionId: 'authoritative-super-module',
               turretShop: { turret: 'E' as const, action: 'module:super-overdrive' },
             }
           : {}),
@@ -240,9 +240,6 @@ describe('Tower shared quests and merchant', () => {
     });
     expect(firstSnapshot.sharedQuest).toEqual(secondSnapshot.sharedQuest);
     expect(secondSnapshot).toEqual(firstSnapshot);
-    expect(createTowerStateFingerprint(secondSnapshot)).toBe(
-      createTowerStateFingerprint(firstSnapshot),
-    );
     expect(TOWER_TURRET_SUPER_MODULES.map((module) => module.id)).toEqual([
       'super-overdrive',
       'super-rail',

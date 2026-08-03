@@ -1,4 +1,5 @@
 import { Client, type Room } from '@colyseus/sdk';
+import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
 import type {
   CreateTowerRoomRequest,
   CreateTowerRoomResponse,
@@ -17,7 +18,8 @@ import type {
 } from '@village-survivor/protocol';
 
 import { supabase } from '../account/supabaseClient.js';
-import type { TowerRenderableSession } from './towerSession.js';
+import { getTracer, sessionContext } from '../observability/telemetry.js';
+import type { TowerRenderableSession } from './TowerRenderableSession.js';
 
 const SERVER_TICK_MS = 50;
 const CONTROL_INTERVAL_MS = 1_000 / 30;
@@ -163,19 +165,33 @@ export async function createTowerServerRoom(
   request: CreateTowerRoomRequest,
 ): Promise<CreateTowerRoomResponse> {
   const identity = await currentGameIdentity();
-  const response = await fetch(`${gameServerEndpoint()}/rooms`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${identity.accessToken}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok || typeof body !== 'object' || body === null || !('roomId' in body)) {
-    throw new Error(responseError(body));
+  const parent = sessionContext() ?? context.active();
+  const span = getTracer().startSpan('game.client.room.create', {}, parent);
+  const spanContext = trace.setSpan(parent, span);
+  const traceHeaders: Record<string, string> = {};
+  propagation.inject(spanContext, traceHeaders);
+  try {
+    const response = await fetch(`${gameServerEndpoint()}/rooms`, {
+      method: 'POST',
+      headers: {
+        ...traceHeaders,
+        authorization: `Bearer ${identity.accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    if (!response.ok || typeof body !== 'object' || body === null || !('roomId' in body)) {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw new Error(responseError(body));
+    }
+    return body as CreateTowerRoomResponse;
+  } catch (error) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    throw error;
+  } finally {
+    span.end();
   }
-  return body as CreateTowerRoomResponse;
 }
 
 export function towerActionsFromInput(
@@ -354,7 +370,10 @@ export class TowerServerSession implements TowerRenderableSession {
     const nowMs = performance.now();
     if (nowMs - this.lastControlAtMs >= CONTROL_INTERVAL_MS) {
       this.lastControlAtMs = nowMs;
-      room.sendUnreliable('control', {
+      // Colyseus sur WebSocket ne possède pas de canal non fiable : sendUnreliable()
+      // ignore le message. Les séquences rendent néanmoins ces contrôles remplaçables
+      // côté serveur et la cadence reste bornée à 30/s.
+      room.send('control', {
         sequence: input.sequence,
         moveX: input.moveX,
         moveY: input.moveY,

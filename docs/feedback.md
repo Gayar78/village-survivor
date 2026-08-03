@@ -411,3 +411,21 @@ l'interface le demande déjà.
 la bonne. La plus probable se vérifie en quelques lignes — comparer, d'un poste à l'autre, le
 résultat des fonctions mathématiques employées par la simulation. Corriger sans avoir tranché
 reviendrait à remplacer une partie du cœur de simulation sur une intuition.
+
+## Résolution v2 — serveur autoritaire (3 août 2026)
+
+Les deux symptômes de la session longue sont désormais traités par conception : la ferraille ne
+naît plus naturellement et expire après 600 ticks, tandis que la coopération n'exécute plus une
+simulation par navigateur. Une `TowerRoom` calcule l'état unique et les clients ne font que
+commander et rendre cet état ; la divergence au tick 18 220 n'est donc plus une classe de panne
+possible entre pairs.
+
+Le remplacement retire aussi les mécanismes de diagnostic devenus sans objet — historique de
+replay et empreinte globale — au profit de mesures serveur directement actionnables : durée et
+retard de tick, octets encodés par patch, commandes refusées, reconnexions et population de
+ferraille. Le test de référence simule 24 000 ticks, quatre joueurs et 200 monstres ; les valeurs
+finales sont consignées dans `qualite/rapport-tests.md`.
+
+Cette résolution technique ne remplace pas un retour joueur. Une partie solo et une partie coop
+sur deux postes LAN doivent encore confirmer le rendu, la reconnexion et la trace distribuée en
+conditions réelles.

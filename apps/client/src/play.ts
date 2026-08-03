@@ -2,22 +2,18 @@ import { TOWER_WEAPONS } from '@village-survivor/content';
 import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
-import type { TowerRenderableSession } from './net/towerSession.js';
+import type { TowerRenderableSession } from './net/TowerRenderableSession.js';
 import {
   TowerServerSession,
   TOWER_SERVER_ROOM_KEY,
   type TowerServerSessionOptions,
 } from './net/TowerServerSession.js';
-import { authService } from './account/authService.js';
-import { statsService } from './account/statsService.js';
 import { gameUrl } from './gameUrl.js';
 import { createLogger } from './observability/logger.js';
 import { describeError } from './observability/redact.js';
 import { flushTelemetry, initTelemetry } from './observability/telemetry.js';
-import { SpanStatusCode } from '@opentelemetry/api';
 import {
   endGameSessionSpan,
-  startGameChildSpan,
   startGameSessionSpan,
   type GameMode,
 } from './observability/gameTelemetry.js';
@@ -112,7 +108,6 @@ const telemetry = initTelemetry();
 const log = createLogger('session');
 const gameMode: GameMode = isCoopSession ? 'coop' : 'solo';
 const gameSessionSpan = startGameSessionSpan({
-  seed: 'server-assigned',
   mode: gameMode,
   playersCount: 1,
 });
@@ -219,30 +214,6 @@ const gameOver = new GameOverScreen(gameOverElement, {
 });
 
 let latestState: TowerGameState | undefined;
-let accountGoldCredited = false;
-
-async function creditAccountGoldAtEndOfRun(gold: number): Promise<void> {
-  if (accountGoldCredited || !Number.isSafeInteger(gold) || gold <= 0) {
-    return;
-  }
-  accountGoldCredited = true;
-  const span = startGameChildSpan('account.gold.credit', { 'vs.gold': gold });
-  try {
-    const account = await authService.getSession();
-    if (account !== null) {
-      await statsService.creditAccountGold(gold);
-    }
-    span.end();
-  } catch (error) {
-    // L'écran de fin doit rester utilisable même si Supabase est indisponible.
-    span.recordException(describeError(error));
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    span.end();
-    log.error("échec de l'enregistrement de l'or de cette partie", {
-      'vs.error': describeError(error),
-    });
-  }
-}
 
 session.subscribe((state) => {
   syncStatus.element.hidden = true;
@@ -261,7 +232,6 @@ session.subscribe((state) => {
   turretShop.render(state);
   levelUp.render(state);
   if (state.status === 'defeat') {
-    void creditAccountGoldAtEndOfRun(state.player.gold);
     endGameSession('defeat', {
       'vs.wave': state.wave,
       'vs.duration.ms': state.elapsedMs,

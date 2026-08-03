@@ -93,7 +93,7 @@ Le joueur rejoint sa room et reçoit un état complet avant le premier rendu jou
 | navigateur seul sans serveur | erreur visible, aucun monde simulé |
 | état reçu | `player` local égal à l'entrée correspondante de `players` |
 
-**Diagnostic :** racine serveur `game.room`, enfants `game.room.admit` et `game.room.start` ;
+**Diagnostic :** racine serveur `game.room`, enfants `game.room.admission` et `game.room.start` ;
 session navigateur `game.client.session`.
 
 ## F-003 — Démarrer une coopération avec roster exact
@@ -117,7 +117,7 @@ Le chef crée la room et le lobby Supabase diffuse uniquement son `roomId` aux i
 | identité hors roster | refus `not-in-roster` |
 | deux clients connectés | même tick et même état ; seul l'alias local `player` diffère |
 
-**Diagnostic :** `game.room.admit`, `game.room.start`, durée d'attente et motif d'annulation ;
+**Diagnostic :** `game.room.admission`, `game.room.start`, durée d'attente et motif d'annulation ;
 aucun roster nominatif dans les signaux.
 
 ## F-004 — Envoyer des commandes sans autorité cliente
@@ -127,6 +127,8 @@ Le client envoie une commande continue `control` et des actions discrètes `acti
 **Critères d'acceptation**
 
 - `control` contient séquence, déplacement, visée, tir et état d'atelier, au plus 30/s ;
+- le transport WebSocket est fiable ; les contrôles sont remplaçables par séquence et deviennent
+  neutres après 250 ms, car Colyseus ne transporte pas de datagrammes non fiables sur WebSocket ;
 - `action` est une union fermée niveau/arme/boutique, fiable, au plus 10/s ;
 - chaque action porte un `actionId`, dédupliqué ; la file n'excède jamais 16 ;
 - les nombres doivent être finis et bornés ; les séquences anciennes sont ignorées ;
@@ -228,6 +230,9 @@ Une coupure réseau ne retire pas immédiatement l'avatar de la partie.
 
 Le serveur conserve l'or gagné par tous les participants, y compris ceux retirés avant la fin.
 
+> État : **implémenté et vérifié le 3 août 2026**, y compris deux appels concurrents sur la base
+> LAN réelle et la révocation des droits navigateur.
+
 **Critères d'acceptation**
 
 - une défaite normale crédite chaque participant du montant enregistré par le serveur ;
@@ -243,13 +248,17 @@ Le serveur conserve l'or gagné par tous les participants, y compris ceux retir�
 | joueur expulsé puis défaite normale | son or est crédité |
 | deux finalisations simultanées | chaque portefeuille augmente une seule fois |
 | montant négatif/non entier/hors borne | transaction refusée, aucun crédit partiel |
-| room abandonnée | `game_runs` terminal sans récompense de portefeuille |
+| room abandonnée | aucun appel de finalisation et aucune récompense de portefeuille |
 | PostgREST temporairement indisponible | résultat affiché, échec visible et retry idempotent côté serveur |
 
-**Diagnostic :** span `game.room.persist`, compteur de crédits par résultat sans montant ni
-identité en attribut. Une erreur est journalisée avec `runId` opaque, jamais un jeton.
+**Diagnostic :** span `game.room.persistence`, compteur de crédits sans identité en attribut.
+Une erreur est journalisée sans `runId`, identité ou jeton.
 
 ## F-009 — Modes d'échec et exploitation
+
+> État : **automatisé et vérifié localement le 3 août 2026**. La partie solo et la partie coop
+> sur deux postes, avec lecture de la trace distribuée dans le backend LAN, restent la preuve
+> manuelle finale.
 
 **Critères d'acceptation**
 

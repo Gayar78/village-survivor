@@ -2,20 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createHubPresencePayload,
-  isActiveGameDescriptor,
   isLaunchPayload,
   type RealtimeSession,
 } from './realtimeService.js';
 
-describe('active co-op game descriptor', () => {
+describe('authoritative room launch payload', () => {
   const valid = { roomId: 'authoritative-room-id' };
-
-  it('accepts the minimal reconnect descriptor only', () => {
-    expect(isActiveGameDescriptor(valid)).toBe(true);
-    expect(isActiveGameDescriptor({ roomId: '' })).toBe(false);
-    expect(isActiveGameDescriptor({ roomId: 'ok', seed: 'leaked' })).toBe(false);
-    expect(isActiveGameDescriptor({ roomId: 42 })).toBe(false);
-  });
 
   it('accepts launch broadcasts containing only the room id', () => {
     expect(isLaunchPayload(valid)).toBe(true);

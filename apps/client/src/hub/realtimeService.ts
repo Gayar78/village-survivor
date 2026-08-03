@@ -13,7 +13,6 @@
 
 import { supabase } from '../account/supabaseClient.js';
 import {
-  type ActiveGameDescriptor,
   HUB_CAPACITY,
   type HubInvite,
   type HubMember,
@@ -31,7 +30,6 @@ export interface PresenceEntry {
   displayName: string;
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 }
 
 /** Identité minimale du joueur local passée à `start()`. */
@@ -46,8 +44,6 @@ export interface RealtimeService {
   stop(): Promise<void>;
   /** Met à jour son propre statut de présence (et le hub courant). */
   setStatus(status: PresenceStatus, hubCode?: string): Promise<void>;
-  /** Publie ou efface la partie lockstep rejoinable de ce joueur. */
-  setActiveGame(game: ActiveGameDescriptor | null): Promise<void>;
   /** Abonnement à la présence globale : renvoie une Map userId -> PresenceEntry. Renvoie une fonction de désabonnement. */
   onPresence(cb: (entries: Map<string, PresenceEntry>) => void): () => void;
   /** Rejoint le hub d'un code donné (celui du chef). */
@@ -82,7 +78,6 @@ type GlobalPresencePayload = {
   displayName: string;
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 };
 
 /** Payload de présence poussé sur un canal `hub:<code>`. */
@@ -120,7 +115,6 @@ let myHubCodeRef: string | null = null;
 let currentStatus: PresenceStatus = 'offline';
 /** hubCode publié dans la présence globale (undefined si aucun). */
 let statusHubCode: string | undefined;
-let activeGame: ActiveGameDescriptor | undefined;
 
 let presenceChannel: RealtimeChannel | null = null;
 let personalChannel: RealtimeChannel | null = null;
@@ -139,10 +133,6 @@ const inviteCbs = new Set<(invite: HubInvite) => void>();
 const MAX_GAME_DESCRIPTOR_STRING = 128;
 
 /** Validation de frontière : la présence Realtime n'est jamais une source fiable. */
-export function isActiveGameDescriptor(value: unknown): value is ActiveGameDescriptor {
-  return isLaunchPayload(value);
-}
-
 /** Le broadcast de lancement ne doit révéler que la référence opaque de room. */
 export function isLaunchPayload(value: unknown): value is LaunchPayload {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -229,7 +219,6 @@ function computePresenceEntries(channel: RealtimeChannel): Map<string, PresenceE
       displayName: p.displayName,
       status: p.status,
       ...(p.hubCode !== undefined ? { hubCode: p.hubCode } : {}),
-      ...(isActiveGameDescriptor(p.game) ? { game: p.game } : {}),
     });
   }
   return entries;
@@ -338,7 +327,6 @@ async function trackGlobalPresence(): Promise<void> {
     displayName: sessionRef.displayName,
     status: currentStatus,
     ...(statusHubCode !== undefined ? { hubCode: statusHubCode } : {}),
-    ...(activeGame !== undefined ? { game: activeGame } : {}),
   };
   const res = await presenceChannel.track(payload);
   if (res !== 'ok') {
@@ -479,14 +467,6 @@ async function setStatusInternal(
   await trackGlobalPresence();
 }
 
-async function setActiveGameInternal(game: ActiveGameDescriptor | null): Promise<void> {
-  if (game !== null && !isActiveGameDescriptor(game)) {
-    throw new Error('Descripteur de partie co-op invalide.');
-  }
-  activeGame = game ?? undefined;
-  await setStatusInternal(game === null ? 'online' : 'in-game', undefined);
-}
-
 // --- Implémentation des méthodes publiques ------------------------------------
 
 async function doStart(session: RealtimeSession, myHubCode: string): Promise<void> {
@@ -498,7 +478,6 @@ async function doStart(session: RealtimeSession, myHubCode: string): Promise<voi
   myHubCodeRef = myHubCode;
   currentStatus = 'online';
   statusHubCode = undefined;
-  activeGame = undefined;
   joinedHubCode = null;
 
   await openPresenceChannel(session.userId);
@@ -521,7 +500,6 @@ async function doStop(): Promise<void> {
   joinedHubCode = null;
   currentStatus = 'offline';
   statusHubCode = undefined;
-  activeGame = undefined;
   sessionRef = null;
   myHubCodeRef = null;
 
@@ -666,7 +644,6 @@ export const realtimeService: RealtimeService = {
   start: (session, myHubCode) => doStart(session, myHubCode),
   stop: () => doStop(),
   setStatus: (status, hubCode) => setStatusInternal(status, hubCode),
-  setActiveGame: (game) => setActiveGameInternal(game),
   onPresence,
   joinHub: (code) => doJoinHub(code),
   leaveHub: () => doLeaveHub(),

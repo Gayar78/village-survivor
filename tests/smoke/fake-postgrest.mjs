@@ -32,5 +32,9 @@ createServer((request, response) => {
     response.writeHead(200).end('[]');
     return;
   }
+  if (request.method === 'POST' && url.pathname === '/rpc/finalize_game_run') {
+    response.writeHead(200).end(JSON.stringify({ status: 'finished', credited: 0 }));
+    return;
+  }
   response.writeHead(404).end(JSON.stringify({ message: 'not found' }));
 }).listen(port, '127.0.0.1');

@@ -1,7 +1,7 @@
 import type { TowerInput, TowerMonsterKind, TurretDir, Vector2 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 
 function input(overrides: Partial<TowerInput> = {}): TowerInput {
   return { sequence: 0, moveX: 0, moveY: 0, aimX: 0, aimY: 0, ...overrides };
@@ -166,8 +166,8 @@ describe('Tower turret workshop protection', () => {
   });
 
   it('reste identique pour une même seed et les mêmes intentions atelier', () => {
-    const first = new TowerSimulation('workshop-lockstep');
-    const second = new TowerSimulation('workshop-lockstep');
+    const first = new TowerSimulation('workshop-authoritative');
+    const second = new TowerSimulation('workshop-authoritative');
     first.start();
     second.start();
     placeAtEastWorkshop(first);
@@ -184,17 +184,11 @@ describe('Tower turret workshop protection', () => {
         const secondProtectedSnapshot = second.createSnapshot();
         expect(firstProtectedSnapshot.player.turretWorkshopProtected).toBe(true);
         expect(secondProtectedSnapshot).toEqual(firstProtectedSnapshot);
-        expect(createTowerStateFingerprint(secondProtectedSnapshot)).toBe(
-          createTowerStateFingerprint(firstProtectedSnapshot),
-        );
       }
     }
 
     const firstSnapshot = first.createSnapshot();
     const secondSnapshot = second.createSnapshot();
     expect(secondSnapshot).toEqual(firstSnapshot);
-    expect(createTowerStateFingerprint(secondSnapshot)).toBe(
-      createTowerStateFingerprint(firstSnapshot),
-    );
   });
 });

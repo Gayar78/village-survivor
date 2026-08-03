@@ -6,8 +6,9 @@
 #   db       Postgres (image Supabase : rôles, extensions et schémas attendus)
 #   auth     GoTrue — comptes, sessions, TOTP
 #   rest     PostgREST — tables et RPC, sous politiques RLS
-#   realtime Realtime — présence du hub ET transport du lockstep coopératif
-#   web      nginx — sert le jeu ET fait passerelle vers les trois services ci-dessus
+#   realtime Realtime — présence et diffusion du roomId dans le lobby
+#   game-server Colyseus — simulation autoritaire solo et coopérative
+#   web      nginx — sert le jeu et fait passerelle vers les services
 #
 # Ni Studio, ni Storage, ni Edge Functions, ni Supavisor : le jeu ne s'en sert pas.
 #
@@ -176,6 +177,38 @@ services:
     volumes:
       - vs-otel-data:/data
 
+  game-server:
+    container_name: vs-game-server
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      rest:
+        condition: service_healthy
+    environment:
+      PORT: 2567
+      JWT_SECRET: ${JWT_SECRET}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://rest:3000
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-info}
+      OTEL_SERVICE_NAME: village-survivor-game-server
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=lan
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:2567/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
   web:
     container_name: vs-web
     image: nginx:1.29-alpine
@@ -184,6 +217,8 @@ services:
       auth:
         condition: service_healthy
       rest:
+        condition: service_healthy
+      game-server:
         condition: service_healthy
     ports:
       # Sur toutes les interfaces : c'est ce qui rend le jeu joignable depuis le LAN.

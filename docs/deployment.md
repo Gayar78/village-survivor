@@ -1,24 +1,23 @@
 # Village Survivor — Déploiement
 
-> Statut : migration v2 en cours
+> Statut : déploiement v2 implémenté — validation finale sur deux postes en attente
 > Version du projet : v2
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
-> État : serveur solo/coop implémenté localement ; intégration LAN prévue en boucle 4
+> État : client, Supabase et serveur de jeu réunis dans la stack LAN canonique
 
 ## 1. État réel
 
 Le client produit un site statique dans `apps/client/dist`, composé de deux pages :
 `index.html` (lobby) et `play.html` (partie).
 
-Un **environnement LAN auto-hébergé existe** depuis le 31 juillet 2026 pour le client et
-Supabase. La boucle 2 ajoute `apps/server`, mais ne l'a pas encore intégré au Compose ou à
-Nginx : le parcours solo autoritaire fonctionne localement sur le port 2567, pas encore sur la
-stack LAN canonique. Cette intégration, le healthcheck conteneur et la limite mémoire arrivent
-en boucle 4.
+L'environnement LAN auto-hébergé réunit le client, Supabase et `game-server`. Le serveur Node
+est construit depuis `apps/server/Dockerfile`, limité à 512 Mio, contrôlé par `/health`, et Nginx
+publie HTTP/WebSocket sous `/game/` sur la même origine. Une panne du processus interrompt les
+rooms en mémoire et le client revient au lobby ; aucune reprise de room n'est promise.
 
-La coopération utilise désormais ce serveur en local. Aucun hébergement public n'est configuré :
-ni compte Cloudflare, ni URL publique, ni pipeline de publication.
+Aucun hébergement public n'est configuré : ni compte Cloudflare, ni URL publique, ni pipeline
+de publication.
 
 ## 2. Intégration continue
 
@@ -67,7 +66,8 @@ Ces deux valeurs sont **intégrées au paquet JavaScript** et donc publiques. C'
 fonctionnement prévu de Supabase : la sécurité repose sur les politiques RLS, pas sur le secret
 de la clé `anon`.
 
-Le processus `apps/server` lit `JWT_SECRET`, `SERVICE_ROLE_KEY`, `POSTGREST_URL` et `PORT`.
+Le processus `apps/server` lit `JWT_SECRET`, `SERVICE_ROLE_KEY`, `POSTGREST_URL`, `PORT`,
+`APP_LOG_LEVEL` et, facultativement, `OTEL_EXPORTER_OTLP_ENDPOINT`.
 Ces noms ne portent jamais `VITE_` : Vite ne les expose pas au bundle. La clé `service_role`
 contourne les RLS et reste strictement côté serveur.
 
@@ -76,10 +76,12 @@ aucune simulation locale. Il n'existe plus de mode solo hors ligne.
 
 ## 4. Base de données
 
-Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — cinq fichiers SQL
-idempotents. **Leur application est manuelle** : éditeur SQL du tableau de bord, ou
-`supabase db push`. Aucun automatisme ne les applique, et rien ne vérifie qu'un environnement est
-à jour. Voir [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md).
+Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — six fichiers SQL
+idempotents. Sur la stack LAN, `deploy/lan/apply-migrations.ps1` les applique dans l'ordre après
+le démarrage de GoTrue. `0006_authoritative_game_rewards.sql` ajoute le journal de runs et la RPC
+transactionnelle réservée à `service_role`, puis révoque l'ancien crédit client. Sur Supabase
+hébergé, l'application reste manuelle via l'éditeur SQL ou `supabase db push`. Voir
+[`SETUP_SUPABASE.md`](SETUP_SUPABASE.md).
 
 Une mise à jour du client qui suppose une migration non appliquée casse silencieusement les
 fonctionnalités concernées.
@@ -124,7 +126,7 @@ Le déploiement suppose, en plus de la mise en ligne des fichiers :
 | Environnement | Client | Supabase | État |
 |---|---|---|---|
 | Local | Vite 5173 + jeu 2567 | projet personnel du développeur | solo et coop autoritaires fonctionnels |
-| **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080` | stack Docker locale | client/Supabase fonctionnels, game-server à intégrer |
+| **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080`, `/game/` | stack Docker locale | stack complète saine, validation deux postes à faire |
 | Preview / staging | non configuré | non configuré | inexistant |
 | Production | non configuré | non configuré | inexistant |
 
@@ -146,8 +148,8 @@ Quatre points structurants en découlent :
 - **les connexions OAuth ne fonctionnent pas en LAN** : servi en HTTP clair, le navigateur
   n'accorde pas de contexte sécurisé, et les fournisseurs ne peuvent pas rappeler une adresse
   privée. La connexion par courriel et mot de passe, elle, fonctionne.
-- le futur proxy `/game/` doit conserver l'upgrade WebSocket et retirer ce préfixe avant de
-  transmettre au serveur ; cette configuration appartient à la boucle 4.
+- le proxy `/game/` conserve l'upgrade WebSocket et retire ce préfixe avant de transmettre au
+  serveur ; seul le port Nginx est exposé aux navigateurs.
 
 Un environnement de preview partageant le projet Supabase de production partagerait aussi ses
 comptes et ses données. Si des previews sont mises en place, elles devront viser un projet

@@ -176,7 +176,7 @@ function toRadians(degrees: number): number {
  *
  * Résolution exacte de |from + t·(to − from) − centre|² = radius², puis conservation de la
  * première racine si elle tombe dans le segment. N'utilise que des opérations IEEE-754 exactes,
- * ce qui préserve le déterminisme dont dépend le lockstep coopératif.
+ * ce qui préserve la reproductibilité de la simulation autoritaire et de ses tests.
  */
 function segmentCircleEntry(
   from: Vector2,
@@ -516,7 +516,7 @@ export class TowerSimulation {
     }));
 
     for (const { player, input } of entries) {
-      // Entrée persistante : elle est remplacée à chaque tick lockstep. La portée,
+      // Entrée persistante : elle est remplacée à chaque tick autoritaire. La portée,
       // l'état du joueur et celui de la tourelle restent validés dynamiquement.
       player.turretWorkshopOpen = input.turretWorkshopOpen === true;
       this.updateDownedState(player, deltaMs);
@@ -1786,7 +1786,7 @@ export class TowerSimulation {
   }
 
   /**
-   * Valide l'intention lockstep contre l'état courant du monde. Ce calcul reste
+   * Valide l'intention réseau contre l'état courant du monde. Ce calcul reste
    * dynamique : la destruction de la tourelle ou une sortie de portée pendant le
    * tick retire immédiatement la protection.
    */
