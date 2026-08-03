@@ -21,6 +21,7 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 02/08 | Horloge d'entrées | Capture pilotée par le temps réel, non par le nombre de déclenchements d'un minuteur | Le jeu tournait 8 % trop lentement et la prédiction se désactivait en silence | `feedback.md` |
 | 02/08 | Traces | Ancrage explicite du span de partie, faute de contexte propagé par le navigateur | Les spans enfants formaient chacun leur trace et les journaux partaient sans corrélation | `observabilite.md` |
 | 03/08 | Ferraille bornée | Suppression complète de la génération naturelle et durée de vie fixée à 600 ticks, avec ramassage prioritaire au tick limite | Décision fonctionnelle validée : seuls les monstres créent des tas ; une borne temporelle préserve l'économie tout en supprimant la fuite | `spec-fonctionnelle.md`, `gameplay/current-rules.md` |
+| 03/08 | Revue indépendante de la boucle 1 | Aucun P0–P2 ; deux P3 de preuve retenus et corrigés | Les vagues actives sans mort et le contact kamikaze sont désormais couverts explicitement | `qualite/rapport-tests.md` |
 
 ## Difficultés et dette potentielle
 

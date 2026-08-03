@@ -2,24 +2,30 @@
 
 ## Validation v2 — boucle 1 « ferraille bornée »
 
-> Statut : contrôles automatiques réussis, avant revue indépendante
+> Statut : contrôles automatiques et revue indépendante terminés, constats arbitrés
 > Version testée : v2, boucle 1
 > Commit fonctionnel : `db98ed5`
+> Commit de renforcement après revue : `b378312`
 > Environnement : Windows 11, Node.js/pnpm du workspace, exécution locale
 > Date : 3 août 2026
 
 | Contrôle | Résultat | Preuve observée |
 |---|:---:|---|
-| Tests moteur complets | **PASS** | 15 fichiers, 72 tests |
-| Scénarios ciblés ferraille + quêtes + simulation | **PASS** | 3 fichiers, 16 tests |
+| Tests moteur complets | **PASS** | 15 fichiers, 73 tests |
+| Scénarios ciblés ferraille + quêtes + simulation | **PASS** | 3 fichiers, 17 tests |
 | Typecheck `protocol` et `game-core` | **PASS** | `tsc --noEmit`, deux packages |
 | Lint des fichiers touchés | **PASS** | ESLint, aucune erreur |
 | Benchmark isolé | **PASS** | 560 ticks en 142 ms, **254 µs/tick** sous plus de 200 entités |
 
-Les cinq preuves fonctionnelles spécifiques sont : aucune apparition sans mort sur 2 000 ticks,
-un tas par monstre de la valeur de sa récompense, expiration au tick `drop + 600`, ramassage
-prioritaire au tick limite, et population bornée sur 1 200 ticks. Le test de quête vérifie en
-plus que sa récompense augmente directement `scrapFund` sans créer de sixième tas.
+Les six preuves fonctionnelles spécifiques sont : aucune apparition sans mort sur 2 000 ticks
+avec vagues et monstres présents, un tas par monstre de la valeur de sa récompense, la voie
+indirecte d'un kamikaze mort au contact, expiration au tick `drop + 600`, ramassage prioritaire
+au tick limite, et population bornée sur 1 200 ticks. Le test de quête vérifie en plus que sa
+récompense augmente directement `scrapFund` sans créer de sixième tas.
+
+La revue indépendante a conclu « conforme », sans P0–P2. Ses deux suggestions P3 ont été
+retenues et sont à l'origine des deux renforcements de preuve ci-dessus. Aucune contre-revue n'a
+été lancée.
 
 La garde d'architecture fait partie des 72 tests réussis : l'événement `scrap-expired` reste une
 donnée déterministe du moteur et aucune instrumentation OpenTelemetry n'entre dans `game-core`.
