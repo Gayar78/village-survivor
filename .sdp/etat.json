@@ -3,7 +3,7 @@
   "version": "v2",
   "phase": 4,
   "phase_nom": "developpement",
-  "iteration": 3,
+  "iteration": 4,
   "profil": {
     "code": "non",
     "discipline_process": "moyenne",
@@ -96,9 +96,9 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "0dd1746b98ca4b428eba64126c7850ca2db062ba",
+  "dernier_commit": "11fecda58d78be656ce594559fb0a96d4a6305e4",
   "maj": "2026-08-03",
-  "portee_iteration_suivante": "boucle_4_recompenses_exploitation_et_suppression_p2p",
+  "portee_iteration_suivante": "validation_finale_deux_postes_lan_et_trace_distribuee",
   "decisions_a_rouvrir": [
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
     "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026."
