@@ -39,6 +39,9 @@ Le endpoint de matchmaking public ne peut pas forger une création : sans ticket
 constructeur de room refuse roster, seed et bonus fournis par un appelant. `GET /health` vérifie
 que le processus répond. Le préfixe public `/game/` sera ajouté par Nginx à la boucle 4.
 
+Une identité peut demander au plus cinq créations par minute. L'excédent reçoit HTTP 429 et le
+code fermé `rate-limited` ; cette limite en mémoire est réinitialisée avec le processus.
+
 ## Commandes et erreurs
 
 - `control` : non fiable, au plus 30/s, séquence strictement croissante, déplacement `[-1, 1]`,
@@ -51,6 +54,9 @@ que le processus répond. Le préfixe public `/game/` sera ajouté par Nginx à 
 Les erreurs de création utilisent un code fermé et un message affichable. JWT, identité hors
 roster, double connexion, room expirée, commande malformée et dépassement de fréquence ne sont
 jamais transformés en état de simulation.
+
+Une panne terminale affiche son motif puis ramène le solo au lobby après 3,5 secondes. Un simple
+refus de commande n'est pas terminal et ne provoque aucune navigation.
 
 ## Vérifications
 

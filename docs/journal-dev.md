@@ -24,6 +24,7 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 03/08 | Revue indépendante de la boucle 1 | Aucun P0–P2 ; deux P3 de preuve retenus et corrigés | Les vagues actives sans mort et le contact kamikaze sont désormais couverts explicitement | `qualite/rapport-tests.md` |
 | 03/08 | Autorité solo | Le matchmaker Colyseus exige un ticket serveur opaque à usage unique en plus du JWT de jonction | Sans ce second verrou, son endpoint natif aurait pu tenter de forger roster, seed et bonus en contournant `POST /rooms` | `architecture.md`, `apps/server/README.md` |
 | 03/08 | Dépendances Colyseus | Auto-installation des peers désactivée ; transports et scripts de build sont explicitement autorisés | Le peer `uWebSockets.js`, inutilisé, imposait une archive GitHub de 38,5 Mio et une surface native supplémentaire | `pnpm-workspace.yaml`, `deployment.md` |
+| 03/08 | Revue indépendante de la boucle 2 | Aucun P0–P2 ; trois P3 retenus et corrigés | Les événements ne perdent plus de lot, la création est limitée et une panne terminale retourne au lobby | `qualite/rapport-tests.md` |
 
 ## Difficultés et dette potentielle
 

@@ -114,3 +114,15 @@ test('sert le build de production sans capacité de débogage ni erreur console'
   expect(seedInjected).toBeUndefined();
   expect(errors).toEqual([]);
 });
+
+test('affiche une erreur lisible puis revient au lobby sans fallback local', async ({ page }) => {
+  await page.route('**/otel/v1/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.goto('/play.html');
+  await expect(page.locator('#tower-sync-status')).toContainText('Partie indisponible');
+  await expect(page.locator('#tower-sync-status')).toContainText('session a expiré');
+  await page.waitForURL('**/index.html', { timeout: 6_000 });
+  await expect(page.locator('canvas')).toHaveCount(0);
+});

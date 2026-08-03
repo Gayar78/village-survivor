@@ -2,6 +2,7 @@ import { TowerSimulation } from '@village-survivor/game-core';
 import { describe, expect, it } from 'vitest';
 
 import {
+  appendUnseenTowerEvents,
   predictTowerLocalPosition,
   towerActionsFromInput,
   towerGameStateFromWire,
@@ -72,5 +73,17 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
         2,
       ),
     ).toEqual({ x: 984, y: 0 });
+  });
+
+  it('accumule deux lots fiables entre deux états et déduplique leurs identifiants', () => {
+    const knownIds = new Set<number>();
+    const first = appendUnseenTowerEvents([], knownIds, [
+      { id: 1, tick: 2, type: 'monster-killed' },
+    ]);
+    const second = appendUnseenTowerEvents(first, knownIds, [
+      { id: 1, tick: 2, type: 'monster-killed' },
+      { id: 2, tick: 3, type: 'scrap-collected' },
+    ]);
+    expect(second.map(({ id }) => id)).toEqual([1, 2]);
   });
 });

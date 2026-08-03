@@ -14,7 +14,7 @@ son cycle de vie deviennent des gates de release, au même titre que la simulati
 
 | Domaine | État | Volume |
 |---|---|---|
-| Logique métier et frontières solo | **couvert** | 195 tests Vitest |
+| Logique métier et frontières solo | **couvert** | 198 tests Vitest après arbitrage Claude |
 | Contrat de session et roster coopératif | **couvert** | inclus ci-dessus |
 | Interface (HUD, boutique, méta-build) | **couvert** | inclus ci-dessus |
 | Démarrage du jeu dans un navigateur réel | **couvert** | 1 smoke Playwright, en intégration continue |

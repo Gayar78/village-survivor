@@ -99,7 +99,7 @@ export interface TowerRenderableSession extends TowerSession {
    */
   getLocalRenderPosition(): Vector2 | undefined;
   /** Rend les incidents de connexion exploitables sans coupler le netcode au DOM. */
-  onConnectionIssue(listener: (message: string) => void): () => void;
+  onConnectionIssue(listener: (message: string, terminal?: boolean) => void): () => void;
 }
 
 /**

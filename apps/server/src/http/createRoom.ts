@@ -15,6 +15,7 @@ import {
   type AuthenticatedAccount,
 } from '../auth/supabaseJwt.js';
 import { MetaBuildDependencyError, type MetaBuildRepository } from '../meta/postgrestMetaBuild.js';
+import type { RoomCreationRateLimiter } from './RoomCreationRateLimiter.js';
 
 const ROOM_ADMISSION_WINDOW_MS = 15_000;
 
@@ -34,6 +35,7 @@ export interface CreatedRoom {
 export interface CreateRoomDependencies {
   verifyToken(token: string): AuthenticatedAccount;
   metaBuilds: MetaBuildRepository;
+  rateLimiter: RoomCreationRateLimiter;
   createRoom(options: InternalTowerRoomOptions): Promise<CreatedRoom>;
   now?(): number;
   createId?(): string;
@@ -92,6 +94,14 @@ export function createTowerRoomHandler(dependencies: CreateRoomDependencies): Re
       return;
     }
 
+    const now = dependencies.now?.() ?? Date.now();
+    if (!dependencies.rateLimiter.allow(account.userId, now)) {
+      response
+        .status(429)
+        .json(errorBody('rate-limited', 'Trop de créations de partie ont été demandées.'));
+      return;
+    }
+
     let parsed: ReturnType<typeof parseRequest>;
     try {
       parsed = parseRequest(request.body, account.userId);
@@ -115,7 +125,6 @@ export function createTowerRoomHandler(dependencies: CreateRoomDependencies): Re
             [userId, await dependencies.metaBuilds.loadActiveBuild(userId)] as const,
         ),
       );
-      const now = dependencies.now?.() ?? Date.now();
       const createId = dependencies.createId ?? randomUUID;
       const expiresAtMs = now + ROOM_ADMISSION_WINDOW_MS;
       const created = await dependencies.createRoom({

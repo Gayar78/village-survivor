@@ -173,10 +173,10 @@ de signaler un désaccord.
 | `pnpm format:check` | **PASS** | tous les fichiers suivis hors audits immuables conformes |
 | `pnpm lint` | **PASS** | aucune erreur |
 | `pnpm typecheck` | **PASS** | cinq workspaces typés, client et serveur inclus |
-| `pnpm test` | **PASS** | 34 fichiers, 195 tests |
-| `pnpm benchmark` | **PASS** | 248 µs/tick avec 200 monstres ; 1 000 projections en 22 ms |
+| `pnpm test` | **PASS** | 35 fichiers, 198 tests après corrections de revue |
+| `pnpm benchmark` | **PASS** | 250 µs/tick avec 200 monstres ; 1 000 projections en 22 ms |
 | `pnpm build` | **PASS** | protocol/content/core, serveur et client de production |
-| `pnpm test:smoke` | **PASS** | Chromium, parcours solo complet, 1 scénario |
+| `pnpm test:smoke` | **PASS** | Chromium, parcours solo et retour après panne, 2 scénarios |
 | `pnpm peers check` | **PASS** | aucun peer manquant ; transport uWebSockets explicitement hors périmètre |
 
 Le smoke refuse aussi un JWT invalide et une création directe forgée sur
@@ -191,3 +191,11 @@ Cette boucle ne valide pas encore coopération, reconnexion 10/31 secondes, retr
 crédit d'or serveur, conteneur/Nginx, instrumentation `game.room` ni charge de vingt minutes.
 Ces critères restent attachés respectivement aux boucles 3 et 4. Le benchmark mesure le moteur,
 pas encore la taille des patches ou la latence commande→état sur LAN.
+
+### Arbitrage de la revue Claude
+
+Le rapport indépendant `2026-08-03-200923-loop2-serveur-autoritaire-solo-claude.md` ne relève
+aucun P0–P2 et trois P3. Les trois sont retenus : les lots d'événements sont désormais accumulés
+entre deux patches, `POST /rooms` est réellement limité à cinq créations par minute et une panne
+terminale ramène automatiquement le solo au lobby après avoir affiché son motif. Les nouveaux
+tests couvrent accumulation/déduplication, fenêtre de débit, HTTP 429 et retour navigateur.

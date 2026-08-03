@@ -98,6 +98,11 @@ function readCoopConfig(): TowerCoopConfig | null {
 function goToLobby(): void {
   location.assign('index.html');
 }
+let lobbyReturnTimer: number | undefined;
+function scheduleLobbyReturn(): void {
+  if (lobbyReturnTimer !== undefined) return;
+  lobbyReturnTimer = window.setTimeout(goToLobby, 3_500);
+}
 function restartGame(): void {
   sessionStorage.removeItem(NETCODE_KEY);
   location.assign(gameUrl());
@@ -164,12 +169,13 @@ if (activeCoopConfig === null) {
   );
 }
 
-const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
+const unsubscribeConnectionIssue = session.onConnectionIssue((message, terminal) => {
   showConnectionStatus(
     'issue',
     isCoopSession ? 'Synchronisation P2P en attente' : 'Connexion au serveur interrompue',
-    message,
+    terminal === true ? `${message} Retour au menu dans quelques secondes.` : message,
   );
+  if (terminal === true && !isCoopSession) scheduleLobbyReturn();
 });
 
 const scene = new TowerScene(session);
@@ -456,6 +462,7 @@ void session.start().catch((error) => {
   );
   log.error('échec du démarrage de la session serveur', { 'vs.error': describeError(error) });
   endGameSession('error', { 'vs.error': describeError(error) });
+  scheduleLobbyReturn();
 });
 void publishActiveCoopGame();
 requestAnimationFrame(inputLoop);

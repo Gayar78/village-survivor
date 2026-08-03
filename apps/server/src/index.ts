@@ -4,6 +4,7 @@ import express from 'express';
 import { verifySupabaseJwt } from './auth/supabaseJwt.js';
 import { readServerConfig } from './config.js';
 import { createTowerRoomHandler } from './http/createRoom.js';
+import { SlidingWindowRoomCreationRateLimiter } from './http/RoomCreationRateLimiter.js';
 import { PostgrestMetaBuildRepository } from './meta/postgrestMetaBuild.js';
 import { configureTowerRoom, TowerRoom } from './rooms/TowerRoom.js';
 import { RoomReservationRegistry } from './rooms/RoomReservationRegistry.js';
@@ -11,6 +12,7 @@ import { RoomReservationRegistry } from './rooms/RoomReservationRegistry.js';
 const config = readServerConfig();
 const verifyToken = (token: string) => verifySupabaseJwt(token, config.jwtSecret);
 const metaBuilds = new PostgrestMetaBuildRepository(config.postgrestUrl, config.serviceRoleKey);
+const rateLimiter = new SlidingWindowRoomCreationRateLimiter();
 const reservations = new RoomReservationRegistry();
 configureTowerRoom({ verifyToken, consumeReservation: (options) => reservations.consume(options) });
 
@@ -26,6 +28,7 @@ const gameServer = defineServer({
       createTowerRoomHandler({
         verifyToken,
         metaBuilds,
+        rateLimiter,
         createRoom: async (options) => {
           const room = await matchMaker.createRoom('tower', reservations.issue(options));
           return { roomId: room.roomId };

@@ -2,6 +2,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import type {
   CreateTowerRoomResponse,
   TowerActionMessage,
+  TowerEvent,
   TowerEventsMessage,
   TowerGameState,
   TowerInput,
@@ -184,6 +185,20 @@ export function predictTowerLocalPosition(
   };
 }
 
+export function appendUnseenTowerEvents(
+  pending: readonly TowerEvent[],
+  knownIds: Set<number>,
+  incoming: readonly TowerEvent[],
+): TowerEvent[] {
+  const merged = [...pending];
+  for (const event of incoming) {
+    if (knownIds.has(event.id)) continue;
+    knownIds.add(event.id);
+    merged.push(event);
+  }
+  return merged;
+}
+
 export class TowerServerSession implements TowerRenderableSession {
   private room: Room | undefined;
   private localUserId = '';
@@ -192,7 +207,7 @@ export class TowerServerSession implements TowerRenderableSession {
   private latestInput?: TowerInput;
   private lastControlAtMs = Number.NEGATIVE_INFINITY;
   private readonly listeners = new Set<(state: TowerGameState) => void>();
-  private readonly connectionListeners = new Set<(message: string) => void>();
+  private readonly connectionListeners = new Set<(message: string, terminal?: boolean) => void>();
   private readonly pendingActions: TowerActionMessage[] = [];
   private readonly sentActionIds = new Set<string>();
   private readonly sentActionOrder: string[] = [];
@@ -232,19 +247,21 @@ export class TowerServerSession implements TowerRenderableSession {
     }
     this.room = room;
     room.onMessage('events', (message: TowerEventsMessage) => {
-      const unseen = message.events.filter((event) => !this.eventIds.has(event.id));
-      for (const event of unseen) this.eventIds.add(event.id);
-      this.pendingEvents = unseen;
+      this.pendingEvents = appendUnseenTowerEvents(
+        this.pendingEvents,
+        this.eventIds,
+        message.events,
+      );
     });
     room.onMessage('command-rejected', () => {
       this.emitConnectionIssue('Une commande a été refusée par le serveur.');
     });
     room.onError(() => {
-      this.emitConnectionIssue('La connexion au serveur de jeu a rencontré une erreur.');
+      this.emitConnectionIssue('La connexion au serveur de jeu a rencontré une erreur.', true);
     });
     room.onLeave(() => {
       if (!this.stopped)
-        this.emitConnectionIssue('La partie serveur est terminée ou inaccessible.');
+        this.emitConnectionIssue('La partie serveur est terminée ou inaccessible.', true);
     });
     room.onStateChange((state: Readonly<{ toJSON(): unknown }>) => {
       try {
@@ -258,7 +275,7 @@ export class TowerServerSession implements TowerRenderableSession {
         this.latestStateAtMs = performance.now();
         for (const listener of this.listeners) listener(snapshot);
       } catch {
-        this.emitConnectionIssue('Le serveur a envoyé un état de jeu invalide.');
+        this.emitConnectionIssue('Le serveur a envoyé un état de jeu invalide.', true);
       }
     });
   }
@@ -321,7 +338,7 @@ export class TowerServerSession implements TowerRenderableSession {
     return predictTowerLocalPosition(state.player.position, state.world, input, leadTicks);
   }
 
-  public onConnectionIssue(listener: (message: string) => void): () => void {
+  public onConnectionIssue(listener: (message: string, terminal?: boolean) => void): () => void {
     this.connectionListeners.add(listener);
     return () => this.connectionListeners.delete(listener);
   }
@@ -353,7 +370,7 @@ export class TowerServerSession implements TowerRenderableSession {
     }
   }
 
-  private emitConnectionIssue(message: string): void {
-    for (const listener of this.connectionListeners) listener(message);
+  private emitConnectionIssue(message: string, terminal = false): void {
+    for (const listener of this.connectionListeners) listener(message, terminal);
   }
 }

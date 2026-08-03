@@ -36,6 +36,7 @@ async function invoke(
       return { userId: 'user-1' };
     },
     metaBuilds: { loadActiveBuild: vi.fn().mockResolvedValue(BUILD) },
+    rateLimiter: { allow: vi.fn().mockReturnValue(true) },
     createRoom: vi.fn().mockResolvedValue({ roomId: 'room-1' }),
     now: () => 1_000,
     createId: () => 'generated-id',
@@ -65,5 +66,22 @@ describe('POST /rooms', () => {
     expect(invalidRoster.json).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'invalid-roster' }),
     );
+  });
+
+  it('répond 429 lorsque le débit de création de l’identité est dépassé', async () => {
+    const recorded = responseRecorder();
+    const handler = createTowerRoomHandler({
+      verifyToken: () => ({ userId: 'user-1' }),
+      metaBuilds: { loadActiveBuild: vi.fn().mockResolvedValue(BUILD) },
+      rateLimiter: { allow: vi.fn().mockReturnValue(false) },
+      createRoom: vi.fn(),
+    });
+    await handler(
+      { body: { mode: 'solo' }, header: () => 'Bearer valid' } as unknown as Request,
+      recorded.response,
+      vi.fn(),
+    );
+    expect(recorded.status).toHaveBeenCalledWith(429);
+    expect(recorded.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'rate-limited' }));
   });
 });
