@@ -1,19 +1,18 @@
 import { TOWER_WEAPONS } from '@village-survivor/content';
-import type { MetaBuildModifiers, TowerGameState, TowerInput } from '@village-survivor/protocol';
+import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
 import {
   createTowerCoopSession,
-  TowerLocalSession,
   type TowerCoopConfig,
   type TowerRenderableSession,
 } from './net/towerSession.js';
+import { TowerServerSession } from './net/TowerServerSession.js';
 import { authService } from './account/authService.js';
 import { statsService } from './account/statsService.js';
 import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import { gameUrl } from './gameUrl.js';
-import { randomSeed } from './randomSeed.js';
 import { createLogger } from './observability/logger.js';
 import { describeError } from './observability/redact.js';
 import { flushTelemetry, initTelemetry } from './observability/telemetry.js';
@@ -71,7 +70,6 @@ const syncStatus = {
 
 // Config co-op posée par le lobby (même clé/forme que l'ancien jeu). Consommée une fois.
 const NETCODE_KEY = 'vs-coop-netcode';
-const SOLO_META_BUILD_KEY = 'vs-solo-meta-build';
 function readCoopConfig(): TowerCoopConfig | null {
   const raw = sessionStorage.getItem(NETCODE_KEY);
   if (raw === null) {
@@ -97,26 +95,6 @@ function readCoopConfig(): TowerCoopConfig | null {
   return null;
 }
 
-/** Lit une build résolue par le menu, sans jamais bloquer une partie si elle est altérée. */
-function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
-  const raw = sessionStorage.getItem(SOLO_META_BUILD_KEY);
-  sessionStorage.removeItem(SOLO_META_BUILD_KEY);
-  if (raw === null) {
-    return undefined;
-  }
-  try {
-    const value: unknown = JSON.parse(raw);
-    return typeof value === 'object' && value !== null
-      ? (value as Partial<MetaBuildModifiers>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const parameters = new URLSearchParams(location.search);
-const seed = parameters.get('seed') ?? randomSeed();
-
 function goToLobby(): void {
   location.assign('index.html');
 }
@@ -126,7 +104,6 @@ function restartGame(): void {
 }
 
 const coopConfig = readCoopConfig();
-const soloMetaBuild = readSoloMetaBuild();
 const activeCoopConfig = coopConfig !== null && coopConfig.roster.length > 1 ? coopConfig : null;
 const isCoopSession = activeCoopConfig !== null;
 
@@ -136,7 +113,7 @@ const telemetry = initTelemetry();
 const log = createLogger('session');
 const gameMode: GameMode = isCoopSession ? 'coop' : 'solo';
 const gameSessionSpan = startGameSessionSpan({
-  seed: activeCoopConfig?.seed ?? seed,
+  seed: activeCoopConfig?.seed ?? 'server-assigned',
   mode: gameMode,
   playersCount: activeCoopConfig?.roster.length ?? 1,
   ...(activeCoopConfig === null ? {} : { roomCode: activeCoopConfig.code }),
@@ -160,19 +137,11 @@ log.info('partie lancée', {
 });
 
 const session: TowerRenderableSession =
-  activeCoopConfig !== null
-    ? createTowerCoopSession(activeCoopConfig)
-    : new TowerLocalSession({
-        seed,
-        ...(soloMetaBuild === undefined ? {} : { metaBuild: soloMetaBuild }),
-      });
+  activeCoopConfig !== null ? createTowerCoopSession(activeCoopConfig) : new TowerServerSession();
 
 type CoopStatusTone = 'pending' | 'issue';
 
-function showCoopStatus(tone: CoopStatusTone, title: string, detail: string): void {
-  if (!isCoopSession) {
-    return;
-  }
+function showConnectionStatus(tone: CoopStatusTone, title: string, detail: string): void {
   syncStatus.element.dataset.tone = tone;
   syncStatus.title.textContent = title;
   syncStatus.detail.textContent = detail;
@@ -181,18 +150,25 @@ function showCoopStatus(tone: CoopStatusTone, title: string, detail: string): vo
 
 if (activeCoopConfig !== null) {
   const role = activeCoopConfig.me === activeCoopConfig.hostId ? 'hôte' : 'invité';
-  showCoopStatus(
+  showConnectionStatus(
     'pending',
     `Co-op P2P · ${role}`,
     'Synchronisation au lancement : gardez cet onglet actif.',
   );
 }
+if (activeCoopConfig === null) {
+  showConnectionStatus(
+    'pending',
+    'Connexion au serveur',
+    'Création de la partie solo autoritaire…',
+  );
+}
 
 const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
-  showCoopStatus(
+  showConnectionStatus(
     'issue',
-    'Synchronisation P2P en attente',
-    `${message} Gardez cet onglet au premier plan.`,
+    isCoopSession ? 'Synchronisation P2P en attente' : 'Connexion au serveur interrompue',
+    message,
   );
 });
 
@@ -304,6 +280,7 @@ async function publishActiveCoopGame(): Promise<void> {
 }
 
 session.subscribe((state) => {
+  syncStatus.element.hidden = true;
   latestState = state;
   if (
     pendingLevelSelection !== undefined &&
@@ -471,6 +448,14 @@ window.addEventListener('error', (event) => {
   endGameSession('error', { 'vs.error': describeError(event.error) });
 });
 
-void session.start();
+void session.start().catch((error) => {
+  showConnectionStatus(
+    'issue',
+    'Partie indisponible',
+    error instanceof Error ? error.message : 'Le serveur de jeu est indisponible.',
+  );
+  log.error('échec du démarrage de la session serveur', { 'vs.error': describeError(error) });
+  endGameSession('error', { 'vs.error': describeError(error) });
+});
 void publishActiveCoopGame();
 requestAnimationFrame(inputLoop);

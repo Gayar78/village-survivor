@@ -21,7 +21,6 @@ import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
 import { gameUrl } from './gameUrl.js';
-import { randomSeed } from './randomSeed.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
@@ -317,19 +316,9 @@ metaBuildScreen.hide();
 const compendium = new Compendium(compendiumElement, showMenu);
 compendium.hide();
 
-async function beginClassic(): Promise<void> {
-  const seed = randomSeed();
-  try {
-    const metaBuild = await loadActiveMetaBuild();
-    if (metaBuild !== undefined) {
-      sessionStorage.setItem('vs-solo-meta-build', JSON.stringify(metaBuild));
-    }
-  } catch (error) {
-    // La progression ne doit jamais empêcher de jouer hors connexion.
-    console.warn('Build méta indisponible : démarrage avec les statistiques de base.', error);
-    sessionStorage.removeItem('vs-solo-meta-build');
-  }
-  location.assign(gameUrl({ seed, players: '1' }));
+function beginClassic(): void {
+  // La build active et la graine sont désormais résolues par le serveur autoritaire.
+  location.assign(gameUrl());
 }
 
 function beginLaunch(payload: LaunchPayload): void {

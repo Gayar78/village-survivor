@@ -146,3 +146,15 @@ hors du chemin critique et sa panne n'affecte pas la simulation.
 - [ADR-0009 — Comptes et progression](decisions/ADR-0009-account-persistence.md)
 - [ADR-0010 — Prédiction visuelle](decisions/ADR-0010-local-render-prediction.md)
 - [ADR-0011 — Serveur de jeu autoritaire](decisions/ADR-0011-authoritative-game-server.md)
+
+## 11. État de migration au 3 août 2026
+
+La boucle 2 rend le **solo effectivement autoritaire** : `apps/server`, création authentifiée,
+ticket interne de matchmaker, chargement du build, cadence 50 ms, Schema complet, événements
+séparés et `TowerServerSession` sont implémentés. Le menu solo ne produit plus seed ou bonus et
+aucun fallback local ne subsiste sur ce parcours.
+
+La coopération utilise encore `TowerLockstepSession` et le crédit d'or reste provisoirement dans
+le navigateur. Ces deux écarts sont bornés aux boucles 3 et 4 ; ils ne décrivent pas la cible.
+Reconnexion, retrait différé, persistance des récompenses, conteneur, Nginx et instrumentation
+serveur ne sont pas déclarés livrés par la boucle 2.

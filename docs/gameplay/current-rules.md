@@ -1,7 +1,7 @@
 # Village Survivor — Règles de gameplay courantes
 
 > Statut : approuvé
-> Version du projet : v2 — boucle 1
+> Version du projet : v2 — boucle 2
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
 > Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client
@@ -22,6 +22,11 @@ proviennent de [`packages/protocol/src/tower.ts`](../../packages/protocol/src/to
 
 Une partie est une **survie sans fin**. Le statut ne connaît que trois valeurs : `ready`,
 `running` et `defeat`. **Il n'existe aucune condition de victoire.**
+
+En production, une partie solo est simulée par une room serveur autoritaire ; le navigateur
+envoie seulement déplacement, visée, tir et actions d'interface. La coopération reste
+temporairement P2P jusqu'à la boucle 3. Ce changement de transport ne modifie aucune règle de
+combat décrite ci-dessous.
 
 La partie est perdue si :
 

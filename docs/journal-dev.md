@@ -22,6 +22,8 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 02/08 | Traces | Ancrage explicite du span de partie, faute de contexte propagé par le navigateur | Les spans enfants formaient chacun leur trace et les journaux partaient sans corrélation | `observabilite.md` |
 | 03/08 | Ferraille bornée | Suppression complète de la génération naturelle et durée de vie fixée à 600 ticks, avec ramassage prioritaire au tick limite | Décision fonctionnelle validée : seuls les monstres créent des tas ; une borne temporelle préserve l'économie tout en supprimant la fuite | `spec-fonctionnelle.md`, `gameplay/current-rules.md` |
 | 03/08 | Revue indépendante de la boucle 1 | Aucun P0–P2 ; deux P3 de preuve retenus et corrigés | Les vagues actives sans mort et le contact kamikaze sont désormais couverts explicitement | `qualite/rapport-tests.md` |
+| 03/08 | Autorité solo | Le matchmaker Colyseus exige un ticket serveur opaque à usage unique en plus du JWT de jonction | Sans ce second verrou, son endpoint natif aurait pu tenter de forger roster, seed et bonus en contournant `POST /rooms` | `architecture.md`, `apps/server/README.md` |
+| 03/08 | Dépendances Colyseus | Auto-installation des peers désactivée ; transports et scripts de build sont explicitement autorisés | Le peer `uWebSockets.js`, inutilisé, imposait une archive GitHub de 38,5 Mio et une surface native supplémentaire | `pnpm-workspace.yaml`, `deployment.md` |
 
 ## Difficultés et dette potentielle
 

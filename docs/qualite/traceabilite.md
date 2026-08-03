@@ -1,9 +1,9 @@
 # Village Survivor — Traçabilité des exigences
 
 > Statut : approuvé
-> Version du projet : v1
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
+> Dernière revue : 3 août 2026
 
 Relevée sur le code. Révision précédente : 21 juillet 2026, après livraison de M1.
 
@@ -114,3 +114,19 @@ jeu sans victoire ni ressources.
 4. créer un ADR **avant** de s'écarter du cadrage, pas après ;
 5. conserver la ligne même si l'exigence est remplacée, avec le lien vers la décision qui la
    remplace.
+
+## 5. Addendum v2 — serveur autoritaire
+
+La table historique ci-dessus reste inchangée pour conserver la preuve des écarts v1. Les
+exigences approuvées par ADR-0011 sont suivies séparément pendant la migration.
+
+| Exigence v2 | Décision | Implémentation réelle | Vérification | État boucle 2 |
+|---|---|---|---|---|
+| `REQ-V2-AUTH-001` — JWT et roster réservés | [ADR-0011](../decisions/ADR-0011-authoritative-game-server.md) | `apps/server/src/auth`, `http/createRoom.ts`, ticket interne | tests JWT/HTTP/registre + smoke JWT invalide et bypass | **Solo implémenté** |
+| `REQ-V2-SIM-001` — simulation serveur unique à 50 ms | [Architecture v2](../architecture.md) | `TowerRoomRuntime`, `TowerRoom` | tests runtime, Schema et smoke réel | **Solo implémenté** |
+| `REQ-V2-NET-001` — commandes bornées | [Spécification F-004](../spec-fonctionnelle.md) | union protocol, filtres débit/séquence/valeurs/file | tests de frontière autoritaire | **Implémenté** |
+| `REQ-V2-NET-002` — état sans alias local | [Spécification F-005](../spec-fonctionnelle.md) | `TowerStateSchema`, `TowerServerSession` | tests Schema et conversion locale | **Implémenté** |
+| `REQ-V2-UX-001` — interpolation et prédiction visuelle | [ADR-0010](../decisions/ADR-0010-local-render-prediction.md) | deux snapshots + avance locale de deux ticks | tests adaptateur et smoke | **Solo implémenté** |
+| `REQ-V2-COOP-001` — roster, départs et reconnexion | [Spécification F-003/F-007](../spec-fonctionnelle.md) | à faire en boucle 3 | multi-client 2/4, 10 s/31 s | Planifié |
+| `REQ-V2-GOLD-001` — crédit serveur idempotent | [Spécification F-008](../spec-fonctionnelle.md) | à faire en boucle 4 | concurrence SQL | Planifié |
+| `REQ-V2-OPS-001` — Compose, Nginx et OTel | [Spécification F-009](../spec-fonctionnelle.md) | à faire en boucle 4 | santé, panne, charge et trace réelle | Planifié |

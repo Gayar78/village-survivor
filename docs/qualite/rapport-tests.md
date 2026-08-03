@@ -153,3 +153,41 @@ de signaler un désaccord.
 - **Prénoms publiés** — la contrainte de désensibilisation listait les prénoms des joueurs ; le
   contrôle avant publication a cherché des secrets et n'a pas appliqué cette liste. Décision de
   correction à prendre par le propriétaire.
+
+## Boucle v2.2 — serveur autoritaire solo (3 août 2026)
+
+### Périmètre éprouvé avant revue indépendante
+
+- création solo par `POST /rooms`, JWT HS256 Supabase et réservation de quinze secondes ;
+- ticket interne à usage unique entre l'API authentifiée et le matchmaker Colyseus ;
+- chargement du profil actif par PostgREST avec la clé `service_role` ;
+- simulation unique à 50 ms, Schema partagé sans `player` ni `events` ;
+- contrôles non fiables bornés, actions fiables dédupliquées et neutralisation après 250 ms ;
+- reconstruction de l'alias local, interpolation et prédiction visuelle limitée à deux ticks ;
+- parcours Chromium réel avec le vrai serveur, un PostgREST hermétique et un JWT sentinelle.
+
+### Résultats
+
+| Contrôle | Résultat | Preuve |
+|---|:---:|---|
+| `pnpm format:check` | **PASS** | tous les fichiers suivis hors audits immuables conformes |
+| `pnpm lint` | **PASS** | aucune erreur |
+| `pnpm typecheck` | **PASS** | cinq workspaces typés, client et serveur inclus |
+| `pnpm test` | **PASS** | 34 fichiers, 195 tests |
+| `pnpm benchmark` | **PASS** | 248 µs/tick avec 200 monstres ; 1 000 projections en 22 ms |
+| `pnpm build` | **PASS** | protocol/content/core, serveur et client de production |
+| `pnpm test:smoke` | **PASS** | Chromium, parcours solo complet, 1 scénario |
+| `pnpm peers check` | **PASS** | aucun peer manquant ; transport uWebSockets explicitement hors périmètre |
+
+Le smoke refuse aussi un JWT invalide et une création directe forgée sur
+`/matchmake/create/tower`. Les tests unitaires refusent identité étrangère, nombres non finis,
+valeurs hors bornes, séquence ancienne, champ de position injecté, dépassements 30/s et 10/s,
+file supérieure à 16 et action dupliquée. Une panne ou une réponse invalide de PostgREST empêche
+la création au lieu de démarrer avec un build inventé.
+
+### Limites explicites de cette preuve
+
+Cette boucle ne valide pas encore coopération, reconnexion 10/31 secondes, retrait volontaire,
+crédit d'or serveur, conteneur/Nginx, instrumentation `game.room` ni charge de vingt minutes.
+Ces critères restent attachés respectivement aux boucles 3 et 4. Le benchmark mesure le moteur,
+pas encore la taille des patches ou la latence commande→état sur LAN.

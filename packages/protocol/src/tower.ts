@@ -5,11 +5,10 @@
 // compiler et d'être déployé. Le nouveau moteur (game-core), le rendu et l'UI se
 // construisent en parallèle contre ce contrat figé.
 //
-// Modèle réseau : lockstep P2P. Chaque pair applique les mêmes `TowerInput` au même
-// tick. Le contrat ne transporte donc que des données sérialisables et déterministes :
-// les durées sont des temps de simulation, jamais l'heure réelle. Chaque joueur a un
-// avatar (position/arme/PV/niveau/build PERSONNELS) ; la base (Cœur, 4 tourelles,
-// ferraille commune, vagues, carte) est PARTAGÉE.
+// La v2 transporte ces projections depuis un serveur autoritaire. Les durées restent
+// des temps de simulation, jamais l'heure réelle. Chaque joueur a un avatar
+// (position/arme/PV/niveau/build PERSONNELS) ; la base (Cœur, 4 tourelles, ferraille
+// commune, vagues, carte) est PARTAGÉE.
 
 import type { Vector2 } from './index.js';
 
@@ -36,7 +35,7 @@ export type LegacyTurretShopAction =
   'repair' | 'dmg' | 'range' | 'rate' | 'hp' | 'energy' | 'maxenergy';
 
 /**
- * Grammaire fermée des actions de boutique transmises en lockstep.
+ * Grammaire fermée des actions de boutique transmises au serveur.
  *
  * Les préfixes empêchent toute collision entre les catalogues. Une entrée reçue du
  * réseau qui ne correspond pas exactement à cette union doit être ignorée avant

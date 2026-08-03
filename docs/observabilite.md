@@ -19,6 +19,11 @@ lockstep. La v2 déplace l'autorité de mesure de la simulation vers `apps/serve
 testable sans introduire OpenTelemetry dans `game-core`. Son agrégation en métrique serveur est
 planifiée avec `apps/server`.
 
+**Boucle 2 livrée sur le flux solo :** les erreurs réseau affichées ne contiennent ni JWT ni
+corps de message, et le test navigateur utilise un jeton sentinelle pour vérifier la frontière
+réelle. L'instrumentation `game.room` et les métriques agrégées restent volontairement prévues
+pour la boucle 4 : aucun span par tick n'a été ajouté prématurément.
+
 ## Traces
 
 | Unité | Span | Enfants autorisés |

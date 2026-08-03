@@ -1,0 +1,69 @@
+import type { Request, Response } from 'express';
+import { describe, expect, it, vi } from 'vitest';
+
+import { createTowerRoomHandler } from './createRoom.js';
+
+const BUILD = {
+  damageMultiplier: 1,
+  fireRateMultiplier: 1,
+  moveSpeedMultiplier: 1,
+  maxHealthMultiplier: 1,
+  heartMaxHealthMultiplier: 1,
+  pickupRadiusMultiplier: 1,
+} as const;
+
+function responseRecorder(): Readonly<{
+  response: Response;
+  status: ReturnType<typeof vi.fn>;
+  json: ReturnType<typeof vi.fn>;
+}> {
+  const status = vi.fn();
+  const json = vi.fn();
+  const response = { status, json } as unknown as Response;
+  status.mockReturnValue(response);
+  json.mockReturnValue(response);
+  return { response, status, json };
+}
+
+async function invoke(
+  body: unknown,
+  authorization = 'Bearer valid',
+): Promise<ReturnType<typeof responseRecorder>> {
+  const recorded = responseRecorder();
+  const handler = createTowerRoomHandler({
+    verifyToken: (token) => {
+      if (token !== 'valid') throw new Error('bad token');
+      return { userId: 'user-1' };
+    },
+    metaBuilds: { loadActiveBuild: vi.fn().mockResolvedValue(BUILD) },
+    createRoom: vi.fn().mockResolvedValue({ roomId: 'room-1' }),
+    now: () => 1_000,
+    createId: () => 'generated-id',
+  });
+  const request = { body, header: () => authorization } as unknown as Request;
+  await handler(request, recorded.response, vi.fn());
+  return recorded;
+}
+
+describe('POST /rooms', () => {
+  it('crée une réservation solo de quinze secondes sans accepter de seed cliente', async () => {
+    const result = await invoke({ mode: 'solo' });
+    expect(result.status).toHaveBeenCalledWith(201);
+    expect(result.json).toHaveBeenCalledWith({
+      roomId: 'room-1',
+      expiresAt: new Date(16_000).toISOString(),
+    });
+    const invalid = await invoke({ mode: 'solo', seed: 'client-seed' });
+    expect(invalid.status).toHaveBeenCalledWith(400);
+  });
+
+  it('refuse JWT invalide et roster qui ne contient pas le chef', async () => {
+    const unauthorized = await invoke({ mode: 'solo' }, 'Bearer invalid');
+    expect(unauthorized.status).toHaveBeenCalledWith(401);
+    const invalidRoster = await invoke({ mode: 'coop', rosterUserIds: ['user-2', 'user-3'] });
+    expect(invalidRoster.status).toHaveBeenCalledWith(400);
+    expect(invalidRoster.json).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'invalid-roster' }),
+    );
+  });
+});

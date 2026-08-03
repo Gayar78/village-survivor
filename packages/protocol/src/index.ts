@@ -15,6 +15,7 @@ export type ResourceType = 'wood' | 'stone' | 'iron' | 'gold' | 'diamond';
 
 // Contrat du jeu Tower : entrées, état public, session.
 export * from './tower.js';
+export * from './tower-network.js';
 
 // Catalogue et résolution de la méta-progression de compte.
 export * from './meta.js';
