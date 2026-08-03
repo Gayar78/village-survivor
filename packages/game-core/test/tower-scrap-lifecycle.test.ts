@@ -22,8 +22,12 @@ type TestMonster = {
   id: string;
   kind: TowerMonsterKind;
   hp: number;
+  maxHp: number;
   reward: number;
+  speed: number;
 };
+
+type TestTurret = { alive: boolean };
 
 type TestScrap = {
   id: string;
@@ -37,6 +41,7 @@ type SimulationInternals = {
   waveTimerMs: number;
   players: TestPlayer[];
   monsters: TestMonster[];
+  turrets: TestTurret[];
   scraps: TestScrap[];
   dropScrap(position: Vector2, amount: number): void;
   damageMonster(monster: TestMonster, amount: number, killer: TestPlayer | undefined): boolean;
@@ -69,11 +74,25 @@ describe('cycle de vie de la ferraille', () => {
   it('ne fait apparaître aucune ferraille sans mort de monstre, même en partie longue', () => {
     const simulation = new TowerSimulation('scrap-no-natural-spawn');
     simulation.start();
-    disableWaves(simulation);
+    const internals = access(simulation);
+    for (const turret of internals.turrets) {
+      turret.alive = false;
+    }
 
-    run(simulation, 2_000);
+    for (let tick = 0; tick < 2_000; tick += 1) {
+      // Les vagues restent actives. Les monstres déjà apparus sont rendus immobiles et
+      // invulnérables avant leur premier tick d'activité afin que le scénario ne contienne
+      // aucune mort susceptible de produire légitimement un tas.
+      for (const monster of internals.monsters) {
+        monster.hp = Number.MAX_SAFE_INTEGER;
+        monster.maxHp = Number.MAX_SAFE_INTEGER;
+        monster.speed = 0;
+      }
+      simulation.step({ 'player-1': input() });
+    }
 
     expect(simulation.createSnapshot()).toMatchObject({ tick: 2_000, scraps: [] });
+    expect(internals.monsters.length).toBeGreaterThan(0);
   });
 
   it('produit exactement un tas de la récompense du monstre quelle que soit la source du kill', () => {
@@ -91,6 +110,37 @@ describe('cycle de vie de la ferraille', () => {
     ).toEqual([chaser.reward, brute.reward].sort((left, right) => left - right));
     expect(projectedScraps).toHaveLength(2);
     expect(Object.keys(projectedScraps[0] ?? {}).sort()).toEqual(['amount', 'id', 'position']);
+  });
+
+  it('dépose aussi la récompense d’un kamikaze mort indirectement au contact', () => {
+    const simulation = new TowerSimulation('scrap-kamikaze-contact');
+    simulation.start();
+    disableWaves(simulation);
+    const internals = access(simulation);
+    for (const turret of internals.turrets) {
+      turret.alive = false;
+    }
+    const player = internals.players[0];
+    if (player === undefined) {
+      throw new Error('Un joueur est requis par ce scénario.');
+    }
+    const heartPosition = simulation.createSnapshot().heart.position;
+    const id = simulation.spawnMonster('kamikaze', heartPosition);
+    const kamikaze = internals.monsters.find((monster) => monster.id === id);
+    if (kamikaze === undefined) {
+      throw new Error(`Kamikaze de test absent : ${id}`);
+    }
+    kamikaze.speed = 0;
+    const reward = kamikaze.reward;
+
+    simulation.step({ 'player-1': input() });
+    const afterContact = simulation.createSnapshot();
+
+    expect(afterContact.monsters.some((monster) => monster.id === id)).toBe(false);
+    expect(afterContact.scraps).toContainEqual(expect.objectContaining({ amount: reward }));
+    expect(afterContact.events).toContainEqual(
+      expect.objectContaining({ type: 'monster-killed', amount: reward }),
+    );
   });
 
   it('expire un tas exactement au tick de dépôt + 600', () => {

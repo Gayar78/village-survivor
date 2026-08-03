@@ -184,7 +184,7 @@ La ferraille au sol provient exclusivement de la mort d'un monstre, quelle qu'en
 | Cas | Attendu |
 |---|---|
 | 1 000 ticks sans mort | aucun tas apparu |
-| monstre récompense 3 tué par joueur/tourelle/explosion | un tas de 3 |
+| monstre récompense 3 tué par joueur, tourelle, brûlure ou contact kamikaze | un tas de 3 |
 | tas non ramassé | présent jusqu'au tick 599, absent après traitement du tick 600 |
 | joueur à portée au tick limite | ferraille créditée, aucun `scrap-expired` |
 | quête terminée | caisse créditée directement, nombre de tas inchangé |
