@@ -1,4 +1,8 @@
-import type { TowerMonsterAffinity, TowerMonsterTrait } from '@village-survivor/protocol';
+import type {
+  TowerMonsterAffinity,
+  TowerMonsterKind,
+  TowerMonsterTrait,
+} from '@village-survivor/protocol';
 import { TOWER_MONSTER_CATALOG } from '@village-survivor/content';
 import { describe, expect, it } from 'vitest';
 
@@ -7,11 +11,20 @@ import {
   MONSTER_AFFINITY_TRAITS,
   MONSTER_RARITY_MODIFIERS,
   MONSTERS,
+  minimumWaveForMonster,
   WAVE,
+  WAVE_BOSS_SCHEDULE,
+  WAVE_MONSTER_COST,
+  WAVE_PROGRESSION_STAGES,
+  WAVE_RARITY_RULES,
+  waveProgressionStage,
+  waveThreatLimit,
 } from '../src/tower/tuning.js';
 
 type WaveInternals = {
+  wave: number;
   spawnWave(): void;
+  eligibleIncursionWaveKinds(): TowerMonsterKind[];
 };
 
 function spawnWaves(simulation: TowerSimulation, count: number): void {
@@ -81,28 +94,89 @@ describe('Tower deterministic living world', () => {
     }
   });
 
-  it('ajoute exactement un boss hors budget à chaque cinquième vague', () => {
+  it('applique les six paliers validés sans laisser une mécanique dangereuse les contourner', () => {
+    expect(WAVE_PROGRESSION_STAGES.map((stage) => stage.minimumWave)).toEqual([
+      1, 6, 11, 16, 21, 26, 31,
+    ]);
+    expect(WAVE_RARITY_RULES.map((rule) => rule.minimumWave)).toEqual([1, 6, 16, 26]);
+    expect(minimumWaveForMonster('slime')).toBe(1);
+    expect(minimumWaveForMonster('shooter')).toBe(6);
+    expect(minimumWaveForMonster('healer')).toBe(11);
+    expect(minimumWaveForMonster('summoner')).toBe(16);
+    expect(minimumWaveForMonster('mummy')).toBe(21);
+    expect(minimumWaveForMonster('spider-queen')).toBe(26);
+    expect(minimumWaveForMonster('ancient-guardian')).toBe(31);
+
+    const simulation = new TowerSimulation('thirty-wave-progression');
+    const internals = simulation as unknown as WaveInternals;
+    for (const wave of [1, 5, 6, 10, 11, 15, 16, 20, 21, 25, 26, 30]) {
+      internals.wave = wave;
+      const stage = waveProgressionStage(wave);
+      const eligible = internals.eligibleIncursionWaveKinds();
+      expect(eligible.length).toBeGreaterThan(0);
+      expect(
+        eligible.every(
+          (kind) =>
+            minimumWaveForMonster(kind) <= wave &&
+            WAVE_MONSTER_COST[kind] <= stage.maximumThreatCost,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('plafonne séparément les spécialistes, lourds et élites', () => {
+    expect(waveThreatLimit(7, 1)).toBeUndefined();
+    expect(waveThreatLimit(8, 1)).toMatchObject({
+      band: 'specialist',
+      maxSpawnedPerWave: 2,
+      maxAlive: 4,
+    });
+    expect(waveThreatLimit(12, 1)).toMatchObject({
+      band: 'heavy',
+      maxSpawnedPerWave: 1,
+      maxAlive: 2,
+    });
+    expect(waveThreatLimit(14, 1)).toMatchObject({
+      band: 'elite',
+      maxSpawnedPerWave: 1,
+      maxAlive: 1,
+    });
+    expect(waveThreatLimit(14, 10)).toMatchObject({
+      band: 'elite',
+      maxSpawnedPerWave: 3,
+      maxAlive: 3,
+    });
+  });
+
+  it('commence les boss en vague 10 puis augmente leur puissance jusqu’au Gardien', () => {
     const simulation = new TowerSimulation('living-boss-seed');
-    spawnWaves(simulation, WAVE.bossEvery - 1);
+    spawnWaves(simulation, WAVE.firstBossWave - 1);
     expect(
       simulation.createSnapshot().monsters.filter((monster) => monster.rarity === 'boss'),
     ).toHaveLength(0);
 
     spawnWaves(simulation, 1);
+    const firstDefinition = WAVE_BOSS_SCHEDULE[0];
     const firstBosses = simulation
       .createSnapshot()
       .monsters.filter((monster) => monster.rarity === 'boss');
     expect(firstBosses).toHaveLength(1);
     expect(firstBosses[0]).toMatchObject({
-      kind: WAVE.bossKind,
+      kind: firstDefinition?.kind,
       trait: 'colossus',
-      maxHp: Math.round(MONSTERS[WAVE.bossKind].hp * MONSTER_RARITY_MODIFIERS.boss.hp),
+      maxHp: Math.round(
+        MONSTERS[firstDefinition?.kind ?? 'thug'].hp *
+          (firstDefinition?.powerScale ?? 1) *
+          MONSTER_RARITY_MODIFIERS.boss.hp,
+      ),
     });
 
     spawnWaves(simulation, WAVE.bossEvery);
-    expect(
-      simulation.createSnapshot().monsters.filter((monster) => monster.rarity === 'boss'),
-    ).toHaveLength(2);
+    const bosses = simulation
+      .createSnapshot()
+      .monsters.filter((monster) => monster.rarity === 'boss');
+    expect(bosses).toHaveLength(2);
+    expect(bosses[1]?.kind).toBe(WAVE_BOSS_SCHEDULE[1]?.kind);
   });
 
   it('conserve une parité lockstep complète avec les mêmes seed et vagues', () => {

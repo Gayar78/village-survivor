@@ -216,6 +216,65 @@ export const TOWER_MONSTER_INCURSIONS: readonly (readonly TowerMonsterFaction[])
 /** Nombre de vagues consécutives passées dans le même biome. */
 export const BIOME_DURATION_WAVES = 3;
 
+/**
+ * Progression globale validée du bestiaire.
+ *
+ * Cette limite est volontairement indépendante des incursions : changer de faction ne
+ * doit jamais permettre à un monstre lourd d'ignorer la courbe d'apprentissage.
+ */
+export const WAVE_PROGRESSION_STAGES = [
+  { id: 'foundations', minimumWave: 1, maximumThreatCost: 3 },
+  { id: 'first-specialists', minimumWave: 6, maximumThreatCost: 6 },
+  { id: 'battlefield-effects', minimumWave: 11, maximumThreatCost: 9 },
+  { id: 'control-and-summons', minimumWave: 16, maximumThreatCost: 11 },
+  { id: 'siege-and-combinations', minimumWave: 21, maximumThreatCost: 13 },
+  { id: 'elites', minimumWave: 26, maximumThreatCost: 15 },
+  { id: 'endgame', minimumWave: 31, maximumThreatCost: Number.POSITIVE_INFINITY },
+] as const;
+
+export type TowerWaveProgressionStage = (typeof WAVE_PROGRESSION_STAGES)[number];
+
+/**
+ * Certaines mécaniques sont plus dangereuses que ne le laisse penser leur seul coût.
+ * Elles sont donc retenues jusqu'au palier où le joueur a les outils pour les lire.
+ */
+const MONSTER_MECHANIC_MINIMUM_WAVE: Readonly<Partial<Record<TowerMonsterKind, number>>> = {
+  'sand-slime': 11, // zone persistante
+  mummy: 21, // résurrection
+  shepherd: 16, // regroupement et composition
+  'cave-giant': 16, // spécialiste lourd des structures
+  bowler: 16, // projection d'alliés
+  beetle: 16, // couvée anti-structure
+  necromancer: 21, // résurrection d'alliés
+  'grumpy-dwarf': 11, // réparation
+  cannoneer: 21, // siège mobile
+  'blizzard-spirit': 11, // zone de glace persistante
+  summoner: 16, // invocation
+  kidnapper: 16, // contrôle de position
+  enchainer: 16, // contrôle de zone
+  'explosive-slime': 11, // explosion de zone
+};
+
+export function waveProgressionStage(wave: number): TowerWaveProgressionStage {
+  const safeWave = Math.max(1, Math.floor(wave));
+  return (
+    [...WAVE_PROGRESSION_STAGES].reverse().find((stage) => stage.minimumWave <= safeWave) ??
+    WAVE_PROGRESSION_STAGES[0]
+  );
+}
+
+/** Première vague naturelle autorisée, puissance et mécanique prises en compte. */
+export function minimumWaveForMonster(kind: TowerMonsterKind): number {
+  const monster = TOWER_ACTIVE_MONSTERS.find((candidate) => candidate.id === kind);
+  if (monster === undefined) {
+    return 1;
+  }
+  const threatGate =
+    WAVE_PROGRESSION_STAGES.find((stage) => monster.threatCost <= stage.maximumThreatCost)
+      ?.minimumWave ?? 31;
+  return Math.max(threatGate, MONSTER_MECHANIC_MINIMUM_WAVE[kind] ?? 1);
+}
+
 /** Trait ordinaire stable associé à chaque affinité (le boss force `colossus`). */
 export const MONSTER_AFFINITY_TRAITS: Readonly<Record<TowerMonsterAffinity, TowerMonsterTrait>> = {
   nature: 'hardened',
@@ -250,9 +309,9 @@ export const WAVE_RARITY_RULES: readonly Readonly<{
   weight: number;
 }>[] = [
   { rarity: 'common', minimumWave: 1, weight: 70 },
-  { rarity: 'rare', minimumWave: 2, weight: 20 },
-  { rarity: 'epic', minimumWave: 4, weight: 8 },
-  { rarity: 'legendary', minimumWave: 7, weight: 2 },
+  { rarity: 'rare', minimumWave: 6, weight: 20 },
+  { rarity: 'epic', minimumWave: 16, weight: 8 },
+  { rarity: 'legendary', minimumWave: 26, weight: 2 },
 ];
 
 /** Explosion du kamikaze (au contact d'un joueur/tourelle/cœur OU à sa mort). */
@@ -323,10 +382,75 @@ export const WAVE = {
   minDistanceFromPlayers: 720,
   /** Probabilité qu'un monstre ordinaire adopte l'affinité dominante du biome. */
   biomeAffinityChance: 0.7,
-  /** Chaque multiple de cette valeur reçoit exactement un boss supplémentaire. */
+  /** Cadence des boss après la première rencontre, en vagues. */
   bossEvery: 5,
-  bossKind: 'ancient-guardian' as TowerMonsterKind,
+  firstBossWave: 10,
 } as const;
+
+/**
+ * Escalade des boss : les quatre premières rencontres réemploient un monstre lisible,
+ * renforcé en mini-boss. Le Gardien Ancien reste le point culminant de la vague 30.
+ */
+export const WAVE_BOSS_SCHEDULE: readonly Readonly<{
+  wave: number;
+  kind: TowerMonsterKind;
+  powerScale: number;
+}>[] = [
+  { wave: 10, kind: 'thug', powerScale: 1.5 },
+  { wave: 15, kind: 'scrap-reaver', powerScale: 1.45 },
+  { wave: 20, kind: 'yeti', powerScale: 1.5 },
+  { wave: 25, kind: 'infernal-tank', powerScale: 1.65 },
+  { wave: 30, kind: 'ancient-guardian', powerScale: 1 },
+];
+
+export type TowerWaveThreatBand = 'specialist' | 'heavy' | 'elite';
+
+export type TowerWaveThreatLimit = Readonly<{
+  band: TowerWaveThreatBand;
+  minimumCost: number;
+  maximumCost: number;
+  maxSpawnedPerWave: number;
+  maxAlive: number;
+}>;
+
+/**
+ * Les gros coûts sont plafonnés en nombre, pas seulement par le budget total. Cela
+ * empêche une vague de convertir tout son budget en plusieurs monstres décisifs.
+ */
+export function waveThreatLimit(
+  threatCost: number,
+  playerCount: number,
+): TowerWaveThreatLimit | undefined {
+  const extraPlayers = Math.max(0, Math.min(9, Math.floor(playerCount) - 1));
+  if (threatCost >= 14) {
+    return {
+      band: 'elite',
+      minimumCost: 14,
+      maximumCost: Number.POSITIVE_INFINITY,
+      maxSpawnedPerWave: 1 + Math.floor(extraPlayers / 4),
+      maxAlive: 1 + Math.floor(extraPlayers / 4),
+    };
+  }
+  if (threatCost >= 11) {
+    return {
+      band: 'heavy',
+      minimumCost: 11,
+      maximumCost: 13,
+      maxSpawnedPerWave: 1 + Math.floor(extraPlayers / 3),
+      maxAlive: 2 + Math.floor(extraPlayers / 3),
+    };
+  }
+  if (threatCost >= 8) {
+    return {
+      band: 'specialist',
+      minimumCost: 8,
+      maximumCost: 10,
+      maxSpawnedPerWave: 2 + Math.floor(extraPlayers / 2),
+      maxAlive: 4 + extraPlayers,
+    };
+  }
+  return undefined;
+}
 
 /** Courbe validée du budget de menace coopératif, plafonnée à dix joueurs. */
 export function monsterThreatBudgetScale(playerCount: number): number {
@@ -347,8 +471,8 @@ export const WAVE_MONSTER_COST: Readonly<Record<TowerMonsterKind, number>> = Obj
   ),
 }) as Readonly<Record<TowerMonsterKind, number>>;
 
-/** Premiere vague du biome final: un cycle complet de chaque biome ordinaire. */
-export const TIMELANDS_START_WAVE = TOWER_MONSTER_INCURSIONS.length * BIOME_DURATION_WAVES + 1;
+/** Le biome final n'interrompt la courbe ordinaire qu'après ses trente vagues. */
+export const TIMELANDS_START_WAVE = 31;
 
 /** Poids de tirage de chaque rareté de carte de montée de niveau. */
 export const UPGRADE_RARITY_WEIGHTS = {

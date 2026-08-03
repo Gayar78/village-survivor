@@ -91,6 +91,7 @@ import {
   MONSTER_AFFINITY_TRAITS,
   MONSTER_RARITY_MODIFIERS,
   MONSTERS,
+  minimumWaveForMonster,
   monsterThreatBudgetScale,
   MULTISHOT_SPREAD_RAD,
   NATURAL_SCRAP,
@@ -106,8 +107,11 @@ import {
   UPGRADE_CHOICE_COUNT,
   UPGRADE_RARITY_WEIGHTS,
   WAVE,
+  WAVE_BOSS_SCHEDULE,
   WAVE_MONSTER_COST,
   WAVE_RARITY_RULES,
+  waveThreatLimit,
+  type TowerWaveThreatBand,
   WORLD,
   XP_BASE,
   XP_GROWTH,
@@ -2660,20 +2664,31 @@ export class TowerSimulation {
     const activeLimit = this.activeMonsterLimit();
 
     const biome = this.currentBiome();
-    // Le boss est volontairement hors budget : chaque vague périodique en contient
-    // exactement un, quelle que soit la taille du roster ou la composition ordinaire.
+    // Le boss est volontairement hors budget. La liste scénarisée évite de jeter le
+    // Gardien Ancien sur les joueurs dès le premier jalon.
+    const boss = WAVE_BOSS_SCHEDULE.find((entry) => entry.wave === this.wave);
     if (
       this.timelandsArrival.status === 'pending' &&
-      this.wave % WAVE.bossEvery === 0 &&
+      boss !== undefined &&
       this.monsters.filter((monster) => monster.hp > 0).length < activeLimit
     ) {
       this.spawnMonsterWithPower(
-        WAVE.bossKind,
+        boss.kind,
         this.randomWaveSpawnPosition(),
-        powerScale,
+        powerScale * boss.powerScale,
         'boss',
         biome.affinity,
       );
+    }
+
+    const spawnedThreatCounts = new Map<TowerWaveThreatBand, number>();
+    const activeThreatCounts = new Map<TowerWaveThreatBand, number>();
+    for (const monster of this.monsters) {
+      if (monster.hp <= 0 || monster.rarity === 'boss') continue;
+      const limit = waveThreatLimit(WAVE_MONSTER_COST[monster.kind], this.players.length);
+      if (limit !== undefined) {
+        activeThreatCounts.set(limit.band, (activeThreatCounts.get(limit.band) ?? 0) + 1);
+      }
     }
 
     while (budget >= 1 && this.monsters.filter((monster) => monster.hp > 0).length < activeLimit) {
@@ -2681,7 +2696,16 @@ export class TowerSimulation {
         this.timelandsArrival.status === 'pending'
           ? this.eligibleIncursionWaveKinds()
           : this.eligibleTimelandsWaveKinds();
-      const affordable = pool.filter((kind) => WAVE_MONSTER_COST[kind] <= budget);
+      const affordable = pool.filter((kind) => {
+        const cost = WAVE_MONSTER_COST[kind];
+        if (cost > budget) return false;
+        const limit = waveThreatLimit(cost, this.players.length);
+        if (limit === undefined) return true;
+        return (
+          (spawnedThreatCounts.get(limit.band) ?? 0) < limit.maxSpawnedPerWave &&
+          (activeThreatCounts.get(limit.band) ?? 0) < limit.maxAlive
+        );
+      });
       if (affordable.length === 0) {
         break;
       }
@@ -2700,29 +2724,26 @@ export class TowerSimulation {
         this.pickWaveRarity(),
         this.pickWaveAffinity(biome.affinity),
       );
+      const limit = waveThreatLimit(WAVE_MONSTER_COST[kind], this.players.length);
+      if (limit !== undefined) {
+        spawnedThreatCounts.set(limit.band, (spawnedThreatCounts.get(limit.band) ?? 0) + 1);
+        activeThreatCounts.set(limit.band, (activeThreatCounts.get(limit.band) ?? 0) + 1);
+      }
     }
   }
 
   private eligibleIncursionWaveKinds(): TowerMonsterKind[] {
     const zeroBasedWave = Math.max(0, this.wave - 1);
-    const incursionIndex = Math.min(
-      TOWER_MONSTER_INCURSIONS.length - 1,
-      Math.floor(zeroBasedWave / BIOME_DURATION_WAVES),
-    );
-    const waveInIncursion = (zeroBasedWave % BIOME_DURATION_WAVES) + 1;
-    const factions = TOWER_MONSTER_INCURSIONS[incursionIndex] ?? ['forest'];
+    const incursionIndex = Math.floor(zeroBasedWave / BIOME_DURATION_WAVES);
+    const factions = TOWER_MONSTER_INCURSIONS[incursionIndex];
     return ORDINARY_MONSTER_KINDS.filter((kind) => {
       const monster = MONSTER_CATALOG_BY_ID.get(kind);
-      if (monster === undefined || !factions.includes(monster.faction)) {
+      if (monster === undefined || minimumWaveForMonster(kind) > this.wave) {
         return false;
       }
-      if (monster.introduction === 'late') {
-        return waveInIncursion >= 3;
-      }
-      if (monster.introduction === 'mid') {
-        return waveInIncursion >= 2;
-      }
-      return true;
+      // Les quinze premières vagues présentent les factions sans mélange. À partir
+      // du palier 16, le roster déjà appris peut composer librement les vagues.
+      return factions === undefined || factions.includes(monster.faction);
     });
   }
 

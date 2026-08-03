@@ -98,12 +98,32 @@ un joueur et se dirige vers le Cœur.
 
 ### Raretés
 
-Les raretés supérieures n'entrent qu'à partir d'une vague donnée : commune dès la vague 1
-(poids 70), inhabituelle dès la 2 (20), rare dès la 4 (8), élite dès la 7 (2). Les multiplicateurs
-sont appliqués une seule fois, à l'apparition.
+Les raretés supérieures suivent désormais la courbe d'apprentissage : commune dès la vague 1
+(poids 70), rare dès la 6 (20), épique dès la 16 (8), légendaire dès la 26 (2). Les
+multiplicateurs sont appliqués une seule fois, à l'apparition.
 
-Toutes les **cinq vagues**, exactement un **boss** supplémentaire apparaît : une brute avec six
-fois ses points de vie, 2,25 fois ses dégâts et douze fois sa récompense.
+### Déblocage du bestiaire
+
+Le coût de menace impose une limite globale, même lorsqu'une nouvelle faction arrive :
+
+| Vagues | Coût maximal | Nouveautés principales |
+|---:|---:|---|
+| 1–5 | 3 | combattants simples et apprentissage |
+| 6–10 | 6 | rapides, tireurs et anti-village légers |
+| 11–15 | 9 | soins, explosions, résistances et zones persistantes |
+| 16–20 | 11 | invocations, contrôles et anti-tourelles |
+| 21–25 | 13 | siège, résurrection et compositions dangereuses |
+| 26–30 | 15 | élites et ennemis exceptionnels |
+| 31+ | sans limite | Terres du Temps et endgame |
+
+Une mécanique peut retarder davantage un monstre : la Momie et le Nécromancien attendent par
+exemple la phase de résurrection, même si leur coût brut permettrait une arrivée plus tôt. Les
+spécialistes de coût 8–10, les lourds de coût 11–13 et les élites de coût 14+ possèdent aussi
+des plafonds distincts par vague et parmi les survivants actifs. Ces plafonds augmentent
+progressivement avec le nombre de joueurs.
+
+Le premier mini-boss arrive à la **vague 10**, puis la difficulté monte tous les cinq paliers :
+Truand, Défourailleur, Yéti, Tank infernal et enfin Gardien Ancien à la vague 30.
 
 ### Pression
 

@@ -135,11 +135,30 @@ La difficulté peut réduire légèrement les délais, jamais les supprimer.
 
 - Une série de vagues met principalement en avant une ou deux factions.
 - Quelques intrus compatibles peuvent créer une surprise contrôlée.
-- L’ordre des factions varie d’une partie à l’autre.
-- Les premières vagues présentent des combattants simples, rapides et premiers tireurs.
-- Le milieu introduit soutiens, invocateurs, contrôleurs et spécialistes des structures.
-- La fin mélange rôles, synergies, machines, Enfer et Terres du Temps.
+- Les quinze premières vagues présentent successivement Forêt/Grottes, Désert/Cimetière,
+  Mercenaires/Montagne, Tribu/Enfer, puis Machines. À partir de la vague 16, les factions déjà
+  apprises peuvent être combinées librement.
+- Vagues 1–5 : coût de menace maximal 3, monstres simples et communs uniquement.
+- Vagues 6–10 : coût maximal 6, premiers rapides, tireurs et anti-village légers.
+- Vagues 11–15 : coût maximal 9, soins, explosions, résistances et zones persistantes.
+- Vagues 16–20 : coût maximal 11, invocations, contrôleurs et spécialistes anti-tourelles.
+- Vagues 21–25 : coût maximal 13, siège, résurrection et compositions dangereuses.
+- Vagues 26–30 : coût maximal 15, élites et ennemis exceptionnels.
+- La vague 31 ouvre les Terres du Temps et l’endgame sans plafond de coût.
 - Aucun panneau de découverte n’interrompt la partie : le joueur apprend par observation.
+
+Le coût n’est pas l’unique verrou. Une table de garde retarde les mécaniques à fort impact
+(résurrection, invocation, contrôle de position, réparation, siège mobile et zones persistantes)
+jusqu’à leur phase pédagogique. Les raretés Rare, Épique et Légendaire commencent
+respectivement aux vagues 6, 16 et 26.
+
+Les coûts 8–10, 11–13 et 14+ possèdent chacun un plafond de créations par vague et un plafond
+de survivants actifs. En solo, ces plafonds sont respectivement de 2/4, 1/2 et 1/1
+(créés/actifs) ; ils augmentent par paliers avec le nombre de joueurs. Un gros budget coop ne
+peut donc plus être converti intégralement en monstres lourds.
+
+Les boss suivent une escalade fixe et lisible : Truand en vague 10, Défourailleur en 15, Yéti en
+20, Tank infernal en 25 et Gardien Ancien en 30.
 
 ### 4.2 Budget de menace
 
