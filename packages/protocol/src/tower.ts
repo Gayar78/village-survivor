@@ -305,6 +305,7 @@ export type TowerEventType =
   | 'level-up'
   | 'upgrade-selected'
   | 'scrap-collected'
+  | 'scrap-expired'
   | 'quest-completed'
   | 'defeat';
 

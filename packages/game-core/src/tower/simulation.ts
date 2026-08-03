@@ -75,8 +75,8 @@ import {
   MONSTER_RARITY_MODIFIERS,
   MONSTERS,
   MULTISHOT_SPREAD_RAD,
-  NATURAL_SCRAP,
   PLAYER,
+  SCRAP_LIFETIME_TICKS,
   TICK_MS,
   TOWER_BIOMES,
   TURRET,
@@ -321,7 +321,6 @@ export class TowerSimulation {
   private events: TowerEvent[] = [];
 
   private waveTimerMs = 0;
-  private naturalScrapTimerMs = 0;
 
   public constructor(seed: string, options?: TowerSimulationOptions) {
     this.seed = seed;
@@ -534,10 +533,10 @@ export class TowerSimulation {
     this.updateProjectiles(deltaSeconds);
     this.updateMonsters(deltaMs, deltaSeconds);
     this.updateScrapPickup();
+    this.updateScrapExpiration();
     this.removeDeadMonsters();
 
     this.updateWaves(deltaMs);
-    this.updateNaturalScrap(deltaMs);
 
     for (const { player, input } of entries) {
       this.handleWeaponSelection(player, input);
@@ -1314,6 +1313,7 @@ export class TowerSimulation {
       id: `scrap-${this.scrapCounter}`,
       position: { x: position.x, y: position.y },
       amount,
+      expiresAtTick: this.tick + SCRAP_LIFETIME_TICKS,
     });
   }
 
@@ -1337,27 +1337,14 @@ export class TowerSimulation {
     }
   }
 
-  private updateNaturalScrap(deltaMs: number): void {
-    this.naturalScrapTimerMs += deltaMs;
-    while (this.naturalScrapTimerMs >= NATURAL_SCRAP.intervalMs) {
-      this.naturalScrapTimerMs -= NATURAL_SCRAP.intervalMs;
-      for (let index = 0; index < NATURAL_SCRAP.count; index += 1) {
-        this.dropScrap(this.randomNaturalScrapPosition(), NATURAL_SCRAP.amount);
+  private updateScrapExpiration(): void {
+    for (let index = this.scraps.length - 1; index >= 0; index -= 1) {
+      const scrap = this.scraps[index];
+      if (scrap !== undefined && this.tick >= scrap.expiresAtTick) {
+        this.addEvent('scrap-expired', { position: scrap.position, amount: scrap.amount });
+        this.scraps.splice(index, 1);
       }
     }
-  }
-
-  private randomNaturalScrapPosition(): Vector2 {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const angle = this.random.between(0, Math.PI * 2);
-      const radius = this.random.between(NATURAL_SCRAP.minRadiusFromHeart, WORLD.spawnZoneRadius);
-      const unit = exactUnitFromAngle(angle);
-      const position = { x: unit.x * radius, y: unit.y * radius };
-      if (distance(position, this.heart.position) >= NATURAL_SCRAP.minRadiusFromHeart) {
-        return position;
-      }
-    }
-    return { x: NATURAL_SCRAP.minRadiusFromHeart, y: 0 };
   }
 
   // ── Vagues ──────────────────────────────────────────────────────────────────

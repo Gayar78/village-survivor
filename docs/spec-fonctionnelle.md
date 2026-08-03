@@ -168,6 +168,9 @@ fiable et ordonné.
 
 La ferraille au sol provient exclusivement de la mort d'un monstre, quelle qu'en soit la cause.
 
+> État : **implémenté et vérifié le 3 août 2026**. Les autres fonctionnalités de cette
+> spécification restent la cible des boucles suivantes.
+
 **Critères d'acceptation**
 
 - aucune apparition périodique, minuterie naturelle ou position aléatoire de ferraille n'existe ;
@@ -187,8 +190,9 @@ La ferraille au sol provient exclusivement de la mort d'un monstre, quelle qu'en
 | quête terminée | caisse créditée directement, nombre de tas inchangé |
 | partie longue | aucun tas plus vieux que 600 ticks, population bornée par les morts récentes |
 
-**Diagnostic :** événements `scrap-dropped`, `scrap-collected`, `scrap-expired` et métriques
-agrégées de population/expiration ; aucun span par tas.
+**Diagnostic :** `monster-killed` matérialise la source, `scrap-collected` le ramassage et
+`scrap-expired` l'expiration. Les métriques serveur agrégées de population/expiration arrivent
+avec la boucle d'exploitation ; aucun span n'est créé par tas.
 
 ## F-007 — Gérer coupure, reconnexion et départ
 

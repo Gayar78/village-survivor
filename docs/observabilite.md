@@ -15,6 +15,10 @@ ralentir ou arrêter une partie.
 L'instrumentation P2P v1 reste utile pendant la transition, mais disparaît avec le netcode
 lockstep. La v2 déplace l'autorité de mesure de la simulation vers `apps/server`.
 
+**Boucle 1 livrée dans le moteur :** l'événement déterministe `scrap-expired` rend l'expiration
+testable sans introduire OpenTelemetry dans `game-core`. Son agrégation en métrique serveur est
+planifiée avec `apps/server`.
+
 ## Traces
 
 | Unité | Span | Enfants autorisés |

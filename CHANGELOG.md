@@ -10,6 +10,15 @@ Le dépôt contient deux jeux successifs. Le MVP « M1 » (exploration diurne, d
 été livré du 20 au 26 juillet 2026, puis **remplacé** par le jeu « Tower » du 28 au 30 juillet.
 Les deux sont consignés ci-dessous, dans cet ordre.
 
+### Migration v2 — boucle 1 : ferraille bornée
+
+- supprimé toute apparition automatique de ferraille ; seuls les monstres en déposent, à hauteur
+  de leur récompense ;
+- ajouté une expiration exacte après 600 ticks (30 secondes), avec priorité au ramassage au tick
+  limite ;
+- ajouté l'événement `scrap-expired` et les tests de partie longue ; les récompenses de quête
+  continuent de créditer directement la caisse commune.
+
 ---
 
 ## Correctifs de jouabilité — 1er août 2026

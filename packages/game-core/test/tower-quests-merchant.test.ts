@@ -110,11 +110,14 @@ describe('Tower shared quests and merchant', () => {
       killSpawnedMonster(simulation);
     }
     expect(simulation.createSnapshot().sharedQuest.progress).toBe(4);
+    expect(simulation.createSnapshot().scraps).toHaveLength(4);
     expect(simulation.getScrapFund()).toBe(0);
 
     const completingMonster = killSpawnedMonster(simulation);
     const afterFirstQuest = simulation.createSnapshot();
     expect(afterFirstQuest.scrapFund).toBe(18);
+    // Le cinquième tas vient du monstre ; la récompense de quête va directement au fonds.
+    expect(afterFirstQuest.scraps).toHaveLength(5);
     expect(afterFirstQuest.sharedQuest).toEqual({
       rotationId: 1,
       id: 'elite-bounty',

@@ -216,14 +216,8 @@ export const CRIT_SLOW = {
 /** Écart angulaire (rad) entre projectiles supplémentaires du tir multiple. */
 export const MULTISHOT_SPREAD_RAD = 0.14;
 
-/** Économie : ferraille naturelle. */
-export const NATURAL_SCRAP = {
-  intervalMs: 7_000,
-  count: 5,
-  amount: 1,
-  /** Rayon minimal autour du Cœur où la ferraille naturelle n'apparaît pas. */
-  minRadiusFromHeart: 300,
-} as const;
+/** Durée maximale d'un tas de ferraille au sol : 600 ticks × 50 ms = 30 secondes. */
+export const SCRAP_LIFETIME_TICKS = 600;
 
 /** Vagues de groupe. */
 export const WAVE = {

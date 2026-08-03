@@ -178,4 +178,6 @@ export interface MutableScrap {
   id: string;
   position: Vector2;
   amount: number;
+  /** Tick auquel le tas est retiré s'il n'a pas été ramassé. Interne à la simulation. */
+  expiresAtTick: number;
 }

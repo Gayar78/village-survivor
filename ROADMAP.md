@@ -1,6 +1,6 @@
 # Feuille de route
 
-Dernière mise à jour : 2 août 2026
+Dernière mise à jour : 3 août 2026
 
 ## Convention
 
@@ -321,7 +321,11 @@ Partie coopérative de 16 min 32 s, vague 99, deux postes. **Le correctif d'horl
 3,6 ticks pour une conception à 3, aucune divergence. Ce qui suit concerne ce qui se dégrade
 **avec la durée**, et rien d'autre.
 
-### 1. La ferraille au sol croît sans limite — *cause principale*
+### 1. La ferraille au sol croît sans limite — *résolu le 3 août 2026*
+
+**Résolution v2.** La génération naturelle a été supprimée. Une mort de monstre crée un tas de
+sa valeur de récompense et ce tas expire après 600 ticks, avec priorité au ramassage au tick
+limite. Les mesures ci-dessous restent la preuve historique du défaut qui a motivé ce choix.
 
 Mesuré sur la partie, population moyenne relevée toutes les deux minutes :
 

@@ -1,9 +1,9 @@
 # Village Survivor — Règles de gameplay courantes
 
 > Statut : approuvé
-> Version du projet : v1
+> Version du projet : v2 — boucle 1
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
+> Dernière revue : 3 août 2026
 > Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client
 
 Ce document décrit ce que le code fait réellement. Les valeurs proviennent de
@@ -115,9 +115,12 @@ dépensé en achetant des monstres au coût indiqué dans le tableau ci-dessus.
 
 Deux monnaies distinctes coexistent.
 
-**La ferraille** est le fonds de défense **commun**. Elle apparaît au sol par cinq tas d'une
-unité toutes les 7 secondes, jamais à moins de 300 unités du Cœur, et se ramasse en passant
-dessus. Les quêtes communes en versent également. Elle finance tout ce qui touche à la base.
+**La ferraille** est le fonds de défense **commun**. Elle n'apparaît jamais spontanément : toute
+mort de monstre, quelle qu'en soit la cause, dépose exactement un tas dont la valeur est la
+récompense du monstre. Un tas non ramassé disparaît après **600 ticks**, soit 30 secondes de
+simulation. Le ramassage est traité avant l'expiration : un joueur à portée au tick limite
+récupère encore le tas. Les quêtes communes versent leur récompense directement dans le fonds,
+sans créer d'objet au sol. La ferraille finance tout ce qui touche à la base.
 
 **L'or** est **personnel** : chaque élimination rapporte la récompense du monstre × 3. Il ne
 sert à rien pendant la partie — il est crédité au compte du joueur en fin de partie et alimente
