@@ -1,8 +1,8 @@
 {
   "schema_version": 3,
   "version": "v2",
-  "phase": 2,
-  "phase_nom": "spec-nf",
+  "phase": 3,
+  "phase_nom": "spec-fonctionnelle",
   "iteration": 2,
   "profil": {
     "code": "non",
@@ -96,11 +96,10 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "d354c10",
-  "maj": "2026-08-02",
-  "portee_iteration_suivante": "a_trancher",
+  "dernier_commit": "d12edf1",
+  "maj": "2026-08-03",
+  "portee_iteration_suivante": "serveur_autoritaire_et_ferraille_bornee",
   "decisions_a_rouvrir": [
-    "Modèle de coopération : conserver le lockstep pair-à-pair ou revenir à un serveur autoritaire (ADR-0008, ADR-0004). Portée mineure si conservé, majeure sinon.",
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
     "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026."
   ]

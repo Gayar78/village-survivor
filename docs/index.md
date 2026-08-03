@@ -3,7 +3,7 @@
 > Statut : en construction
 > Version du projet : v2 — la v1 est figée par [`releases/v1.md`](releases/v1.md)
 > Propriétaire : Gayar
-> Dernière revue : 2 août 2026
+> Dernière revue : 3 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
 
 Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,
@@ -13,7 +13,7 @@ alors qu'il existait déjà et tournait.
 
 1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
 2. [Spécification non-fonctionnelle](spec-nf.md) — **approuvée le 1er août 2026**
-3. [Spécification fonctionnelle](spec-fonctionnelle.md) — **approuvée le 1er août 2026**
+3. [Spécification fonctionnelle](spec-fonctionnelle.md) — **révision v2 en cours**
 4. [Feedback](feedback.md) — **ouvert le 1er août 2026**, par anticipation : une session de jeu
    réelle a eu lieu avant l'incrément d'observabilité, et son retour ne devait pas se perdre.
 
@@ -42,8 +42,8 @@ Ce classement détermine quels artefacts sont attendus. Les tableaux ci-dessous 
 ### Complexité constatée
 
 Elle impose des artefacts sans relever la criticité. Les quatre déclencheurs sont présents :
-plusieurs services (base, authentification, temps réel, passerelle), de l'asynchrone (canal de
-diffusion et lots d'entrées), une API exposée au navigateur, et des données persistantes.
+plusieurs services (serveur de jeu, base, authentification, temps réel, passerelle), de
+l'asynchrone (WebSocket et lobby), une API exposée au navigateur, et des données persistantes.
 
 Conséquence directe pour la suite : le tracing devra être **distribué**, et la boucle de jeu à
 20 ticks par seconde interdit de tracer chaque tick — il faudra des métriques agrégées et des
@@ -60,7 +60,7 @@ spans aux seules frontières significatives.
 | Feedback | [`feedback.md`](feedback.md) | à jour — trois sessions consignées |
 | Journal de développement | [`journal-dev.md`](journal-dev.md) | à jour |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
-| Décisions | [`decisions/`](decisions/README.md) — 9 ADR | approuvé |
+| Décisions | [`decisions/`](decisions/README.md) — 11 ADR | approuvé |
 | Observabilité | [`observabilite.md`](observabilite.md) | approuvée |
 | Stratégie de tests | [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | approuvée |
 | Rapport de tests | [`qualite/rapport-tests.md`](qualite/rapport-tests.md) | à jour |
@@ -160,9 +160,11 @@ les phases 2 et 3.
 - le jeu livré n'a **aucune condition de victoire** et fait **persister la progression entre les
   parties**, alors que les piliers produit du 20 juillet 2026 exigeaient l'inverse sur les deux
   points, sans qu'aucune décision datée ne les ait remplacés ;
-- la coopération et la persistance de compte ont été livrées sans arbitrage préalable
-  ([ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md),
-  [ADR-0009](decisions/ADR-0009-account-persistence.md)) ;
+- ~~la coopération a été livrée sans arbitrage préalable~~ — **tranché le 3 août 2026** :
+  [ADR-0011](decisions/ADR-0011-authoritative-game-server.md) remplace le P2P par un serveur
+  autoritaire pour le solo et la coopération ;
+- la persistance de compte a été livrée sans arbitrage préalable
+  ([ADR-0009](decisions/ADR-0009-account-persistence.md)) ;
 - ~~il n'existe aucune télémétrie dans le code~~ — **livrée le 2 août 2026** et éprouvée en
   partie réelle : traces, métriques et journaux corrélés, décrits par
   [`observabilite.md`](observabilite.md) et attestés par
