@@ -96,9 +96,9 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "b378312",
+  "dernier_commit": "4238b9d",
   "maj": "2026-08-03",
-  "portee_iteration_suivante": "boucle_2_serveur_autoritaire_solo",
+  "portee_iteration_suivante": "boucle_3_cooperation_et_reconnexion",
   "decisions_a_rouvrir": [
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
     "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026."
