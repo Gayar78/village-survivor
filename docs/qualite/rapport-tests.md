@@ -1,5 +1,31 @@
 # Village Survivor — Rapport de tests
 
+## Validation v2 — boucle 1 « ferraille bornée »
+
+> Statut : contrôles automatiques réussis, avant revue indépendante
+> Version testée : v2, boucle 1
+> Commit fonctionnel : `db98ed5`
+> Environnement : Windows 11, Node.js/pnpm du workspace, exécution locale
+> Date : 3 août 2026
+
+| Contrôle | Résultat | Preuve observée |
+|---|:---:|---|
+| Tests moteur complets | **PASS** | 15 fichiers, 72 tests |
+| Scénarios ciblés ferraille + quêtes + simulation | **PASS** | 3 fichiers, 16 tests |
+| Typecheck `protocol` et `game-core` | **PASS** | `tsc --noEmit`, deux packages |
+| Lint des fichiers touchés | **PASS** | ESLint, aucune erreur |
+| Benchmark isolé | **PASS** | 560 ticks en 142 ms, **254 µs/tick** sous plus de 200 entités |
+
+Les cinq preuves fonctionnelles spécifiques sont : aucune apparition sans mort sur 2 000 ticks,
+un tas par monstre de la valeur de sa récompense, expiration au tick `drop + 600`, ramassage
+prioritaire au tick limite, et population bornée sur 1 200 ticks. Le test de quête vérifie en
+plus que sa récompense augmente directement `scrapFund` sans créer de sixième tas.
+
+La garde d'architecture fait partie des 72 tests réussis : l'événement `scrap-expired` reste une
+donnée déterministe du moteur et aucune instrumentation OpenTelemetry n'entre dans `game-core`.
+
+---
+
 > Statut : approuvé, avec une anomalie ouverte
 > Version testée : v1
 > Commit : `214dc0f` (produit essayé : `msc1f9ze`, fusionné en `d354c10`)
