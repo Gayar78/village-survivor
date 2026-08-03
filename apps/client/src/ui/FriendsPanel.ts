@@ -47,8 +47,6 @@ export class FriendsPanel {
   private readonly deps: FriendsPanelDeps;
   private readonly toasts: Toasts;
 
-  private readonly currentUserId: string;
-
   private friends: FriendBase[] = [];
   private requests: IncomingFriendRequest[] = [];
   private error: string | null = null;
@@ -58,7 +56,6 @@ export class FriendsPanel {
   public constructor(element: HTMLElement, deps: FriendsPanelDeps) {
     this.element = element;
     this.deps = deps;
-    this.currentUserId = deps.currentUserId;
     this.element.classList.add('friends-panel');
     this.toasts = new Toasts(FriendsPanel.ensureToastRoot());
     this.startPolling();
@@ -202,7 +199,7 @@ export class FriendsPanel {
     snapshot: PresenceSnapshot | undefined,
     online: boolean,
   ): string {
-    if (snapshot?.game?.roster.some((entry) => entry.id === this.currentUserId)) {
+    if (snapshot?.game !== undefined) {
       return `<button type="button" class="friends-btn friends-btn--join"
         data-action="rejoin-game" data-userid="${escapeHtml(friend.userId)}">Rejoindre la partie</button>`;
     }
@@ -257,7 +254,7 @@ export class FriendsPanel {
         this.deps.onInvite(userId);
       } else if (action === 'rejoin-game') {
         const game = this.deps.presenceProvider().get(userId)?.game;
-        if (game?.roster.some((entry) => entry.id === this.currentUserId)) {
+        if (game !== undefined) {
           this.deps.onRejoinGame(game);
         }
       } else if (action === 'remove') {

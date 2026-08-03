@@ -20,6 +20,14 @@ function runtime(): TowerRoomRuntime {
   });
 }
 
+function cooperativeRuntime(userIds: readonly string[]): TowerRoomRuntime {
+  return new TowerRoomRuntime({
+    seed: 'coop-runtime-test',
+    expectedUserIds: userIds,
+    metaBuildsByPlayerId: Object.fromEntries(userIds.map((id) => [id, NEUTRAL_BUILD])),
+  });
+}
+
 function levelAction(index: number): TowerActionMessage {
   return { type: 'level', actionId: `action-${index}`, offerId: `offer-${index}` };
 }
@@ -114,5 +122,49 @@ describe('frontière autoritaire Tower', () => {
       accepted: false,
       code: 'queue-full',
     });
+  });
+
+  it.each([2, 4])('attend exactement les %i membres du roster avant de démarrer', (count) => {
+    const ids = Array.from({ length: count }, (_value, index) => `user-${index + 1}`);
+    const room = cooperativeRuntime(ids);
+    for (const [index, id] of ids.entries()) {
+      expect(room.admit(id, index)).toBe(true);
+      expect(room.phase).toBe(index === ids.length - 1 ? 'running' : 'waiting');
+    }
+    expect(room.snapshot().players.map(({ id }) => id)).toEqual(ids);
+  });
+
+  it('neutralise immédiatement un joueur coupé puis restaure le même avatar à 10 secondes', () => {
+    const room = cooperativeRuntime(['user-1', 'user-2']);
+    room.admit('user-1', 0);
+    room.admit('user-2', 0);
+    room.submitControl('user-1', { sequence: 1, moveX: 1, moveY: 0, aimX: 1, aimY: 0 }, 0);
+    const before = room.snapshot().players.find(({ id }) => id === 'user-1');
+    expect(room.disconnect('user-1', 100)).toBe(true);
+    const neutral = room.step(150).state.players.find(({ id }) => id === 'user-1');
+    expect(neutral?.position).toEqual(before?.position);
+    expect(room.reconnect('user-1', 10_100)).toBe(true);
+    expect(room.snapshot().players.find(({ id }) => id === 'user-1')).toEqual(neutral);
+  });
+
+  it('expulse à 30 secondes, refuse le retour tardif et abandonne quand la room est vide', () => {
+    const room = cooperativeRuntime(['user-1', 'user-2']);
+    room.admit('user-1', 0);
+    room.admit('user-2', 0);
+    room.disconnect('user-1', 0);
+    const afterExpiry = room.step(30_000).state;
+    expect(afterExpiry.players.some(({ id }) => id === 'user-1')).toBe(false);
+    expect(room.reconnect('user-1', 31_000)).toBe(false);
+    expect(room.leaveVoluntarily('user-2')).toBe(true);
+    expect(room.phase).toBe('abandoned');
+  });
+
+  it('retire immédiatement une sortie volontaire sans abandonner les joueurs restants', () => {
+    const room = cooperativeRuntime(['user-1', 'user-2']);
+    room.admit('user-1', 0);
+    room.admit('user-2', 0);
+    expect(room.leaveVoluntarily('user-1')).toBe(true);
+    expect(room.phase).toBe('running');
+    expect(room.snapshot().players.map(({ id }) => id)).toEqual(['user-2']);
   });
 });

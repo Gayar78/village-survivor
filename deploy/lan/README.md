@@ -1,21 +1,21 @@
 # Déploiement LAN auto-hébergé
 
-Fait tourner *Village Survivor* en multijoueur sur un réseau local, **sans aucune dépendance
-à internet**. Tout est conteneurisé : base de données, comptes, temps réel et jeu.
+Prépare *Village Survivor* sur un réseau local, **sans dépendance à internet**. À l'issue de la
+boucle 3, base, comptes, lobby temps réel et client sont conteneurisés ; le processus de jeu
+autoritaire fonctionne localement mais son ajout au Compose et au proxy `/game/` appartient à la
+boucle 4. La stack canonique n'est donc pas encore jouable seule.
 
-## Pourquoi une stack complète pour un jeu sans serveur
+## Pourquoi une stack complète
 
-La coopération est un lockstep pair-à-pair : aucun serveur ne simule la partie. Mais les pairs
-doivent bien s'échanger leurs entrées par **quelque chose**, et ce quelque chose est un canal de
-diffusion Supabase Realtime. Par ailleurs le lobby exige un compte. Rendre le jeu jouable hors
-ligne impose donc d'héberger soi-même l'authentification et le temps réel.
+Le serveur Colyseus simule toutes les parties. Supabase reste nécessaire pour les comptes, la
+progression et le lobby : le chef y diffuse uniquement le `roomId` créé par le serveur.
 
 | Service | Rôle | Image |
 |---|---|---|
 | `db` | Postgres, avec les rôles et extensions attendus par Supabase | `supabase/postgres` |
 | `auth` | comptes, sessions, TOTP | `supabase/gotrue` |
 | `rest` | tables et RPC sous politiques RLS | `postgrest/postgrest` |
-| `realtime` | présence du hub **et** transport du lockstep | `supabase/realtime` |
+| `realtime` | présence, invitations et diffusion du `roomId` dans le hub | `supabase/realtime` |
 | `otel` | reçoit traces, métriques et journaux du navigateur, et les affiche | `grafana/otel-lgtm` |
 | `web` | sert le jeu et fait passerelle vers les quatre autres | `nginx` |
 
@@ -45,11 +45,16 @@ docker compose -f deploy/lan/docker-compose.yml up -d
 # 4. Applique les migrations du jeu (après que l'authentification soit saine)
 ./deploy/lan/apply-migrations.ps1
 
-# 5. Vérifie que le transport coopératif répond
+# 5. Vérifie que le transport du lobby répond
 node deploy/lan/check-realtime.mjs
 ```
 
-Puis, **dans une console PowerShell en administrateur**, autorisez le port :
+Ces étapes ne lancent pas encore `game-server`. Pour une validation provisoire de la boucle 3,
+lancez `apps/server` séparément avec `JWT_SECRET`, `SERVICE_ROLE_KEY` et `POSTGREST_URL`, compilez
+le client avec `VITE_GAME_SERVER_URL=http://<adresse>:2567`, puis ouvrez temporairement les ports
+8080 et 2567. La boucle 4 ramènera l'exposition au seul port 8080 grâce au proxy `/game/`.
+
+Puis, **dans une console PowerShell en administrateur**, autorisez le port du site :
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Village Survivor LAN (8080)' -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private
@@ -59,7 +64,8 @@ Les autres joueurs ouvrent alors l'adresse affichée par `setup.mjs`, par exempl
 `http://192.168.1.24:8080`. Chacun crée un compte — l'inscription est auto-confirmée, aucun
 courriel n'est envoyé — puis le hub permet de former un salon et de lancer une partie.
 
-**Jouer ne demande que le port 8080.** L'interface de télémétrie écoute sur 3001 et reste
+**La cible de boucle 4 ne demandera que le port 8080.** La validation provisoire décrite ci-dessus
+demande aussi 2567. L'interface de télémétrie écoute sur 3001 et reste
 joignable depuis la machine hôte sans rien ouvrir ; n'ajoutez une règle pour ce port que si vous
 voulez la consulter depuis un autre poste :
 
@@ -124,15 +130,14 @@ node deploy/lan/check-realtime.mjs
 ```
 
 `check-realtime.mjs` ouvre deux connexions sur un même canal et vérifie qu'un message diffusé
-par l'une parvient à l'autre — exactement le mécanisme qui transporte les lots d'entrées d'une
-partie coopérative. C'est le contrôle qui compte : si le jeu se lance mais que ce script échoue,
-le multijoueur ne marchera pas.
+par l'une parvient à l'autre — le mécanisme utilisé par le lobby pour transmettre `roomId`. Il ne
+vérifie ni le serveur Colyseus ni une partie. Avant la boucle 4, la preuve réseau du jeu est
+`pnpm test:smoke`, qui démarre le vrai serveur et des clients réels.
 
 Deux contrôles complètent le tableau :
 
-- **arithmétique identique d'un poste à l'autre** — ouvrir `http://<adresse>:8080/diagnostics/`
-  sur chaque navigateur qui jouera. Les fonctions du moteur peuvent différer, leurs remplaçants
-  déterministes doivent concorder partout. C'est la condition du mode coopératif ;
+- **serveur joignable** — pendant la validation provisoire,
+  `Invoke-WebRequest http://<adresse>:2567/health` doit répondre `200` depuis le second poste ;
 - **télémétrie reçue** — la route de la passerelle doit répondre :
 
   ```powershell
@@ -181,11 +186,9 @@ Ce déploiement est prévu pour **un réseau local de confiance**, et rien d'aut
   public ;
 - n'exposez pas ce port sur internet, et ne redirigez pas de port depuis votre box.
 
-Les limites de confiance du jeu lui-même — client autoritaire sur sa simulation et sur l'or
-crédité à son compte — sont décrites dans
-[ADR-0008](../../docs/decisions/ADR-0008-p2p-lockstep-coop.md) et
-[ADR-0009](../../docs/decisions/ADR-0009-account-persistence.md). Le déploiement LAN ne les change
-pas.
+La simulation est autoritaire côté serveur depuis l'ADR-0011. Le crédit d'or reste encore déclaré
+par le navigateur jusqu'à la boucle 4 ; cette limite est décrite dans
+[ADR-0009](../../docs/decisions/ADR-0009-account-persistence.md).
 
 ## Fichiers
 
@@ -195,6 +198,6 @@ pas.
 | `nginx.conf` | passerelle : jeu, `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/otel`, `/diagnostics` |
 | `setup.mjs` | détection d'adresse, génération des secrets et des deux `.env` |
 | `apply-migrations.ps1` | applique les migrations du jeu |
-| `check-realtime.mjs` | contrôle du transport coopératif |
+| `check-realtime.mjs` | contrôle du transport du lobby |
 | `volumes/db/*.sql` | initialisation Postgres, dérivée de `supabase/docker` |
 | `.env` | **secrets générés, jamais committés** |

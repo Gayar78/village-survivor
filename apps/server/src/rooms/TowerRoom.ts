@@ -129,12 +129,43 @@ export class TowerRoom extends Room<{ state: TowerStateSchema }> {
     }
   }
 
-  public override onLeave(client: Client): void {
-    this.userIdBySessionId.delete(client.sessionId);
-    if (this.runtime?.phase === 'running') {
+  public override onDrop(client: Client): void {
+    const userId = this.userIdBySessionId.get(client.sessionId);
+    if (userId === undefined || this.runtime === undefined) return;
+    if (this.runtime.phase === 'waiting') {
       this.runtime.abandon();
       syncTowerState(this.state, this.runtime.snapshot(), this.runtime.phase);
+      void this.disconnect();
+      return;
     }
+    if (this.runtime.disconnect(userId, Date.now())) {
+      void this.allowReconnection(client, 30);
+    }
+  }
+
+  public override onReconnect(client: Client): void {
+    const userId = this.userIdBySessionId.get(client.sessionId);
+    if (
+      userId === undefined ||
+      this.runtime === undefined ||
+      !this.runtime.reconnect(userId, Date.now())
+    ) {
+      client.leave(4100);
+      return;
+    }
+    syncTowerState(this.state, this.runtime.snapshot(), this.runtime.phase);
+  }
+
+  public override onLeave(client: Client): void {
+    const userId = this.userIdBySessionId.get(client.sessionId);
+    this.userIdBySessionId.delete(client.sessionId);
+    if (userId === undefined || this.runtime === undefined) return;
+    if (this.runtime.isDisconnected(userId)) {
+      this.runtime.removeExpiredPlayer(userId, Date.now());
+    } else {
+      this.runtime.leaveVoluntarily(userId);
+    }
+    syncTowerState(this.state, this.runtime.snapshot(), this.runtime.phase);
   }
 
   public override onDispose(): void {

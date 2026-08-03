@@ -144,7 +144,6 @@ export class TowerStateSchema extends Schema {
   @type('number') public tick = 0;
   @type('number') public elapsedMs = 0;
   @type('string') public status = 'ready';
-  @type('string') public seed = '';
   @type(WorldSchema) public world = new WorldSchema();
   @type(BiomeSchema) public biome = new BiomeSchema();
   @type('number') public wave = 0;
@@ -295,7 +294,6 @@ export function syncTowerState(
   target.tick = source.tick;
   target.elapsedMs = source.elapsedMs;
   target.status = source.status;
-  target.seed = source.seed;
   target.world.width = source.world.width;
   target.world.height = source.world.height;
   target.world.spawnZoneRadius = source.world.spawnZoneRadius;

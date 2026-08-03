@@ -35,6 +35,7 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
       ),
     };
     const state = towerGameStateFromWire(wire, 'user-2');
+    expect(state.seed).toBe('server-authoritative');
     expect(state.players).toHaveLength(2);
     expect(state.player.id).toBe('user-2');
     expect(state.events).toEqual([]);

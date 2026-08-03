@@ -25,6 +25,7 @@ const MAX_ACTION_ID_LENGTH = 128;
 const MAX_ACTION_VALUE_LENGTH = 256;
 const MAX_AIM_COMPONENT = 1_000_000;
 export const CONTROL_HOLD_MS = 250;
+export const RECONNECTION_WINDOW_MS = 30_000;
 
 const VALID_WEAPONS = new Set<string>(TOWER_WEAPONS.map(({ id }) => id));
 const VALID_MODULES = new Set<string>([
@@ -54,8 +55,10 @@ export type CommandSubmission =
   Readonly<{ accepted: true }> | Readonly<{ accepted: false; code: TowerCommandRejectionCode }>;
 
 interface PlayerCommands {
+  connected: boolean;
+  reconnectUntilMs: number | undefined;
   lastSequence: number;
-  lastControl?: TowerControlMessage;
+  lastControl: TowerControlMessage | undefined;
   lastControlAtMs: number;
   controlTimesMs: number[];
   actionTimesMs: number[];
@@ -183,7 +186,10 @@ export class TowerRoomRuntime {
       return false;
     }
     this.commandsByUserId.set(userId, {
+      connected: true,
+      reconnectUntilMs: undefined,
       lastSequence: -1,
+      lastControl: undefined,
       lastControlAtMs: nowMs,
       controlTimesMs: [],
       actionTimesMs: [],
@@ -203,9 +209,63 @@ export class TowerRoomRuntime {
       this.phaseValue = 'abandoned';
   }
 
+  public disconnect(userId: string, nowMs: number): boolean {
+    const commands = this.commandsByUserId.get(userId);
+    if (commands === undefined || !commands.connected || this.phaseValue !== 'running')
+      return false;
+    commands.connected = false;
+    commands.reconnectUntilMs = nowMs + RECONNECTION_WINDOW_MS;
+    commands.lastControl = undefined;
+    commands.lastControlAtMs = nowMs;
+    commands.actionQueue.length = 0;
+    return true;
+  }
+
+  public reconnect(userId: string, nowMs: number): boolean {
+    const commands = this.commandsByUserId.get(userId);
+    if (
+      commands === undefined ||
+      commands.connected ||
+      commands.reconnectUntilMs === undefined ||
+      nowMs > commands.reconnectUntilMs ||
+      this.phaseValue !== 'running'
+    ) {
+      return false;
+    }
+    commands.connected = true;
+    commands.reconnectUntilMs = undefined;
+    commands.lastControl = undefined;
+    commands.lastControlAtMs = nowMs;
+    return true;
+  }
+
+  public isDisconnected(userId: string): boolean {
+    const commands = this.commandsByUserId.get(userId);
+    return commands !== undefined && !commands.connected;
+  }
+
+  public leaveVoluntarily(userId: string): boolean {
+    return this.removePlayer(userId);
+  }
+
+  public removeExpiredPlayer(userId: string, nowMs: number): boolean {
+    const commands = this.commandsByUserId.get(userId);
+    if (
+      commands === undefined ||
+      commands.connected ||
+      commands.reconnectUntilMs === undefined ||
+      nowMs < commands.reconnectUntilMs
+    ) {
+      return false;
+    }
+    return this.removePlayer(userId);
+  }
+
   public submitControl(userId: string, message: unknown, nowMs: number): CommandSubmission {
     const commands = this.commandsByUserId.get(userId);
-    if (commands === undefined) return { accepted: false, code: 'malformed' };
+    if (commands === undefined || !commands.connected) {
+      return { accepted: false, code: 'malformed' };
+    }
     if (
       typeof message !== 'object' ||
       message === null ||
@@ -249,7 +309,7 @@ export class TowerRoomRuntime {
 
   public submitAction(userId: string, message: unknown, nowMs: number): CommandSubmission {
     const commands = this.commandsByUserId.get(userId);
-    if (commands === undefined || !validAction(message)) {
+    if (commands === undefined || !commands.connected || !validAction(message)) {
       return { accepted: false, code: 'malformed' };
     }
     if (commands.rememberedActionIds.has(message.actionId)) {
@@ -275,6 +335,17 @@ export class TowerRoomRuntime {
   }
 
   public step(nowMs: number): Readonly<{ state: TowerGameState; events: readonly TowerEvent[] }> {
+    if (this.phaseValue === 'running') {
+      for (const [userId, commands] of this.commandsByUserId) {
+        if (
+          !commands.connected &&
+          commands.reconnectUntilMs !== undefined &&
+          nowMs >= commands.reconnectUntilMs
+        ) {
+          this.removePlayer(userId);
+        }
+      }
+    }
     if (this.phaseValue === 'running') {
       const inputs: Record<string, TowerInput> = {};
       for (const userId of this.expectedUserIds) {
@@ -305,5 +376,18 @@ export class TowerRoomRuntime {
 
   public snapshot(): TowerGameState {
     return this.simulation.createSnapshot();
+  }
+
+  private removePlayer(userId: string): boolean {
+    if (!this.commandsByUserId.delete(userId)) return false;
+    if (this.commandsByUserId.size === 0) {
+      this.phaseValue = 'abandoned';
+      return true;
+    }
+    const tick = this.simulation.createSnapshot().tick;
+    if (!this.simulation.applyRosterEvent({ type: 'leave', tick, playerId: userId })) {
+      throw new Error('Retrait de joueur refusé à la frontière autoritaire.');
+    }
+    return true;
   }
 }

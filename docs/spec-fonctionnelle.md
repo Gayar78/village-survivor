@@ -100,6 +100,8 @@ session navigateur `game.client.session`.
 
 Le chef crée la room et le lobby Supabase diffuse uniquement son `roomId` aux invités.
 
+> État : **implémenté et vérifié le 3 août 2026** sur deux puis quatre clients réels.
+
 **Critères d'acceptation**
 
 - seuls les membres réservés peuvent rejoindre ;
@@ -151,6 +153,8 @@ fiable et ordonné.
 **Critères d'acceptation**
 
 - un événement `TowerEvent` n'est traité qu'une fois grâce à son identifiant ;
+- la seed autoritaire et les bonus persistants ne figurent ni dans le Schema ni dans la présence
+  du hub ;
 - les deux derniers états sont interpolés ;
 - la prédiction locale reste purement visuelle et bornée à deux ticks ;
 - tout état serveur réinitialise la prédiction ;
@@ -197,6 +201,9 @@ avec la boucle d'exploitation ; aucun span n'est créé par tas.
 ## F-007 — Gérer coupure, reconnexion et départ
 
 Une coupure réseau ne retire pas immédiatement l'avatar de la partie.
+
+> État : **implémenté et vérifié le 3 août 2026** avec coupures réelles de dix et trente et une
+> secondes ; la persistance des récompenses d'une room terminée appartient à F-008.
 
 **Critères d'acceptation**
 

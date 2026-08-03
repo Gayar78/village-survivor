@@ -3,12 +3,7 @@ import { spentBlessingBudget } from './account/blessingBudget.js';
 import { metaProgressionService } from './account/metaProgressionService.js';
 import { isSupabaseConfigured } from './account/supabaseClient.js';
 import type { AccountSession, MetaProgressionSnapshot } from './account/types.js';
-import {
-  META_BLESSING_BUDGET,
-  META_CATALOG,
-  META_PROFILE_LIMIT,
-  resolveMetaBuildEffects,
-} from '@village-survivor/protocol';
+import { META_BLESSING_BUDGET, META_CATALOG, META_PROFILE_LIMIT } from '@village-survivor/protocol';
 import type {
   BlessingId,
   BlessingPathId,
@@ -21,6 +16,7 @@ import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
 import { gameUrl } from './gameUrl.js';
+import { TOWER_SERVER_ROOM_KEY } from './net/TowerServerSession.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
@@ -105,18 +101,6 @@ settingsScreen.hide();
 
 function activeProfile(snapshot: MetaProgressionSnapshot): MetaCharacterProfile | null {
   return snapshot.profiles.find((profile) => profile.isActive) ?? snapshot.profiles[0] ?? null;
-}
-
-async function loadActiveMetaBuild(): Promise<
-  ReturnType<typeof resolveMetaBuildEffects> | undefined
-> {
-  try {
-    const profile = activeProfile(await metaProgressionService.loadMetaProgression());
-    return profile === null ? undefined : resolveMetaBuildEffects(profile);
-  } catch (error) {
-    console.warn('Build méta indisponible : statistiques de base utilisées.', error);
-    return undefined;
-  }
 }
 
 function toMetaBuildViewModel(snapshot: MetaProgressionSnapshot): MetaBuildViewModel {
@@ -326,31 +310,8 @@ function beginLaunch(payload: LaunchPayload): void {
     return;
   }
   coopLaunching = true;
-  const me = accountSession?.userId;
-  if (
-    payload.code !== undefined &&
-    payload.hostId !== undefined &&
-    payload.roster !== undefined &&
-    payload.roster.length > 1 &&
-    me !== undefined
-  ) {
-    sessionStorage.setItem(
-      'vs-coop-netcode',
-      JSON.stringify({
-        seed: payload.seed,
-        code: payload.code,
-        hostId: payload.hostId,
-        me,
-        roster: payload.roster,
-        metaBuildsByPlayerId: Object.fromEntries(
-          payload.roster.map((entry) => [entry.id, entry.metaBuild ?? {}]),
-        ),
-      }),
-    );
-    location.assign(gameUrl());
-    return;
-  }
-  location.assign(gameUrl({ seed: payload.seed, players: String(payload.playerCount) }));
+  sessionStorage.setItem(TOWER_SERVER_ROOM_KEY, JSON.stringify({ roomId: payload.roomId }));
+  location.assign(gameUrl());
 }
 
 async function openMultiplayer(): Promise<void> {
@@ -368,11 +329,9 @@ async function openMultiplayer(): Promise<void> {
       multiplayerStarted = true;
       const displayName =
         accountSession.displayName.length > 0 ? accountSession.displayName : accountSession.email;
-      const metaBuild = await loadActiveMetaBuild();
       const hubSession = {
         userId: accountSession.userId,
         displayName,
-        ...(metaBuild === undefined ? {} : { metaBuild }),
       };
       try {
         const friendCode = await friendsService.getMyFriendCode();

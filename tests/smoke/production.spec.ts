@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 
-import { expect, test } from '@playwright/test';
+import { Client, type Room } from '@colyseus/sdk';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 
 /**
  * Smoke test du build de production.
@@ -17,13 +18,13 @@ import { expect, test } from '@playwright/test';
 const HOSTILE_SEED = '<img src=x onerror=window.__seedInjected=true>';
 const JWT_SECRET = 'smoke-jwt-secret-at-least-sixteen-characters';
 
-function createAccessToken(): string {
+function createAccessToken(userId = 'smoke-user'): string {
   const encodedHeader = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString(
     'base64url',
   );
   const encodedPayload = Buffer.from(
     JSON.stringify({
-      sub: 'smoke-user',
+      sub: userId,
       aud: 'authenticated',
       role: 'authenticated',
       exp: Math.floor(Date.now() / 1_000) + 3_600,
@@ -33,6 +34,45 @@ function createAccessToken(): string {
     .update(`${encodedHeader}.${encodedPayload}`)
     .digest('base64url');
   return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+const GAME_SERVER_URL = 'http://127.0.0.1:2567';
+
+async function createCoopRoom(
+  request: APIRequestContext,
+  userIds: readonly string[],
+): Promise<string> {
+  const response = await request.post(`${GAME_SERVER_URL}/rooms`, {
+    data: { mode: 'coop', rosterUserIds: userIds },
+    headers: { authorization: `Bearer ${createAccessToken(userIds[0])}` },
+  });
+  expect(response.status()).toBe(201);
+  const body = (await response.json()) as { roomId?: unknown };
+  expect(typeof body.roomId).toBe('string');
+  return body.roomId as string;
+}
+
+async function joinRoom(roomId: string, userId: string): Promise<Room> {
+  const client = new Client(GAME_SERVER_URL);
+  client.auth.token = createAccessToken(userId);
+  return client.joinById(roomId);
+}
+
+function roomSnapshot(room: Room): Record<string, unknown> {
+  return room.state.toJSON() as Record<string, unknown>;
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 5_000,
+  intervalMs = 10,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  expect(predicate()).toBe(true);
 }
 
 test('sert le build de production sans capacité de débogage ni erreur console', async ({
@@ -125,4 +165,108 @@ test('affiche une erreur lisible puis revient au lobby sans fallback local', asy
   await expect(page.locator('#tower-sync-status')).toContainText('session a expiré');
   await page.waitForURL('**/index.html', { timeout: 6_000 });
   await expect(page.locator('canvas')).toHaveCount(0);
+});
+
+test('synchronise exactement deux puis quatre clients sur la même simulation', async ({
+  request,
+}) => {
+  for (const count of [2, 4]) {
+    const userIds = Array.from(
+      { length: count },
+      (_value, index) => `sync-${count}-user-${index + 1}`,
+    );
+    const roomId = await createCoopRoom(request, userIds);
+    const rooms = await Promise.all(userIds.map((userId) => joinRoom(roomId, userId)));
+
+    let commonSnapshots: Record<string, unknown>[] | undefined;
+    await waitFor(() => {
+      const snapshots = rooms.map(roomSnapshot);
+      const ticks = snapshots.map(({ tick }) => tick);
+      const allRunning = snapshots.every(({ phase, players }) => {
+        const playerCount =
+          typeof players === 'object' && players !== null ? Object.keys(players).length : 0;
+        return phase === 'running' && playerCount === count;
+      });
+      if (allRunning && new Set(ticks).size === 1) {
+        commonSnapshots = snapshots;
+        return true;
+      }
+      return false;
+    });
+
+    expect(commonSnapshots).toBeDefined();
+    for (const snapshot of commonSnapshots?.slice(1) ?? []) {
+      expect(snapshot).toEqual(commonSnapshots?.[0]);
+      expect(snapshot).not.toHaveProperty('seed');
+      expect(snapshot).not.toHaveProperty('player');
+      expect(snapshot).not.toHaveProperty('events');
+    }
+    await Promise.all(rooms.map((room) => room.leave(true)));
+  }
+});
+
+test('annule une room coopérative si le roster reste partiel pendant quinze secondes', async ({
+  request,
+}) => {
+  test.setTimeout(25_000);
+  const userIds = ['partial-roster-leader', 'partial-roster-guest'];
+  const startedAt = Date.now();
+  const roomId = await createCoopRoom(request, userIds);
+  const leader = await joinRoom(roomId, userIds[0]);
+  await waitFor(() => roomSnapshot(leader).phase === 'waiting');
+  expect(roomSnapshot(leader).phase).toBe('waiting');
+
+  await new Promise<void>((resolve) => leader.onLeave(() => resolve()));
+  const elapsedMs = Date.now() - startedAt;
+  expect(elapsedMs).toBeGreaterThanOrEqual(14_000);
+  expect(elapsedMs).toBeLessThan(18_000);
+});
+
+test('restaure le même avatar après une coupure réelle de dix secondes', async ({ request }) => {
+  test.setTimeout(25_000);
+  const userIds = ['reconnect-10-leader', 'reconnect-10-guest'];
+  const roomId = await createCoopRoom(request, userIds);
+  const leader = await joinRoom(roomId, userIds[0]);
+  const guest = await joinRoom(roomId, userIds[1]);
+  await waitFor(() => roomSnapshot(leader).phase === 'running');
+  const token = leader.reconnectionToken;
+  const before = roomSnapshot(leader).players as Record<string, unknown>;
+  expect(before).toHaveProperty(userIds[0]);
+
+  leader.reconnection.enabled = false;
+  await leader.leave(false);
+  await new Promise((resolve) => setTimeout(resolve, 10_000));
+
+  const client = new Client(GAME_SERVER_URL);
+  const reconnected = await client.reconnect(token);
+  await waitFor(() => roomSnapshot(reconnected).phase === 'running');
+  const after = roomSnapshot(reconnected).players as Record<string, unknown>;
+  expect(after).toHaveProperty(userIds[0]);
+  expect(reconnected.sessionId).toBe(leader.sessionId);
+  await Promise.all([reconnected.leave(true), guest.leave(true)]);
+});
+
+test('expulse après trente secondes, refuse le retour tardif et conserve les autres joueurs', async ({
+  request,
+}) => {
+  test.setTimeout(48_000);
+  const userIds = ['reconnect-31-leader', 'reconnect-31-guest'];
+  const roomId = await createCoopRoom(request, userIds);
+  const leader = await joinRoom(roomId, userIds[0]);
+  const guest = await joinRoom(roomId, userIds[1]);
+  await waitFor(() => roomSnapshot(leader).phase === 'running');
+  const token = leader.reconnectionToken;
+
+  leader.reconnection.enabled = false;
+  await leader.leave(false);
+  await new Promise((resolve) => setTimeout(resolve, 31_000));
+  await waitFor(() => {
+    const players = roomSnapshot(guest).players;
+    return typeof players === 'object' && players !== null && !(userIds[0] in players);
+  });
+
+  const client = new Client(GAME_SERVER_URL);
+  await expect(client.reconnect(token)).rejects.toThrow();
+  expect(roomSnapshot(guest).players).toHaveProperty(userIds[1]);
+  await guest.leave(true);
 });

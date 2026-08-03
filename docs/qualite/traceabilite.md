@@ -127,6 +127,6 @@ exigences approuvées par ADR-0011 sont suivies séparément pendant la migratio
 | `REQ-V2-NET-001` — commandes bornées | [Spécification F-004](../spec-fonctionnelle.md) | union protocol, filtres débit/séquence/valeurs/file | tests de frontière autoritaire | **Implémenté** |
 | `REQ-V2-NET-002` — état sans alias local | [Spécification F-005](../spec-fonctionnelle.md) | `TowerStateSchema`, `TowerServerSession` | tests Schema et conversion locale | **Implémenté** |
 | `REQ-V2-UX-001` — interpolation et prédiction visuelle | [ADR-0010](../decisions/ADR-0010-local-render-prediction.md) | deux snapshots + avance locale de deux ticks | tests adaptateur et smoke | **Solo implémenté** |
-| `REQ-V2-COOP-001` — roster, départs et reconnexion | [Spécification F-003/F-007](../spec-fonctionnelle.md) | à faire en boucle 3 | multi-client 2/4, 10 s/31 s | Planifié |
+| `REQ-V2-COOP-001` — roster, départs et reconnexion | [Spécification F-003/F-007](../spec-fonctionnelle.md) | réservation serveur, `roomId` seul, runtime et callbacks Colyseus | multi-client 2/4, attente 15 s, 10 s/31 s, départs unitaires | **Implémenté** |
 | `REQ-V2-GOLD-001` — crédit serveur idempotent | [Spécification F-008](../spec-fonctionnelle.md) | à faire en boucle 4 | concurrence SQL | Planifié |
 | `REQ-V2-OPS-001` — Compose, Nginx et OTel | [Spécification F-009](../spec-fonctionnelle.md) | à faire en boucle 4 | santé, panne, charge et trace réelle | Planifié |

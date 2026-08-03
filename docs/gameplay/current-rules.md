@@ -1,7 +1,7 @@
 # Village Survivor — Règles de gameplay courantes
 
 > Statut : approuvé
-> Version du projet : v2 — boucle 2
+> Version du projet : v2 — boucle 3
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
 > Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client
@@ -23,10 +23,9 @@ proviennent de [`packages/protocol/src/tower.ts`](../../packages/protocol/src/to
 Une partie est une **survie sans fin**. Le statut ne connaît que trois valeurs : `ready`,
 `running` et `defeat`. **Il n'existe aucune condition de victoire.**
 
-En production, une partie solo est simulée par une room serveur autoritaire ; le navigateur
-envoie seulement déplacement, visée, tir et actions d'interface. La coopération reste
-temporairement P2P jusqu'à la boucle 3. Ce changement de transport ne modifie aucune règle de
-combat décrite ci-dessous.
+En production, toute partie est simulée par une room serveur autoritaire ; le navigateur envoie
+seulement déplacement, visée, tir et actions d'interface. Ce transport ne modifie aucune règle
+de combat décrite ci-dessous.
 
 La partie est perdue si :
 
@@ -191,19 +190,16 @@ personnel ni la méta-progression.
 
 ## Coopération
 
-Jusqu'à **dix avatars actifs** partagent une partie. Le modèle est un **lockstep pair-à-pair** :
-chaque navigateur exécute la même simulation et n'échange que des entrées, jamais d'état. Les
-arrivées et départs sont planifiés à une frontière de tick précise, identique chez tous les pairs.
-Un joueur peut rejoindre une partie en cours : il rejoue la graine et l'historique d'entrées
-avant de demander sa réintégration.
+Jusqu'à **dix avatars actifs** partagent l'unique simulation de la room. Le chef réserve le roster
+et tous ses membres doivent rejoindre dans les **quinze secondes** ; un roster partiel annule la
+partie. Une fois démarrée, aucune nouvelle identité ne peut entrer.
 
-**La reconnexion a une limite de temps.** Le rejeu part du premier tick de la partie, et
-l'historique conservé couvre **vingt minutes**. Au-delà, un joueur déconnecté ne peut plus
-revenir : il reçoit un refus explicite et la partie continue sans lui. Le correctif de fond —
-des points de reprise périodiques, qui rendraient le rejeu proportionnel au temps écoulé depuis
-le dernier d'entre eux — est consigné dans la feuille de route.
+**La reconnexion a une limite de trente secondes.** Dès une coupure, l'entrée devient neutre mais
+l'avatar reste présent et vulnérable. Un retour dans la fenêtre reprend le même avatar depuis un
+état serveur complet. À l'échéance, l'avatar est retiré et l'identité ne peut plus revenir. Une
+sortie volontaire est immédiate ; le départ du dernier joueur abandonne la room.
 
-Voir [ADR-0008](../decisions/ADR-0008-p2p-lockstep-coop.md) pour la décision et ses limites.
+Voir [ADR-0011](../decisions/ADR-0011-authoritative-game-server.md) pour la décision.
 
 ## Méta-progression (hors partie)
 

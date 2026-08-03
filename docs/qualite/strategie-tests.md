@@ -17,14 +17,14 @@ son cycle de vie deviennent des gates de release, au même titre que la simulati
 | Logique métier et frontières solo | **couvert** | 198 tests Vitest après arbitrage Claude |
 | Contrat de session et roster coopératif | **couvert** | inclus ci-dessus |
 | Interface (HUD, boutique, méta-build) | **couvert** | inclus ci-dessus |
-| Démarrage du jeu dans un navigateur réel | **couvert** | 1 smoke Playwright, en intégration continue |
+| Démarrage du jeu dans un navigateur réel | **couvert** | 6 scénarios Playwright, en intégration continue |
 | Performance de la simulation | **couvert** | 1 scénario, hors navigateur |
 | **Accès non autorisés** | **partiel** | JWT solo, roster, création Colyseus forgée et commandes |
 | **Dépendance externe indisponible** | **partiel** | PostgREST et création solo |
 | **Contrat d'observabilité** | **couvert** | trace réelle exportée et inspectée, données interdites, seuil de journalisation |
 | **Garde d'architecture du moteur** | **couvert** | dépendances, imports, horloge, aléatoire, navigateur |
 | Parcours du lobby de bout en bout | **absent** | — |
-| Serveur autoritaire et contrats réseau | **solo couvert** | Vitest serveur + smoke réel ; coop boucle 3 |
+| Serveur autoritaire et contrats réseau | **solo et coop couverts** | Vitest serveur + clients Colyseus réels 2/4 et 10/31 s |
 | Récompenses serveur idempotentes | **planifié v2** | boucle 4 |
 
 La couverture mesurée, 86 % des instructions, ne porte que sur `game-core` et `content`. Les

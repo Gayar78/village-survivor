@@ -88,11 +88,10 @@ Pendant que l'atelier d'une tourelle est ouvert, votre avatar est ignoré par le
 ## Principes techniques
 
 - une simulation TypeScript indépendante de Phaser, du navigateur et du réseau ;
-- une boucle déterministe à pas fixe de 50 ms — le déterminisme n'est pas confort de test, la
-  coopération en lockstep en dépend entièrement ;
+- une boucle déterministe à pas fixe de 50 ms, exécutée par l'unique simulation serveur ;
 - un client Phaser 4 qui ne communique que par une frontière `TowerSession` ;
-- une coopération pair-à-pair sans serveur de jeu ;
-- Supabase pour l'authentification, la progression de compte et le transport temps réel.
+- un serveur Colyseus autoritaire requis en solo comme en coopération ;
+- Supabase pour l'authentification, la progression de compte et le lobby temps réel.
 
 ## Documentation
 

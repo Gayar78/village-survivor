@@ -64,6 +64,8 @@ Le serveur vérifie le JWT, produit `runId` et seed, charge les bonus via PostgR
 `service_role`, puis réserve les identités. Une room solo attend une identité. Une room coop
 attend exactement le roster réservé pendant 15 secondes ; un membre absent annule le départ.
 Le chef diffuse uniquement `roomId` dans le lobby Supabase.
+La présence du hub contient identité d'affichage, rôle et ordre d'arrivée, jamais les bonus
+persistants ; le serveur recharge ceux-ci directement à la création.
 
 Le jeton reste en mémoire le temps de créer/rejoindre la room. Il n'est écrit ni dans
 `sessionStorage`, ni dans les logs, ni dans la télémétrie.
@@ -74,6 +76,8 @@ Chaque `TowerRoom` possède une seule `TowerSimulation` et l'avance toutes les 5
 Schema contient phase, tick, monde, joueurs, Cœur, tourelles, monstres, projectiles, ferraille,
 vague, boutiques et quête. Les événements éphémères empruntent un message fiable, ordonné et
 dédupliqué par l'identifiant de `TowerEvent`.
+La seed reste interne à la simulation serveur. L'adaptateur fournit au contrat de rendu une
+valeur sentinelle non exploitable, sans révéler la graine autoritaire.
 
 Le contrat partagé contient `players` mais pas l'alias local `player`. `TowerServerSession`
 implémente `TowerRenderableSession`, reconstruit `player` depuis l'identité locale et conserve
@@ -149,12 +153,12 @@ hors du chemin critique et sa panne n'affecte pas la simulation.
 
 ## 11. État de migration au 3 août 2026
 
-La boucle 2 rend le **solo effectivement autoritaire** : `apps/server`, création authentifiée,
-ticket interne de matchmaker, chargement du build, cadence 50 ms, Schema complet, événements
-séparés et `TowerServerSession` sont implémentés. Le menu solo ne produit plus seed ou bonus et
-aucun fallback local ne subsiste sur ce parcours.
+La boucle 3 rend **solo et coopération effectivement autoritaires**. Le chef réserve le roster
+auprès du serveur, Supabase ne diffuse que `roomId`, tous les clients rejoignent la même
+`TowerSimulation` et le chemin de production n'instancie plus `TowerLockstepSession`. Le roster
+exact, l'attente de quinze secondes, les départs et la reconnexion de trente secondes sont
+implémentés et vérifiés sur deux et quatre clients réels.
 
-La coopération utilise encore `TowerLockstepSession` et le crédit d'or reste provisoirement dans
-le navigateur. Ces deux écarts sont bornés aux boucles 3 et 4 ; ils ne décrivent pas la cible.
-Reconnexion, retrait différé, persistance des récompenses, conteneur, Nginx et instrumentation
-serveur ne sont pas déclarés livrés par la boucle 2.
+Le code P2P historique reste présent mais mort jusqu'à son retrait physique en boucle 4. Le
+crédit d'or reste provisoirement dans le navigateur ; persistance idempotente, conteneur, Nginx
+et instrumentation serveur appartiennent encore à cette dernière boucle.

@@ -199,3 +199,48 @@ aucun P0–P2 et trois P3. Les trois sont retenus : les lots d'événements sont
 entre deux patches, `POST /rooms` est réellement limité à cinq créations par minute et une panne
 terminale ramène automatiquement le solo au lobby après avoir affiché son motif. Les nouveaux
 tests couvrent accumulation/déduplication, fenêtre de débit, HTTP 429 et retour navigateur.
+
+## Boucle v2.3 — coopération autoritaire et reconnexion (3 août 2026)
+
+### Périmètre éprouvé avant revue indépendante
+
+- création de room coopérative par le chef et broadcast Supabase réduit au seul `roomId` ;
+- admission exacte de deux puis quatre identités réservées, sans démarrage partiel ;
+- annulation réelle après quinze secondes quand un membre manque ;
+- état Schema identique au même tick pour tous les clients, sans alias local `player` ;
+- neutralisation immédiate à la coupure, même avatar/session après dix secondes ;
+- retrait après trente secondes, refus de reconnexion à trente et une secondes ;
+- départ volontaire immédiat et room vide `abandoned` au niveau du runtime ;
+- interpolation des deux snapshots et prédiction visuelle locale toujours bornée à deux ticks.
+
+### Résultats
+
+| Contrôle | Résultat | Preuve |
+|---|:---:|---|
+| `pnpm check` | **PASS** | format, lint, types, 35 fichiers/204 tests et cinq builds |
+| `pnpm benchmark` | **PASS** | 286 µs/tick avec 200 monstres ; 1 000 projections en 25 ms |
+| `pnpm peers check` | **PASS** | aucun peer manquant |
+| `pnpm test:smoke` | **PASS** | 6 scénarios sur vrai serveur, faux PostgREST et vrais clients Colyseus |
+
+Le premier passage du nouveau cas d'attente a observé le snapshot immédiatement après
+`joinById`, avant que le SDK Node ait appliqué le handshake Schema. L'assertion a été alignée sur
+la frontière asynchrone réelle, puis le cas ciblé a prouvé une annulation en 15,1 secondes. Aucun
+code de production n'a été assoupli.
+
+### Limites explicites de cette preuve
+
+Le lancement visuel du lobby n'est pas piloté par deux navigateurs authentifiés ; son contrat
+fermé `roomId` est vérifié unitairement, puis l'admission est éprouvée directement avec les
+clients Colyseus. La charge de vingt minutes, les métriques de patches/latence, la persistance de
+l'or, Compose/Nginx et l'observabilité serveur restent dans la boucle 4. La validation finale sur
+deux postes LAN n'est pas remplacée par ces tests locaux.
+
+### Arbitrage de la revue Claude
+
+Le rapport indépendant `2026-08-03-204700-development-loop-ready-claude.md` rend un verdict
+favorable, sans P0–P2, et formule deux P3 de minimisation. Les deux sont retenus : la seed
+autoritaire est retirée du Schema et remplacée côté rendu par une sentinelle, tandis que les
+bonus persistants sont retirés de la présence du hub puisqu'aucune UI ne les consomme plus. Les
+tests verrouillent désormais l'absence de `seed` dans les snapshots réseau et la projection
+minimale de présence. Après correction, la suite compte 205 tests Vitest ; aucune contre-revue
+n'est lancée sans confirmation explicite du propriétaire.

@@ -25,6 +25,9 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 03/08 | Autorité solo | Le matchmaker Colyseus exige un ticket serveur opaque à usage unique en plus du JWT de jonction | Sans ce second verrou, son endpoint natif aurait pu tenter de forger roster, seed et bonus en contournant `POST /rooms` | `architecture.md`, `apps/server/README.md` |
 | 03/08 | Dépendances Colyseus | Auto-installation des peers désactivée ; transports et scripts de build sont explicitement autorisés | Le peer `uWebSockets.js`, inutilisé, imposait une archive GitHub de 38,5 Mio et une surface native supplémentaire | `pnpm-workspace.yaml`, `deployment.md` |
 | 03/08 | Revue indépendante de la boucle 2 | Aucun P0–P2 ; trois P3 retenus et corrigés | Les événements ne perdent plus de lot, la création est limitée et une panne terminale retourne au lobby | `qualite/rapport-tests.md` |
+| 03/08 | Coopération autoritaire | Le lobby ne diffuse plus seed, roster, bonus ou autorité d'hôte : seulement le `roomId` opaque déjà réservé | L'admission et la reprise sont désormais décidées par la room ; Supabase reste un transport de lobby non fiable | `architecture.md`, `apps/server/README.md` |
+| 03/08 | Reconnexion Colyseus | La coupure réseau est distinguée de la sortie volontaire par `onDrop`/`onLeave` | Cette frontière permet de neutraliser immédiatement sans supprimer l'avatar avant trente secondes | `gameplay/current-rules.md`, `qualite/rapport-tests.md` |
+| 03/08 | Revue indépendante de la boucle 3 | Aucun P0–P2 ; deux P3 de minimisation retenus et corrigés | La seed quitte le Schema et les bonus persistants quittent la présence du hub | `qualite/rapport-tests.md` |
 
 ## Difficultés et dette potentielle
 

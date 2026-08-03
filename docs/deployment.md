@@ -4,7 +4,7 @@
 > Version du projet : v2
 > Propriétaire : Gayar
 > Dernière revue : 3 août 2026
-> État : serveur solo implémenté localement ; intégration LAN prévue en boucle 4
+> État : serveur solo/coop implémenté localement ; intégration LAN prévue en boucle 4
 
 ## 1. État réel
 
@@ -17,8 +17,8 @@ Nginx : le parcours solo autoritaire fonctionne localement sur le port 2567, pas
 stack LAN canonique. Cette intégration, le healthcheck conteneur et la limite mémoire arrivent
 en boucle 4.
 
-La coopération reste temporairement P2P jusqu'à la boucle 3. Aucun hébergement public n'est
-configuré : ni compte Cloudflare, ni URL publique, ni pipeline de publication.
+La coopération utilise désormais ce serveur en local. Aucun hébergement public n'est configuré :
+ni compte Cloudflare, ni URL publique, ni pipeline de publication.
 
 ## 2. Intégration continue
 
@@ -41,13 +41,14 @@ Les tests navigateur avaient été retirés le 27 juillet 2026, quand l'authenti
 obligatoire est apparue : l'application affichait d'abord l'écran de connexion, que les
 scénarios ne connaissaient pas, et la CI n'a pas de clés Supabase.
 
-Le smoke vise `play.html` avec le vrai serveur Colyseus, un faux PostgREST local et un JWT signé
-par un secret de test. Il vérifie le parcours solo autoritaire, le refus d'un JWT invalide,
-l'impossibilité de forger une room par le matchmaker public, l'absence d'API de débogage et
-l'innocuité d'une ancienne graine hostile dans l'URL. Aucun bypass d'auth n'existe dans le build.
+Le smoke vise `play.html` avec le vrai serveur Colyseus, un faux PostgREST local et des JWT signés
+par un secret de test. Il vérifie le parcours solo, les rooms coopératives de deux et quatre
+clients, l'annulation d'un roster partiel, les coupures de dix et trente et une secondes, le refus
+d'un JWT invalide, l'impossibilité de forger une room par le matchmaker public et l'absence d'API
+de débogage. Aucun bypass d'auth n'existe dans le build.
 
-**Ce qui n'est toujours pas couvert** : le lobby. Connexion, hub et lancement coopératif n'ont
-aucun test de bout en bout, faute de mode invité ou de mock d'authentification.
+**Ce qui n'est toujours pas couvert** : l'interface du lobby de bout en bout. Son contrat de
+broadcast `roomId` est testé, puis les clients Colyseus réels couvrent l'admission et la partie.
 
 Aucune étape de publication n'existe, donc aucune règle du type « un échec interdit le
 déploiement » ne s'applique encore.
@@ -122,7 +123,7 @@ Le déploiement suppose, en plus de la mise en ligne des fichiers :
 
 | Environnement | Client | Supabase | État |
 |---|---|---|---|
-| Local | Vite 5173 + jeu 2567 | projet personnel du développeur | solo autoritaire fonctionnel |
+| Local | Vite 5173 + jeu 2567 | projet personnel du développeur | solo et coop autoritaires fonctionnels |
 | **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080` | stack Docker locale | client/Supabase fonctionnels, game-server à intégrer |
 | Preview / staging | non configuré | non configuré | inexistant |
 | Production | non configuré | non configuré | inexistant |

@@ -1,9 +1,8 @@
 # Serveur de jeu autoritaire
 
 `apps/server` héberge l'API de création de rooms et le transport Colyseus. Une room possède une
-seule `TowerSimulation`, cadencée à 50 ms. Depuis la boucle 2, le parcours solo de production ne
-dispose plus de repli local ; la coopération reste temporairement sur le lockstep P2P jusqu'à la
-boucle 3.
+seule `TowerSimulation`, cadencée à 50 ms. Depuis la boucle 3, les parcours solo et coopératif de
+production passent tous deux par ce serveur et ne disposent d'aucun repli local ou P2P.
 
 ## Démarrage local
 
@@ -27,13 +26,17 @@ Les secrets ne portent jamais le préfixe `VITE_` et ne sont donc pas inclus dan
 navigateur. Le client accepte facultativement `VITE_GAME_SERVER_URL`; sans cette variable il
 utilise `http://<hôte>:2567` en développement et `/game` sur une origine déployée.
 
-## API et cycle solo
+## API, solo et coopération
 
 1. `POST /rooms` avec `Authorization: Bearer <JWT>` et `{ "mode": "solo" }` ;
 2. le serveur vérifie identité et échéance, charge le profil actif, génère `runId` et seed ;
 3. un ticket interne à usage unique autorise le matchmaker à construire la room ;
 4. le client rejoint `roomId` avec le même JWT avant `expiresAt` ;
 5. la room se verrouille, démarre son unique simulation puis diffuse ses patches Schema.
+
+En coopération, le chef envoie `{ "mode": "coop", "rosterUserIds": [...] }`. Le serveur réserve
+exactement ces identités et le lobby Supabase ne diffuse que le `roomId` opaque. Tous les membres
+doivent rejoindre avant quinze secondes ; sinon la room est annulée sans lancer un seul tick.
 
 Le endpoint de matchmaking public ne peut pas forger une création : sans ticket interne, le
 constructeur de room refuse roster, seed et bonus fournis par un appelant. `GET /health` vérifie
@@ -55,8 +58,13 @@ Les erreurs de création utilisent un code fermé et un message affichable. JWT,
 roster, double connexion, room expirée, commande malformée et dépassement de fréquence ne sont
 jamais transformés en état de simulation.
 
-Une panne terminale affiche son motif puis ramène le solo au lobby après 3,5 secondes. Un simple
-refus de commande n'est pas terminal et ne provoque aucune navigation.
+Une coupure neutralise immédiatement l'entrée mais conserve l'avatar, présent et vulnérable,
+pendant trente secondes. Une reconnexion récupère le même `sessionId` et un état complet. À
+l'échéance, le joueur est retiré à une frontière de tick et son retour est refusé ; une sortie
+volontaire le retire immédiatement. Une room vide devient `abandoned`.
+
+Une panne terminale affiche son motif puis ramène au lobby après 3,5 secondes. Un simple refus de
+commande n'est pas terminal et ne provoque aucune navigation.
 
 ## Vérifications
 
@@ -68,5 +76,6 @@ pnpm test:smoke
 ```
 
 Le smoke démarre le vrai serveur, un faux PostgREST hermétique et Chromium avec un JWT de test.
-Il prouve le parcours solo, le refus d'un JWT invalide et l'impossibilité de créer directement
-une room forgée.
+Il prouve le parcours solo, le refus d'un JWT invalide, l'impossibilité de créer directement une
+room forgée, les rosters réels de deux et quatre clients, l'annulation à quinze secondes, la
+reconnexion à dix secondes et le refus après trente et une secondes.

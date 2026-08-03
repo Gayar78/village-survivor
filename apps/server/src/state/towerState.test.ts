@@ -14,6 +14,7 @@ describe('Schema Colyseus Tower', () => {
     expect(json.phase).toBe('running');
     expect(json.tick).toBe(1);
     expect(json.players).toMatchObject({ 'local-user': { id: 'local-user' } });
+    expect(json).not.toHaveProperty('seed');
     expect(json).not.toHaveProperty('player');
     expect(json).not.toHaveProperty('events');
   });

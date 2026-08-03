@@ -1,5 +1,6 @@
 import { Client, type Room } from '@colyseus/sdk';
 import type {
+  CreateTowerRoomRequest,
   CreateTowerRoomResponse,
   TowerActionMessage,
   TowerEvent,
@@ -25,10 +26,13 @@ const MAX_PENDING_ACTIONS = 16;
 const MAX_REMEMBERED_ACTION_IDS = 256;
 const MAX_PREDICTION_TICKS = 2;
 const VISUAL_PLAYER_SPEED_PER_SECOND = 260;
+export const TOWER_SERVER_ROOM_KEY = 'vs-server-room';
+
+export type TowerServerSessionOptions = Readonly<{ roomId?: string }>;
 
 interface WireState extends Omit<
   TowerSharedGameState,
-  'players' | 'turrets' | 'monsters' | 'projectiles' | 'scraps' | 'globalDefenseUpgrades'
+  'seed' | 'players' | 'turrets' | 'monsters' | 'projectiles' | 'scraps' | 'globalDefenseUpgrades'
 > {
   phase: string;
   players: unknown;
@@ -91,6 +95,7 @@ export function towerGameStateFromWire(
   const { turrets, monsters, projectiles, scraps, globalDefenseUpgrades } = wire;
   const shared = { ...wire } as Record<string, unknown>;
   delete shared.phase;
+  delete shared.seed;
   delete shared.players;
   delete shared.turrets;
   delete shared.monsters;
@@ -100,8 +105,15 @@ export function towerGameStateFromWire(
   return {
     ...(shared as Omit<
       TowerSharedGameState,
-      'players' | 'turrets' | 'monsters' | 'projectiles' | 'scraps' | 'globalDefenseUpgrades'
+      | 'seed'
+      | 'players'
+      | 'turrets'
+      | 'monsters'
+      | 'projectiles'
+      | 'scraps'
+      | 'globalDefenseUpgrades'
     >),
+    seed: 'server-authoritative',
     globalDefenseUpgrades: collectionValues(globalDefenseUpgrades),
     player,
     players,
@@ -116,7 +128,7 @@ export function towerGameStateFromWire(
   };
 }
 
-function gameServerEndpoint(): string {
+export function gameServerEndpoint(): string {
   const configured = import.meta.env.VITE_GAME_SERVER_URL as string | undefined;
   if (configured !== undefined && configured.length > 0) return configured.replace(/\/$/u, '');
   if (location.hostname === '127.0.0.1' || location.hostname === 'localhost') {
@@ -131,6 +143,39 @@ function responseError(value: unknown): string {
     if (typeof message === 'string' && message.length > 0) return message;
   }
   return 'Le serveur de jeu ne peut pas démarrer la partie.';
+}
+
+async function currentGameIdentity(): Promise<
+  Readonly<{
+    userId: string;
+    accessToken: string;
+  }>
+> {
+  const { data, error } = await supabase.auth.getSession();
+  const authSession = data.session;
+  if (error !== null || authSession === null) {
+    throw new Error('Votre session a expiré. Reconnectez-vous avant de lancer une partie.');
+  }
+  return { userId: authSession.user.id, accessToken: authSession.access_token };
+}
+
+export async function createTowerServerRoom(
+  request: CreateTowerRoomRequest,
+): Promise<CreateTowerRoomResponse> {
+  const identity = await currentGameIdentity();
+  const response = await fetch(`${gameServerEndpoint()}/rooms`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${identity.accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok || typeof body !== 'object' || body === null || !('roomId' in body)) {
+    throw new Error(responseError(body));
+  }
+  return body as CreateTowerRoomResponse;
 }
 
 export function towerActionsFromInput(
@@ -216,36 +261,28 @@ export class TowerServerSession implements TowerRenderableSession {
   private pendingEvents: TowerGameState['events'] = [];
   private nextActionId = 0;
   private stopped = false;
+  private announcedWaiting = false;
+  private announcedAbandoned = false;
+
+  public constructor(private readonly options: TowerServerSessionOptions = {}) {}
 
   public async start(): Promise<void> {
-    const { data, error } = await supabase.auth.getSession();
-    const authSession = data.session;
-    if (error !== null || authSession === null) {
-      throw new Error('Votre session a expiré. Reconnectez-vous avant de lancer une partie.');
-    }
-    this.localUserId = authSession.user.id;
+    const identity = await currentGameIdentity();
+    this.localUserId = identity.userId;
     const endpoint = gameServerEndpoint();
-    const response = await fetch(`${endpoint}/rooms`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${authSession.access_token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ mode: 'solo' }),
-    });
-    const body: unknown = await response.json().catch(() => null);
-    if (!response.ok || typeof body !== 'object' || body === null || !('roomId' in body)) {
-      throw new Error(responseError(body));
-    }
-    const created = body as CreateTowerRoomResponse;
+    const roomId = this.options.roomId ?? (await createTowerServerRoom({ mode: 'solo' })).roomId;
     const client = new Client(endpoint);
-    client.auth.token = authSession.access_token;
-    const room = await client.joinById(created.roomId);
+    client.auth.token = identity.accessToken;
+    const room = await client.joinById(roomId);
     if (this.stopped) {
       await room.leave();
       return;
     }
     this.room = room;
+    room.reconnection.minUptime = 0;
+    room.reconnection.maxRetries = 13;
+    room.reconnection.minDelay = 100;
+    room.reconnection.maxDelay = 5_000;
     room.onMessage('events', (message: TowerEventsMessage) => {
       this.pendingEvents = appendUnseenTowerEvents(
         this.pendingEvents,
@@ -257,7 +294,14 @@ export class TowerServerSession implements TowerRenderableSession {
       this.emitConnectionIssue('Une commande a été refusée par le serveur.');
     });
     room.onError(() => {
-      this.emitConnectionIssue('La connexion au serveur de jeu a rencontré une erreur.', true);
+      this.emitConnectionIssue('La connexion au serveur de jeu a rencontré une erreur.');
+    });
+    room.onDrop(() => {
+      if (!this.stopped)
+        this.emitConnectionIssue('Reconnexion automatique en cours (30 secondes maximum)…');
+    });
+    room.onReconnect(() => {
+      if (!this.stopped) this.emitConnectionIssue('Connexion rétablie.');
     });
     room.onLeave(() => {
       if (!this.stopped)
@@ -265,11 +309,27 @@ export class TowerServerSession implements TowerRenderableSession {
     });
     room.onStateChange((state: Readonly<{ toJSON(): unknown }>) => {
       try {
-        const snapshot = towerGameStateFromWire(
-          state.toJSON(),
-          this.localUserId,
-          this.pendingEvents,
-        );
+        const wire = state.toJSON();
+        const phase =
+          typeof wire === 'object' && wire !== null && 'phase' in wire
+            ? (wire as { phase?: unknown }).phase
+            : undefined;
+        if (phase === 'waiting') {
+          if (!this.announcedWaiting) {
+            this.announcedWaiting = true;
+            this.emitConnectionIssue('En attente de tous les membres réservés (15 secondes)…');
+          }
+          return;
+        }
+        this.announcedWaiting = false;
+        if (phase === 'abandoned') {
+          if (!this.announcedAbandoned) {
+            this.announcedAbandoned = true;
+            this.emitConnectionIssue('La partie a été abandonnée.', true);
+          }
+          return;
+        }
+        const snapshot = towerGameStateFromWire(wire, this.localUserId, this.pendingEvents);
         this.pendingEvents = [];
         this.latestState = snapshot;
         this.latestStateAtMs = performance.now();
