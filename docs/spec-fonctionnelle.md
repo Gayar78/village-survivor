@@ -1,435 +1,274 @@
-# Village Survivor — Spécification fonctionnelle
+# Village Survivor — Spécification fonctionnelle v2
 
-> Statut : approuvé — comportements validés par le propriétaire le 1er août 2026
-> Version du projet : v1
+> Statut : approuvé — cible en cours de réalisation
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 1er août 2026
+> Dernière validation : 3 août 2026
 > Niveau de garantie requis : `renforce`
 
-**Le comportement du jeu ne change pas.** Cette version spécifie le produit tel qu'il
-fonctionne aujourd'hui, correctifs du 31 juillet compris. Le seul apport de l'incrément à venir
-est la **télémétrie**, qui n'altère aucune règle.
-
-Décision du propriétaire, et elle est bonne : les deux questions produit encore ouvertes — la
-condition de victoire et la persistance entre les parties — sont suspendues aux tests, et les
-tests ont besoin de mesures. Figer le fonctionnel permet d'aller mesurer.
-
-## Division du travail avec les autres documents
-
-Pour éviter la redite, chacun répond à une question différente :
-
-| Document | Répond à |
-|---|---|
-| Cette spécification | ce que le produit doit faire, comment on le vérifie, comment on le diagnostique |
-| [`gameplay/current-rules.md`](gameplay/current-rules.md) | les valeurs exactes — dégâts, coûts, durées, budgets de vagues |
-| [`observabilite.md`](observabilite.md) | la mécanique de la télémétrie et ses métriques |
-| [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | les types de tests et les gates |
+Cette spécification traduit le plan validé du 3 août 2026 en comportements observables. Les
+valeurs de combat qui ne sont pas citées restent celles de
+[`gameplay/current-rules.md`](gameplay/current-rules.md). La stratégie de vérification complète
+est dans [`qualite/strategie-tests.md`](qualite/strategie-tests.md).
 
 ## Parcours principal
 
-1. Le joueur ouvre l'adresse du jeu sur le réseau local.
-2. Il crée un compte ou se connecte, puis satisfait son second facteur.
-3. Le menu principal s'affiche : partie solo, multijoueur, atelier de build, profil, réglages.
-4. **En solo**, il lance une partie : la carte se génère depuis une graine, il défend le Cœur.
-5. **En coopération**, il crée un salon ou rejoint celui d'un ami, puis l'hôte lance.
-6. La partie se joue : vagues sans fin, améliorations de tourelles, montées de niveau.
-7. La partie se termine par la chute du Cœur, la mort de l'avatar en solo, ou un abandon.
-8. L'or gagné est crédité au compte, et alimente la méta-progression hors partie.
+1. Le joueur s'authentifie dans le lobby Supabase et satisfait le second facteur requis.
+2. En solo, le lobby demande une room à une place. En coopération, le chef réserve le roster,
+   crée la room et diffuse seulement son `roomId`.
+3. Chaque navigateur rejoint la room avec son identité authentifiée. Le serveur charge les
+   bonus persistants, produit la seed et démarre exactement le roster attendu.
+4. Le navigateur envoie des commandes ; le serveur simule ; le client interpole les états reçus
+   et prédit visuellement son avatar sur une courte distance.
+5. Les monstres produisent la ferraille au sol. Les quêtes créditent directement la caisse
+   commune. Les tas non ramassés disparaissent après 600 ticks.
+6. Une coupure permet de reprendre le même avatar pendant 30 secondes. Au-delà, le joueur est
+   expulsé définitivement de cette partie.
+7. À la défaite, le serveur finalise une seule fois l'or de tous les participants. Une room
+   abandonnée ne crédite rien.
 
-Ce parcours traverse toutes les couches significatives : navigateur, simulation déterministe,
-authentification, base de données et — en coopération — le canal temps réel. C'est à ce titre
-qu'il constitue le MVP.
+Toutes les parties exigent le serveur. Il n'existe ni solo hors ligne, ni fallback P2P.
 
-## Périmètre du MVP
+## Périmètre de la migration
 
-| Fonctionnalité | MVP | Pourquoi |
-|---|:---:|---|
-| Connexion et second facteur | oui | porte d'entrée obligatoire du lobby |
-| Partie solo | oui | parcours le plus court traversant toutes les couches |
-| Salon et partie coopérative | oui | c'est le mode que les tests doivent éprouver |
-| Boucle de jeu, armes, vagues | oui | le produit lui-même |
-| Atelier de tourelle et ferraille | oui | seul levier de progression en partie |
-| Montée de niveau | oui | seul levier de progression personnelle |
-| Fin de partie et crédit d'or | oui | relie la partie à la méta-progression |
-| Atelier de méta-build | oui | c'est ce qui donne une raison de relancer |
-| Reconnexion coopérative | oui | déjà implémentée, et sa limite doit être mesurée |
-| **Télémétrie** | **oui** | **seul ajout de l'incrément ; sans elle le critère de réussite est incomptable** |
-| Condition de victoire | non | suspendue aux tests |
-| Modification de la persistance | non | suspendue aux tests |
-| Enregistrement des statistiques de partie | non | fonctionnalité inachevée, voir « Écarté du MVP » |
+| Fonctionnalité | Incluse |
+|---|:---:|
+| Ferraille produite uniquement par les monstres et bornée à 30 s | oui |
+| Solo entièrement autoritaire | oui |
+| Coopération à 2–10 joueurs et roster exact | oui |
+| Reconnexion 30 s, expulsion et abandon | oui |
+| Récompenses d'or idempotentes côté serveur | oui |
+| Déploiement LAN, santé et télémétrie serveur | oui |
+| Persistance d'une room après redémarrage | non |
+| Mode hors ligne | non |
+| Ouverture Internet et TLS | non |
+| Condition de victoire | non, inchangée |
 
-## Fonctionnalités
+## F-001 — Créer une room authentifiée
 
-### F-001 — Connexion et second facteur
-
-Le joueur accède au lobby avec un compte. Tout compte créé par courriel doit valider un second
-facteur avant d'obtenir le moindre accès.
+Le lobby demande au serveur une room solo ou coopérative avec le JWT Supabase courant.
 
 **Critères d'acceptation**
 
-- Une inscription par courriel aboutit sans qu'aucun message ne soit envoyé, et enchaîne
-  immédiatement sur l'enrôlement du second facteur.
-- Tant que le second facteur n'est pas validé, **aucune donnée de compte n'est lisible ni
-  modifiable**, ni par l'interface ni par un appel direct à l'API.
-- Un échec de vérification du niveau d'authentification **refuse l'accès** au lieu de l'accorder.
-- Les fournisseurs externes sont visibles mais inopérants en réseau local ; leur échec est
-  explicite et n'empêche pas la connexion par courriel.
+- le solo réserve uniquement l'identité portée par le JWT ;
+- la coopération accepte un roster unique de 2 à 10 identités, comprenant le créateur ;
+- la réponse contient seulement un `roomId` et une échéance d'admission ;
+- `runId`, seed et bonus persistants sont produits ou chargés côté serveur ;
+- aucun jeton n'est écrit dans `sessionStorage`, un log ou une émission de télémétrie.
 
-**Modes de défaillance**
+**Erreurs et accès**
 
-- Service d'authentification injoignable → message clair, aucune boucle de rechargement.
-- Second facteur incorrect → refus, nouvelle tentative possible, aucun verrouillage de compte.
-- Enrôlement abandonné en cours → le facteur non vérifié est nettoyé, une nouvelle tentative
-  reste possible.
+- JWT absent, invalide ou expiré → `unauthorized`, aucune room créée ;
+- roster dupliqué, trop grand ou sans le créateur → `invalid-roster` ;
+- PostgREST indisponible → erreur lisible et retour au lobby, pas de bonus par défaut silencieux ;
+- débit de création excessif → `rate-limited`.
 
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F001-01 | inscription puis enrôlement complet | accès au menu |
-| T-F001-02 | session au premier niveau d'authentification, appel direct à l'API | refus en lecture **et** en écriture |
-| T-F001-03 | contrôle du niveau en erreur | accès refusé, écran de connexion |
-| T-F001-04 | lecture des données d'un autre compte | refus |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | `lobby.signin` |
-| Spans enfants utiles | `auth.password`, `auth.mfa.enroll`, `auth.mfa.verify` |
-| Événements/logs | succès, refus, service injoignable — niveau `info` sauf refus en `warn` |
-| Données interdites | adresse e-mail, mot de passe, secret et code TOTP, jeton |
+| JWT valide, solo | room à une place réservée au demandeur |
+| JWT invalide | refus sans allocation persistante |
+| roster `[A, A]` ou 11 joueurs | refus déterministe |
+| valeurs sentinelles dans JWT/courriel | absentes des logs et spans |
 
-### F-002 — Lancement d'une partie solo
+**Diagnostic :** span `game.room.create`, erreurs structurées à code fermé. Données interdites :
+identité, courriel, JWT, `SERVICE_ROLE_KEY`, `JWT_SECRET`.
 
-Depuis le menu, le joueur lance une partie immédiatement, sans configuration.
+## F-002 — Démarrer une partie solo autoritaire
+
+Le joueur rejoint sa room et reçoit un état complet avant le premier rendu jouable.
 
 **Critères d'acceptation**
 
-- Une graine est tirée et transmise à la page de jeu ; la même graine rejoue le même monde.
-- Le build de méta-progression actif est appliqué avant le premier tick, et reste figé pendant
-  toute la partie.
-- La page de jeu **démarre sans service externe joignable** : une panne d'authentification
-  n'empêche pas de jouer en solo.
+- une seule `TowerSimulation` serveur avance toutes les 50 ms ;
+- le bonus chargé est figé pendant la partie ;
+- l'état partagé expose `players`, jamais l'alias personnalisé `player` ;
+- l'adaptateur client reconstruit `player` depuis l'identité locale ;
+- scène, HUD, niveau et boutiques continuent de consommer `TowerRenderableSession` ;
+- serveur absent ou coupé → message lisible et retour au lobby, sans simulation locale.
 
-**Modes de défaillance**
-
-- Build de méta indisponible → la partie démarre avec les statistiques de base, sans bloquer.
-- Graine absente de l'URL → une graine est tirée localement.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F002-01 | lancement nominal | partie démarrée, graine appliquée |
-| T-F002-02 | service de compte injoignable | partie jouable, aucune erreur bloquante |
-| T-F002-03 | deux parties de même graine | mondes identiques |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | `game.session` (racine), attribut `vs.mode=solo` |
-| Spans enfants utiles | `game.session.start` |
-| Événements/logs | démarrage, build appliqué ou ignoré |
-| Données interdites | identifiant de compte en clair dans le nom du span |
+| lancement nominal | état initial puis ticks croissants |
+| seconde connexion de la même identité | refus `already-connected` |
+| navigateur seul sans serveur | erreur visible, aucun monde simulé |
+| état reçu | `player` local égal à l'entrée correspondante de `players` |
 
-### F-003 — Salon coopératif et lancement groupé
+**Diagnostic :** racine serveur `game.room`, enfants `game.room.admit` et `game.room.start` ;
+session navigateur `game.client.session`.
 
-Un joueur crée un salon, ses amis le rejoignent par code ou invitation, l'hôte lance.
+## F-003 — Démarrer une coopération avec roster exact
+
+Le chef crée la room et le lobby Supabase diffuse uniquement son `roomId` aux invités.
 
 **Critères d'acceptation**
 
-- Tous les pairs démarrent sur **la même graine** et au même tick de départ.
-- Un pair qui n'a pas rejoint la barrière de démarrage n'empêche pas indéfiniment le lancement :
-  l'attente est bornée.
-- Le nombre d'avatars actifs est borné à dix.
+- seuls les membres réservés peuvent rejoindre ;
+- la room attend exactement le roster au plus 15 secondes ;
+- tous les membres présents démarrent sur le même tick et le même état partagé ;
+- un membre manquant annule la room ; aucun roster partiel ne démarre ;
+- une room pleine, une identité étrangère et une double connexion sont refusées.
 
-**Modes de défaillance**
-
-- Canal temps réel injoignable → message explicite, retour au menu possible.
-- Pair silencieux au-delà du délai → il est retiré du roster par un événement ordonné, identique
-  chez tous les pairs.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F003-01 | trois pairs, lancement nominal | même graine, même tick de départ |
-| T-F003-02 | un pair ne répond pas | barrière expirée, partie lancée sans lui |
-| T-F003-03 | canal injoignable | échec explicite, pas de partie fantôme |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | `hub.launch`, puis `game.session` avec `vs.mode=coop` |
-| Spans enfants utiles | `hub.roster.resolve`, `coop.channel.join`, `coop.start.barrier` |
-| Événements/logs | jonction, barrière franchie ou expirée, retrait d'un pair |
-| Données interdites | **code de salon en clair** — il ouvre le canal, il n'est émis que haché |
+| deux puis quatre membres présents | démarrage simultané |
+| un membre manque à 15 s | phase `abandoned`, aucun tick de jeu |
+| identité hors roster | refus `not-in-roster` |
+| deux clients connectés | même tick et même état ; seul l'alias local `player` diffère |
 
-### F-004 — Déroulement d'une partie
+**Diagnostic :** `game.room.admit`, `game.room.start`, durée d'attente et motif d'annulation ;
+aucun roster nominatif dans les signaux.
 
-Le joueur se déplace, vise, tire, et affronte des vagues qui ne s'arrêtent jamais.
+## F-004 — Envoyer des commandes sans autorité cliente
+
+Le client envoie une commande continue `control` et des actions discrètes `action`.
 
 **Critères d'acceptation**
 
-- La simulation avance à pas fixe de 50 ms, indépendamment du nombre d'images par seconde.
-- **Un projectile touche ce qu'il traverse pendant son tick**, et pas seulement ce qui se trouve
-  à son point d'arrivée.
-- Un kamikaze explose au contact **comme à sa mort**, quelle qu'en soit la cause.
-- À graine et entrées identiques, deux exécutions produisent le même état — c'est la condition
-  de la coopération.
-- Une partie se termine par défaite uniquement : chute du Cœur, ou mort de l'avatar en solo.
+- `control` contient séquence, déplacement, visée, tir et état d'atelier, au plus 30/s ;
+- `action` est une union fermée niveau/arme/boutique, fiable, au plus 10/s ;
+- chaque action porte un `actionId`, dédupliqué ; la file n'excède jamais 16 ;
+- les nombres doivent être finis et bornés ; les séquences anciennes sont ignorées ;
+- la dernière commande continue expire après 250 ms, puis devient neutre ;
+- le client n'envoie jamais position, dégâts, récompense, tick, seed, roster effectif ou état.
 
-**Modes de défaillance**
-
-- Image très longue ou onglet suspendu → le rattrapage de ticks est borné, la partie ne
-  « saute » pas arbitrairement.
-- Divergence entre pairs → détectée par comparaison d'empreintes, journalisée.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F004-01 | tir rapide sur petite cible | touche, sans traverser |
-| T-F004-02 | kamikaze abattu à distance | explose là où il meurt |
-| T-F004-03 | deux exécutions, même graine | états identiques |
-| T-F004-04 | Cœur détruit | statut `defeat` |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | aucun — **jamais un span par tick** |
-| Métriques | durée de tick, durée d'image, entités, ticks rattrapés, vague |
-| Événements/logs | défaite, divergence d'empreinte |
-| Données interdites | aucune donnée personnelle ; pas de span par entité |
+| contrôle valide | appliqué au tick suivant disponible |
+| `NaN`, infini, axe > 1 ou séquence ancienne | refus compté, simulation intacte |
+| même `actionId` deux fois | effet appliqué une fois |
+| 17 actions en attente ou débit dépassé | excédent refusé sans déconnecter la room |
+| silence > 250 ms | déplacement et tir neutralisés |
 
-### F-005 — Atelier de tourelle et ferraille commune
+**Diagnostic :** compteur `vs.game.command.rejected` par type et raison fermée ; aucune commande
+valide journalisée ou tracée individuellement.
 
-À proximité d'une tourelle, le joueur dépense la ferraille commune pour la renforcer.
+## F-005 — Rendre l'état et les événements
+
+Le serveur synchronise phase, tick, monde, joueurs, Cœur, tourelles, monstres, projectiles,
+ferraille, vague, boutiques et quête par Schema. Les événements éphémères utilisent un canal
+fiable et ordonné.
 
 **Critères d'acceptation**
 
-- L'atelier ne s'ouvre qu'à portée d'une tourelle vivante, pour un joueur vivant.
-- Tant que l'atelier est ouvert et validé par la simulation, **l'avatar est ignoré par les
-  monstres** ; la tourelle, elle, reste vulnérable.
-- Un achat impossible est refusé **avant** d'être tenté, pas signalé après coup.
-- La ferraille est commune : une dépense d'un joueur est visible par tous.
+- un événement `TowerEvent` n'est traité qu'une fois grâce à son identifiant ;
+- les deux derniers états sont interpolés ;
+- la prédiction locale reste purement visuelle et bornée à deux ticks ;
+- tout état serveur réinitialise la prédiction ;
+- un patch malformé ou une version incompatible provoque un retour propre au lobby.
 
-**Modes de défaillance**
-
-- Ferraille insuffisante → l'achat est indisponible à l'écran.
-- Module déjà installé → proposé une seule fois par tourelle.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F005-01 | achat nominal | effet appliqué, ferraille débitée |
-| T-F005-02 | ferraille insuffisante | achat indisponible |
-| T-F005-03 | atelier ouvert, monstre au contact | joueur épargné, tourelle touchée |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | aucun span ; l'action est trop fréquente |
-| Métriques | achats par type, solde de ferraille |
-| Événements/logs | achat refusé — niveau `debug` |
-| Données interdites | aucune |
+| événement retransmis | un seul effet visuel/sonore |
+| correction autoritaire | avatar local recollé sans modifier l'état serveur |
+| patch p95 en charge | inférieur à 64 Kio par client |
 
-### F-006 — Montée de niveau
+**Diagnostic :** histogrammes de taille des patches et délai commande→état ; aucun span par patch.
 
-Le joueur gagne de l'expérience et choisit des améliorations sans que la partie s'arrête.
+## F-006 — Produire et retirer la ferraille
+
+La ferraille au sol provient exclusivement de la mort d'un monstre, quelle qu'en soit la cause.
 
 **Critères d'acceptation**
 
-- La simulation **ne se met jamais en pause**, y compris pendant un choix.
-- Les niveaux gagnés s'empilent ; le joueur résout ses choix quand il le peut.
-- Trois cartes sont proposées, tirées selon des poids de rareté, et reproductibles à graine
-  identique.
+- aucune apparition périodique, minuterie naturelle ou position aléatoire de ferraille n'existe ;
+- chaque mort produit un tas de valeur `monster.reward` au tick de la mort ;
+- le tas expire à `dropTick + 600`, soit 30 secondes de simulation ;
+- le ramassage est traité avant l'expiration : au tick limite, un joueur à portée le collecte ;
+- `expiresAtTick` reste interne au moteur et n'est pas exposé dans `ScrapPickupState` ;
+- une expiration émet `scrap-expired` pour les tests et métriques ;
+- les quêtes continuent de créditer directement `scrapFund`, sans tas au sol.
 
-**Modes de défaillance**
-
-- Choix envoyé deux fois → le second est ignoré, l'offre ne se dédouble pas.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F006-01 | montée de niveau nominale | trois cartes, aucune pause |
-| T-F006-02 | double envoi du même choix | appliqué une seule fois |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Métriques | niveaux atteints, améliorations choisies par rareté |
-| Événements/logs | choix appliqué — niveau `debug` |
-| Données interdites | aucune |
+| 1 000 ticks sans mort | aucun tas apparu |
+| monstre récompense 3 tué par joueur/tourelle/explosion | un tas de 3 |
+| tas non ramassé | présent jusqu'au tick 599, absent après traitement du tick 600 |
+| joueur à portée au tick limite | ferraille créditée, aucun `scrap-expired` |
+| quête terminée | caisse créditée directement, nombre de tas inchangé |
+| partie longue | aucun tas plus vieux que 600 ticks, population bornée par les morts récentes |
 
-### F-007 — Fin de partie et crédit d'or
+**Diagnostic :** événements `scrap-dropped`, `scrap-collected`, `scrap-expired` et métriques
+agrégées de population/expiration ; aucun span par tas.
 
-À la défaite, l'or personnel gagné est crédité au compte.
+## F-007 — Gérer coupure, reconnexion et départ
+
+Une coupure réseau ne retire pas immédiatement l'avatar de la partie.
 
 **Critères d'acceptation**
 
-- Le crédit n'a lieu **qu'une fois** par partie.
-- Il exige un second facteur satisfait ; sinon la base refuse.
-- Un échec de crédit **n'empêche pas** l'écran de fin de fonctionner ni de relancer.
+- dès la coupure, l'entrée devient neutre ; l'avatar reste présent et vulnérable ;
+- pendant 30 secondes, une reconnexion récupère le même avatar et un état complet ;
+- après 30 secondes, l'avatar est retiré à la prochaine frontière de tick ;
+- une identité expirée ne peut jamais rejoindre à nouveau cette room ;
+- une sortie volontaire retire immédiatement l'avatar ;
+- si aucun joueur actif ne reste, la room passe à `abandoned`.
 
-**Modes de défaillance**
-
-- Service injoignable → l'or de cette partie est perdu, le joueur peut rejouer, l'échec est
-  journalisé en `error`.
-- Montant nul ou négatif → aucun appel.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F007-01 | défaite avec or | solde augmenté du montant exact |
-| T-F007-02 | service injoignable | écran de fin utilisable, échec journalisé |
-| T-F007-03 | session sans second facteur | crédit refusé par la base |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | `account.gold.credit`, enfant de `game.session` |
-| Événements/logs | montant crédité, échec avec cause |
-| Données interdites | jeton d'authentification |
+| coupure 10 s | même identifiant d'avatar et état complet au retour |
+| coupure 31 s | avatar retiré, retour `reconnect-expired` |
+| sortie volontaire | retrait au tick suivant sans fenêtre d'attente |
+| dernier joueur parti | phase `abandoned` et aucune récompense persistée |
 
-### F-008 — Atelier de méta-build
+**Diagnostic :** span `game.room.reconnect`, compteur par `success`, `expired`, `voluntary` et
+`room-abandoned`. Aucun identifiant de joueur dans les attributs.
 
-Hors partie, le joueur dépense son or de compte en bénédictions, compétences et gemmes.
+## F-008 — Finaliser les récompenses
+
+Le serveur conserve l'or gagné par tous les participants, y compris ceux retirés avant la fin.
 
 **Critères d'acceptation**
 
-- Un profil neuf affiche **zéro éclat investi**, pas la capacité allouée.
-- Un achat dépassant le budget est **indisponible à l'écran**, et non refusé après coup par la
-  base.
-- Le build résolu est borné : aucune valeur aberrante ne peut en sortir, même depuis un profil
-  altéré.
+- une défaite normale crédite chaque participant du montant enregistré par le serveur ;
+- une room abandonnée ne crédite personne ;
+- `finalize_game_run` valide les montants, insère les récompenses absentes, crédite les
+  portefeuilles dans la même transaction et marque la partie terminée ;
+- `(run_id, user_id)` est unique et deux appels concurrents n'ajoutent jamais deux fois l'or ;
+- seul `service_role` peut exécuter la RPC ; le navigateur ne crédite plus l'or ;
+- la room terminale reste disponible 60 secondes pour résultat et persistance.
 
-**Modes de défaillance**
-
-- Profil corrompu ou ancien → les rangs illisibles valent zéro, jamais le maximum.
-- Base injoignable → l'écran signale l'échec et n'écrit rien à moitié.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F008-01 | profil neuf | « 0 / 4 » investis |
-| T-F008-02 | budget épuisé | achats indisponibles |
-| T-F008-03 | rang non fini dans un profil | compté zéro |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | `meta.build.edit` |
-| Spans enfants utiles | `meta.load`, `meta.purchase`, `meta.forge` |
-| Événements/logs | achat, refus avec cause |
-| Données interdites | pseudonyme du profil |
+| joueur expulsé puis défaite normale | son or est crédité |
+| deux finalisations simultanées | chaque portefeuille augmente une seule fois |
+| montant négatif/non entier/hors borne | transaction refusée, aucun crédit partiel |
+| room abandonnée | `game_runs` terminal sans récompense de portefeuille |
+| PostgREST temporairement indisponible | résultat affiché, échec visible et retry idempotent côté serveur |
 
-### F-009 — Reconnexion coopérative
+**Diagnostic :** span `game.room.persist`, compteur de crédits par résultat sans montant ni
+identité en attribut. Une erreur est journalisée avec `runId` opaque, jamais un jeton.
 
-Un joueur déconnecté peut revenir dans une partie en cours.
+## F-009 — Modes d'échec et exploitation
 
 **Critères d'acceptation**
 
-- Le revenant rejoue la graine et l'historique d'entrées, puis réintègre le roster à une
-  frontière de tick identique chez tous les pairs.
-- Au-delà de la fenêtre d'historique — **vingt minutes** — la reconnexion est **refusée
-  explicitement**, avec un message compréhensible. Elle n'échoue jamais en silence.
+- `/game/health` distingue processus vivant et serveur prêt ;
+- la télémétrie indisponible n'affecte aucune partie ;
+- un redémarrage interrompt les rooms actives et les clients retournent au lobby ;
+- les rooms, joueurs, retards de tick, patches, refus, reconnexions, ferraille et crédits sont
+  mesurables sans données personnelles ;
+- une room produit une trace `game.room`, jamais un span par tick ou commande.
 
-**Modes de défaillance**
-
-- Historique expiré → refus explicite, la partie des autres continue.
-- Rejeu plus long que l'avance accordée → le revenant arrive en retard ; cas à mesurer.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F009-01 | reconnexion dans la fenêtre | réintégration, état cohérent |
-| T-F009-02 | reconnexion hors fenêtre | refus explicite et lisible |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
+| Cas | Attendu |
 |---|---|
-| Opération/span stable | `coop.rejoin.replay` |
-| Métriques | tentatives de reconnexion par issue |
-| Événements/logs | refus avec cause — niveau `warn` |
-| Données interdites | code de salon en clair |
-
-### F-010 — Télémétrie
-
-**Seule nouveauté de l'incrément.** Le jeu rend son fonctionnement observable.
-
-**Critères d'acceptation**
-
-- Chaque partie produit une trace identifiable, du lancement à la fin.
-- Les enregistrements émis dans le contexte d'une partie portent les identifiants de
-  corrélation.
-- Le niveau de journalisation se change **sans reconstruire le jeu ni modifier le code**.
-- **Aucune donnée interdite** n'est émise : ni adresse e-mail, ni pseudonyme, ni jeton, ni code
-  de salon en clair.
-- Collecteur éteint, une partie démarre, se déroule et se termine **sans ralentissement ni
-  message**.
-- `packages/game-core` ne dépend d'aucune bibliothèque de télémétrie et reste sans horloge.
-
-**Modes de défaillance**
-
-- Collecteur injoignable → mesures perdues silencieusement, jeu intact.
-- File d'export saturée → rejets comptés et journalisés en `warn`.
-
-**Cas de test**
-
-| ID | Cas | Attendu |
-|---|---|---|
-| T-F010-01 | partie simulée | span racine présent, enfants attendus |
-| T-F010-02 | inspection des émissions | aucune donnée interdite |
-| T-F010-03 | collecteur éteint | partie normale |
-| T-F010-04 | changement de niveau de log | seuil modifié sans reconstruction |
-| T-F010-05 | garde d'architecture | `game-core` sans télémétrie ni horloge |
-
-**Diagnostic attendu**
-
-| Élément | Décision |
-|---|---|
-| Opération/span stable | l'ensemble décrit dans [`observabilite.md`](observabilite.md) |
-| Données interdites | e-mail, pseudonyme, mot de passe, jeton, secret TOTP, code de salon |
+| collecteur éteint | solo et coop continuent normalement |
+| serveur tué | clients informés puis ramenés au lobby |
+| charge 20 min, 4 joueurs, 200 monstres | tick p95 < 1 ms, boucle < 50 ms, commande→état p95 < 150 ms, patch p95 < 64 Kio |
+| solo et coop réels sur deux postes | traces distribuées complètes consultables |
 
 ## Rôles et droits
 
-Un seul rôle existe : le **joueur authentifié**. Il ne voit et ne modifie que ses propres
-données. Aucun rôle d'administration n'est exposé par le jeu ; l'administration passe par un
-accès direct à la base, réservé au propriétaire.
+| Rôle | Droits |
+|---|---|
+| Joueur authentifié | créer/rejoindre une room autorisée, envoyer ses propres commandes, lire l'état de sa room |
+| Chef coopératif | définir le roster et diffuser le `roomId` ; aucun pouvoir sur la simulation |
+| Serveur `service_role` | charger les bonus et finaliser les récompenses |
+| Administrateur de la machine | déployer et diagnostiquer ; aucun rôle exposé dans le jeu |
 
-## Écarté du MVP
+## Hypothèses maintenues
 
-Transmis au backlog de la phase 6.
-
-- **Condition de victoire** et **modification de la persistance** — suspendues aux tests.
-- **Enregistrement des statistiques de partie** : la fonction existe en base et côté client,
-  mais rien ne l'appelle ; l'écran de profil affiche donc des compteurs éternellement à zéro.
-  La corriger suppose de définir ce qu'est un résultat de partie dans un jeu sans victoire.
-- **Points de reprise pour la reconnexion**, qui rendraient la fenêtre indépendante de la durée
-  de la partie.
-- **Amélioration « Fracture glaciale »**, qui incrémente un compteur que la simulation ne
-  consomme jamais.
-- **Mode invité**, préalable à tout test de bout en bout du lobby.
-- Lutte contre la triche, ouverture publique, support mobile, direction artistique.
-
-## Hypothèses ouvertes
-
-| ID | Décision provisoire | Impact | Validation attendue |
-|---|---|---|---|
-| HYP-006 | Une partie « de sa propre initiative » est une partie solo lancée depuis le menu ou un salon créé par le joueur ; rejoindre une invitation ne compte pas | Un joueur qui ne fait que répondre aux invitations n'atteindra pas le critère, même en jouant beaucoup | Première lecture des mesures de la campagne |
-| HYP-007 | Aucune limite basse de durée n'est imposée à une partie comptée | Une partie lancée puis quittée en dix secondes compte comme les autres | Écart visible entre parties comptées et parties réellement jouées |
+- réseau privé et de confiance, HTTP sans TLS ;
+- 5 à 20 comptes, une ou deux rooms, dix joueurs maximum ;
+- rooms en mémoire, aucune reprise après redémarrage ;
+- indisponibilité sans conséquence métier ;
+- condition de victoire et autres écarts produit historiques inchangés par cette migration.

@@ -1,8 +1,8 @@
 {
   "schema_version": 3,
   "version": "v2",
-  "phase": 3,
-  "phase_nom": "spec-fonctionnelle",
+  "phase": 4,
+  "phase_nom": "developpement",
   "iteration": 2,
   "profil": {
     "code": "non",
@@ -96,9 +96,9 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "d12edf1",
+  "dernier_commit": "c40f33f",
   "maj": "2026-08-03",
-  "portee_iteration_suivante": "serveur_autoritaire_et_ferraille_bornee",
+  "portee_iteration_suivante": "boucle_1_ferraille_bornee",
   "decisions_a_rouvrir": [
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
     "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026."

@@ -13,7 +13,7 @@ alors qu'il existait déjà et tournait.
 
 1. [Objectif](objectif.md) — **approuvé le 31 juillet 2026**
 2. [Spécification non-fonctionnelle](spec-nf.md) — **approuvée le 1er août 2026**
-3. [Spécification fonctionnelle](spec-fonctionnelle.md) — **révision v2 en cours**
+3. [Spécification fonctionnelle](spec-fonctionnelle.md) — **v2 approuvée le 3 août 2026**
 4. [Feedback](feedback.md) — **ouvert le 1er août 2026**, par anticipation : une session de jeu
    réelle a eu lieu avant l'incrément d'observabilité, et son retour ne devait pas se perdre.
 
