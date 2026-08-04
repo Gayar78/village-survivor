@@ -2,7 +2,7 @@
 
 > Version du projet : v2
 > Propriétaire : Gayar
-> Dernière mise à jour : 3 août 2026
+> Dernière mise à jour : 4 août 2026
 
 Ce journal consigne les **écarts entre ce que les spécifications prévoyaient et ce que le code a
 imposé**, ainsi que les décisions prises en chemin. Il ne raconte pas ce qui a été construit —
@@ -33,6 +33,7 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 03/08 | Mesure des patches | Instrumentation du buffer réellement encodé autour de `broadcastPatch` | Une projection JSON complète surestimait le trafic et ne mesurait pas le contrat annoncé | `observabilite.md`, `TowerRoom.ts` |
 | 03/08 | Propagation distribuée | Injection/extraction explicite du `traceparent` sur `POST /rooms` | Enregistrer des spans des deux côtés ne suffit pas à produire une trace distribuée | `observabilite.md`, `TowerServerSession.ts` |
 | 03/08 | Revue indépendante de la boucle 4 | Aucun P0–P2 ; quatre P3 retenus et corrigés | La charge traverse le runtime, la mesure de patch est testée, les authentifications incomplètes expirent et une perte de persistance devient explicitement observable | `qualite/rapport-tests.md`, `apps/server/README.md` |
+| 04/08 | Précision du p95 serveur | Les buckets OpenTelemetry par défaut `0–5 ms` ont produit un p95 apparent de 4,75 ms malgré 0,505 ms de moyenne | Le seuil produit de 1 ms exige une frontière dédiée ; quatorze frontières ciblées remplacent quinze frontières génériques sans alourdir la boucle | `observabilite.md`, `qualite/rapport-tests.md` |
 
 ## Difficultés et dette potentielle
 

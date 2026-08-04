@@ -3,7 +3,7 @@
 > Statut : instrumentation v2 implémentée — preuve LAN finale à collecter
 > Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 3 août 2026
+> Dernière revue : 4 août 2026
 > Niveau : `distribue`
 
 ## Objectif
@@ -52,6 +52,13 @@ La taille est celle du buffer différentiel réellement encodé par Colyseus, me
 commande→état est vérifié par le test LAN multi-client. Aucun identifiant de
 compte, pseudonyme, courriel, adresse IP ou room brute ne devient un attribut de métrique.
 
+L'histogramme `vs.game.tick.duration` emploie les frontières `0,1`, `0,25`, `0,5`, `0,75`, `0,9`,
+`1`, `1,25`, `1,5`, `2`, `3`, `5`, `10`, `25` et `50` ms. Le bucket `le="1"` permet de vérifier
+directement qu'au moins 95 % des ticks respectent le budget, et `histogram_quantile` fournit une
+estimation utile autour du seuil. Ces quatorze frontières remplacent les quinze frontières par
+défaut et le calcul min/max est désactivé ; la précision n'augmente donc ni le nombre de buckets
+ni le travail synchrone de la boucle.
+
 ## Logs
 
 Le serveur lit `APP_LOG_LEVEL`, défaut `info` en LAN et `debug` en développement. Le client lit
@@ -92,6 +99,13 @@ Un test inspecte les spans, métriques et logs générés avec des valeurs senti
 présence d'adresse e-mail, pseudonyme, JWT, secret TOTP, `SERVICE_ROLE_KEY` ou contenu complet
 d'un message réseau bloque la release. Des tests séparés prouvent que le collecteur indisponible
 n'affecte pas le déroulement et que `game-core` n'importe aucun SDK de télémétrie.
+
+La fabrique de `MeterProvider` réellement appelée en production est aussi utilisée avec un
+collecteur mémoire dans les tests : les frontières exportées doivent contenir 1 ms et rester
+moins nombreuses que celles par défaut. Un garde de coût enregistre 200 000 mesures avec les
+mêmes attributs de faible cardinalité que la production et impose moins de 20 µs par
+enregistrement, soit au plus 0,04 % d'une seconde CPU à 20 Hz. Cette limite volontairement large
+évite un faux échec sur un runner chargé ; la valeur réellement mesurée reste consignée à part.
 
 La validation finale exige une partie solo et une partie coopérative sur deux postes, chacune
 avec une trace distribuée complète consultable dans le backend LAN.

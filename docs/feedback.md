@@ -436,3 +436,9 @@ Le propriétaire confirme que la première partie solo sur le déploiement LAN s
 normalement, sans anomalie observée. Le parcours solo réel est donc validé. La coopération sur
 deux postes et la lecture de la trace distribuée restent à effectuer avant de clore la phase de
 développement.
+
+La trace solo `ba04d5262cbd303bae5bfc3799e6ab3f` est complète et corrélée entre navigateur et
+serveur. Elle confirme la défaite normale, la persistance de l'or, l'absence d'erreur applicative
+et des budgets très confortables. Son analyse a révélé non pas un ralentissement, mais des
+buckets de durée trop larges pour prouver le p95 inférieur à 1 ms ; la précision est corrigée
+sans augmenter le travail de mesure par tick.

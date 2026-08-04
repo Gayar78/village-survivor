@@ -15,10 +15,66 @@ cet essai.
 |---|:---:|---|
 | Partie solo LAN | **PASS** | validation explicite du propriétaire le 4 août 2026 |
 | Partie coopérative sur deux postes | **EN ATTENTE** | prochain essai réel |
-| Trace distribuée et journaux corrélés de la v2 | **EN ATTENTE** | à inspecter pendant les essais LAN |
+| Trace distribuée et journaux corrélés du solo v2 | **PASS** | trace `ba04d5262cbd303bae5bfc3799e6ab3f` |
+| Trace distribuée et journaux corrélés de la coop v2 | **EN ATTENTE** | à inspecter pendant l'essai multijoueur |
 
 Cette preuve valide le parcours solo du produit réel. Elle ne remplace ni le test coopératif sur
 deux postes ni la lecture de la trace distribuée exigée avant le passage en phase 5.
+
+### Analyse de la trace solo et précision métrique
+
+La trace relie `game.client.session` → `game.client.room.create` → `game.room`, puis admission,
+démarrage, fin et persistance. Elle se termine par une défaite à la vague 44, au tick 8 915 ; la
+durée simulée de 445,75 secondes est exactement cohérente avec 50 ms par tick. La persistance de
+3 492 or réussit en environ 60 ms. Aucun span applicatif, appel HTTP ou service de données ne
+signale d'erreur, et aucun attribut interdit n'est présent.
+
+Les 8 915 mesures produisent une moyenne de 0,505 ms, aucun tick au-delà de 10 ms et aucun retard
+de boucle au-delà de 5 ms. Les patches ont un p95 d'environ 1,74 Kio et restent sous 5 Kio. Le
+rendu fournit environ 59 images/s sans mesure au-delà de 5 ms. En revanche, les buckets par
+défaut `0–5 ms` rendaient le p95 inférieur à 1 ms impossible à observer : la valeur calculée de
+4,75 ms était une interpolation du bucket et non un ralentissement.
+
+Le backend d'observabilité a émis au premier lot une erreur et deux avertissements de reprise
+d'un ancien WAL incomplet, puis a supprimé le bloc orphelin. Ils ne se sont pas répétés ; trace,
+journal et métriques de la partie sont complets. Ce signal interne reste à surveiller au prochain
+redémarrage, sans incidence observée sur le jeu ni sur cette preuve.
+
+La correction remplace ces frontières par quatorze seuils concentrés autour de 1 ms, sans
+augmenter le nombre de buckets. Le test ciblé exporte les frontières réelles et mesure 1,354 µs
+par enregistrement sur 200 000 mesures, soit environ 27 µs de travail par seconde de jeu à 20 Hz.
+
+### Contrôles après correction de précision
+
+| Contrôle | Résultat | Preuve |
+|---|:---:|---|
+| contrat et coût de l'histogramme | **PASS** | 3 tests ; frontières exportées, 1 ms présent, 1,354 µs/enregistrement |
+| `pnpm check` | **PASS** | format, lint, types, 38 fichiers/181 tests et tous les builds |
+| `pnpm benchmark` | **PASS** | 271 µs/tick avec 200 monstres ; 1 000 projections en 24 ms |
+| charge autoritaire | **PASS** | 24 000 ticks, 4 joueurs/200 monstres, p95 0,185 ms, projection p95 48 Kio, ferraille max 9 |
+| `pnpm test:smoke` | **PASS** | 7 scénarios ; commande→état p95 142,1 ms |
+| image LAN | **PASS** | conteneur sain, `/game/health` 200 et quatorze frontières relues dans l'image exécutée |
+
+La modification ne touche ni la simulation, ni la cadence de 50 ms, ni le protocole. Elle
+remplace uniquement la table de classement interne de l'histogramme, avec une frontière de moins
+que la configuration précédente et sans calcul min/max.
+
+### Arbitrage de la revue indépendante
+
+Le rapport `2026-08-04-064601-development-loop-ready-claude.md` rend un verdict favorable, sans
+P0–P2, et formule trois P3. Les trois sont retenus et corrigés :
+
+- la garde en temps mural conserve sa valeur informative mais son seuil passe à 20 µs, soit une
+  limite encore imperceptible de 0,04 % d'une seconde CPU à 20 Hz et beaucoup moins sensible à
+  la charge d'un runner ;
+- le test n'instancie plus un provider parallèle : il appelle la même fabrique que la production,
+  ce qui rend la ligne de branchement des vues elle-même testable ;
+- le journal parle désormais correctement de quatorze **frontières**, et non de quatorze
+  buckets.
+
+Après correction, le test ciblé mesure 1,454 µs par enregistrement et les contrôles de type/lint
+du serveur sont verts. Aucune contre-revue n'a été demandée ni lancée ; le rapport et sa
+résolution séparée restent hors Git.
 
 ## Validation v2 — boucle 1 « ferraille bornée »
 

@@ -3,7 +3,7 @@
 > Statut : approuvé
 > Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 3 août 2026
+> Dernière revue : 4 août 2026
 > Niveau de garantie requis : `renforce`
 
 Le niveau `renforce` demande de couvrir la logique métier, les modes d'erreur, les accès non
@@ -107,6 +107,9 @@ Ils sont exigés par la méthode et bloquent la release.
   reconstruire ni toucher au code.
 - **Panne du backend** : collecteur injoignable, une partie démarre, se déroule et se termine
   normalement ; aucune attente, aucun blocage, aucun message au joueur.
+- **Précision et coût des ticks** : la fabrique de provider de production est branchée sur un
+  export mémoire qui vérifie les buckets autour de 1 ms ; 200 000 enregistrements restent sous
+  une garde anti-régression de 20 µs par mesure, avec la valeur réelle publiée dans le rapport.
 - **Garde du cœur** : `packages/game-core` ne dépend d'aucune bibliothèque de
   télémétrie, et ne contient toujours ni `Date.now`, ni `performance.now`, ni `Math.random`.
   L'autorité serveur ne justifie pas d'introduire des I/O ou une horloge dans le moteur.

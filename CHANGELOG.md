@@ -32,6 +32,8 @@ Les deux sont consignés ci-dessous, dans cet ordre.
   limite initiale de 512 Mio ;
 - ajouté traces `game.room`, propagation W3C, métriques serveur et logs bornés sans identité,
   jeton, seed, `roomId` ou `runId` ;
+- affiné l'histogramme des ticks autour du budget de 1 ms avec quatorze seuils ciblés, sans
+  augmenter le nombre de buckets ni le coût du chemin de jeu ;
 - retiré la session locale/lockstep, les replays, empreintes P2P et métriques de simulation côté
   navigateur ;
 - ajouté les scénarios 2/4 clients, coupures 10/31 secondes, pannes serveur/OTLP et la charge de

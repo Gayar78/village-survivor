@@ -96,6 +96,12 @@ rooms/joueurs actifs, durée, durée et retard de tick, octets réellement encod
 commandes refusées, reconnexions, ferraille et crédits. Aucun identifiant, courriel, jeton,
 `roomId`, `runId` ou seed n'est émis. Les exports OTLP sont asynchrones, bornés et facultatifs.
 
+La durée des ticks utilise quatorze buckets explicites en millisecondes : `0,1`, `0,25`, `0,5`,
+`0,75`, `0,9`, `1`, `1,25`, `1,5`, `2`, `3`, `5`, `10`, `25` et `50`. Ils permettent de vérifier
+réellement le budget p95 inférieur à 1 ms. Leur nombre reste inférieur aux quinze frontières par
+défaut du SDK et le calcul min/max est désactivé : cette précision n'ajoute aucune charge
+significative à la boucle de jeu.
+
 ## Vérifications
 
 ```powershell

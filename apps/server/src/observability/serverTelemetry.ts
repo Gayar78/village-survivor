@@ -17,7 +17,13 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchLogRecordProcessor, LoggerProvider } from '@opentelemetry/sdk-logs';
-import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import {
+  AggregationType,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  type MeterProviderOptions,
+  type ViewOptions,
+} from '@opentelemetry/sdk-metrics';
 import { BatchSpanProcessor, NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import {
   ATTR_SERVICE_NAME,
@@ -30,6 +36,38 @@ import type { ServerConfig } from '../config.js';
 const SCOPE = 'village-survivor-server';
 const EXPORT_TIMEOUT_MS = 2_000;
 const EXPORT_INTERVAL_MS = 10_000;
+
+// Le budget produit est p95 < 1 ms. Les buckets OpenTelemetry par défaut passent
+// directement de 0 à 5 ms et rendent ce seuil impossible à vérifier. Ces quatorze
+// frontières sont plus précises autour du budget tout en restant moins nombreuses
+// que les quinze frontières par défaut, donc sans travail supplémentaire par tick.
+export const TICK_DURATION_BUCKETS_MS = [
+  0.1, 0.25, 0.5, 0.75, 0.9, 1, 1.25, 1.5, 2, 3, 5, 10, 25, 50,
+] as const;
+
+export function createServerMetricViews(): ViewOptions[] {
+  return [
+    {
+      instrumentName: 'vs.game.tick.duration',
+      meterName: SCOPE,
+      aggregation: {
+        type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+        options: {
+          boundaries: [...TICK_DURATION_BUCKETS_MS],
+          // Prometheus n'expose pas min/max et leur calcul ne doit pas charger la boucle.
+          recordMinMax: false,
+        },
+      },
+    },
+  ];
+}
+
+type ServerMeterProviderOptions = Pick<MeterProviderOptions, 'readers' | 'resource'>;
+
+/** Fabrique unique partagée par la production et les tests de contrat. */
+export function createServerMeterProvider(options: ServerMeterProviderOptions): MeterProvider {
+  return new MeterProvider({ ...options, views: createServerMetricViews() });
+}
 
 const LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 type LogLevel = (typeof LEVELS)[number];
@@ -231,7 +269,7 @@ export function initServerTelemetry(config: ServerConfig): ServerTelemetry {
         ],
       });
       traceProvider.register();
-      const meterProvider = new MeterProvider({
+      const meterProvider = createServerMeterProvider({
         resource,
         readers: [
           new PeriodicExportingMetricReader({
