@@ -224,12 +224,13 @@ export const BIOME_DURATION_WAVES = 3;
  */
 export const WAVE_PROGRESSION_STAGES = [
   { id: 'foundations', minimumWave: 1, maximumThreatCost: 3 },
-  { id: 'first-specialists', minimumWave: 6, maximumThreatCost: 6 },
-  { id: 'battlefield-effects', minimumWave: 11, maximumThreatCost: 9 },
-  { id: 'control-and-summons', minimumWave: 16, maximumThreatCost: 11 },
-  { id: 'siege-and-combinations', minimumWave: 21, maximumThreatCost: 13 },
-  { id: 'elites', minimumWave: 26, maximumThreatCost: 15 },
-  { id: 'endgame', minimumWave: 31, maximumThreatCost: Number.POSITIVE_INFINITY },
+  { id: 'first-specialists', minimumWave: 11, maximumThreatCost: 6 },
+  { id: 'battlefield-effects', minimumWave: 26, maximumThreatCost: 9 },
+  { id: 'control-and-summons', minimumWave: 41, maximumThreatCost: 11 },
+  { id: 'siege-and-combinations', minimumWave: 56, maximumThreatCost: 13 },
+  { id: 'elites', minimumWave: 71, maximumThreatCost: 15 },
+  { id: 'full-roster', minimumWave: 86, maximumThreatCost: 15 },
+  { id: 'endgame', minimumWave: 101, maximumThreatCost: Number.POSITIVE_INFINITY },
 ] as const;
 
 export type TowerWaveProgressionStage = (typeof WAVE_PROGRESSION_STAGES)[number];
@@ -239,21 +240,92 @@ export type TowerWaveProgressionStage = (typeof WAVE_PROGRESSION_STAGES)[number]
  * Elles sont donc retenues jusqu'au palier où le joueur a les outils pour les lire.
  */
 const MONSTER_MECHANIC_MINIMUM_WAVE: Readonly<Partial<Record<TowerMonsterKind, number>>> = {
-  'sand-slime': 11, // zone persistante
-  mummy: 21, // résurrection
-  shepherd: 16, // regroupement et composition
-  'cave-giant': 16, // spécialiste lourd des structures
-  bowler: 16, // projection d'alliés
-  beetle: 16, // couvée anti-structure
-  necromancer: 21, // résurrection d'alliés
-  'grumpy-dwarf': 11, // réparation
-  cannoneer: 21, // siège mobile
-  'blizzard-spirit': 11, // zone de glace persistante
-  summoner: 16, // invocation
-  kidnapper: 16, // contrôle de position
-  enchainer: 16, // contrôle de zone
-  'explosive-slime': 11, // explosion de zone
+  'sand-slime': 26, // zone persistante
+  mummy: 56, // résurrection
+  shepherd: 41, // regroupement et composition
+  'cave-giant': 41, // spécialiste lourd des structures
+  bowler: 41, // projection d'alliés
+  beetle: 41, // couvée anti-structure
+  necromancer: 56, // résurrection d'alliés
+  'grumpy-dwarf': 26, // réparation
+  cannoneer: 56, // siège mobile
+  'blizzard-spirit': 26, // zone de glace persistante
+  summoner: 41, // invocation
+  kidnapper: 41, // contrôle de position
+  enchainer: 41, // contrôle de zone
+  'explosive-slime': 26, // explosion de zone
+  'spider-queen': 86, // couvée d'élite
+  'infernal-angel': 86, // résurrection et aura
+  'siege-engine': 86, // assaut de siège complet
+  'time-watch': 101,
+  'time-controller': 101,
+  'time-warden': 101,
 };
+
+export const TOWER_MONSTER_POWER_TIERS = ['weak', 'light', 'medium', 'heavy', 'elite'] as const;
+
+export type TowerMonsterPowerTier = (typeof TOWER_MONSTER_POWER_TIERS)[number];
+export type TowerWavePowerMix = Readonly<Record<TowerMonsterPowerTier, number>>;
+
+const FOUNDATION_POWER_MIX: TowerWavePowerMix = {
+  weak: 1,
+  light: 0,
+  medium: 0,
+  heavy: 0,
+  elite: 0,
+};
+
+/** Répartition cumulative du budget : les faibles ne quittent jamais le tirage. */
+export const WAVE_COMPOSITION_STAGES: readonly Readonly<{
+  minimumWave: number;
+  mix: TowerWavePowerMix;
+}>[] = [
+  { minimumWave: 1, mix: FOUNDATION_POWER_MIX },
+  { minimumWave: 11, mix: { weak: 0.7, light: 0.3, medium: 0, heavy: 0, elite: 0 } },
+  {
+    minimumWave: 26,
+    mix: { weak: 0.55, light: 0.25, medium: 0.2, heavy: 0, elite: 0 },
+  },
+  {
+    minimumWave: 41,
+    mix: { weak: 0.4, light: 0.25, medium: 0.2, heavy: 0.15, elite: 0 },
+  },
+  {
+    minimumWave: 56,
+    mix: { weak: 0.35, light: 0.2, medium: 0.2, heavy: 0.15, elite: 0.1 },
+  },
+  {
+    minimumWave: 71,
+    mix: { weak: 0.3, light: 0.2, medium: 0.2, heavy: 0.15, elite: 0.15 },
+  },
+  {
+    minimumWave: 86,
+    mix: { weak: 0.25, light: 0.2, medium: 0.2, heavy: 0.17, elite: 0.18 },
+  },
+];
+
+export function monsterPowerTier(threatCost: number): TowerMonsterPowerTier {
+  if (threatCost >= 13) return 'elite';
+  if (threatCost >= 10) return 'heavy';
+  if (threatCost >= 7) return 'medium';
+  if (threatCost >= 4) return 'light';
+  return 'weak';
+}
+
+export function wavePowerMix(wave: number): TowerWavePowerMix {
+  const safeWave = Math.max(1, Math.floor(wave));
+  return (
+    [...WAVE_COMPOSITION_STAGES].reverse().find((stage) => stage.minimumWave <= safeWave)?.mix ??
+    FOUNDATION_POWER_MIX
+  );
+}
+
+export function minimumDistinctMonsterKindsForWave(wave: number): number {
+  if (wave >= 61) return 5;
+  if (wave >= 31) return 4;
+  if (wave >= 11) return 3;
+  return 2;
+}
 
 export function waveProgressionStage(wave: number): TowerWaveProgressionStage {
   const safeWave = Math.max(1, Math.floor(wave));
@@ -271,7 +343,7 @@ export function minimumWaveForMonster(kind: TowerMonsterKind): number {
   }
   const threatGate =
     WAVE_PROGRESSION_STAGES.find((stage) => monster.threatCost <= stage.maximumThreatCost)
-      ?.minimumWave ?? 31;
+      ?.minimumWave ?? 101;
   return Math.max(threatGate, MONSTER_MECHANIC_MINIMUM_WAVE[kind] ?? 1);
 }
 
@@ -309,9 +381,9 @@ export const WAVE_RARITY_RULES: readonly Readonly<{
   weight: number;
 }>[] = [
   { rarity: 'common', minimumWave: 1, weight: 70 },
-  { rarity: 'rare', minimumWave: 6, weight: 20 },
-  { rarity: 'epic', minimumWave: 16, weight: 8 },
-  { rarity: 'legendary', minimumWave: 26, weight: 2 },
+  { rarity: 'rare', minimumWave: 11, weight: 20 },
+  { rarity: 'epic', minimumWave: 41, weight: 8 },
+  { rarity: 'legendary', minimumWave: 71, weight: 2 },
 ];
 
 /** Explosion du kamikaze (au contact d'un joueur/tourelle/cœur OU à sa mort). */
@@ -383,24 +455,31 @@ export const WAVE = {
   /** Probabilité qu'un monstre ordinaire adopte l'affinité dominante du biome. */
   biomeAffinityChance: 0.7,
   /** Cadence des boss après la première rencontre, en vagues. */
-  bossEvery: 5,
+  bossEvery: 10,
   firstBossWave: 10,
+  /** Part maximale du budget qu'un même type peut consommer dans une vague. */
+  maximumKindBudgetShare: 0.45,
 } as const;
 
 /**
- * Escalade des boss : les quatre premières rencontres réemploient un monstre lisible,
- * renforcé en mini-boss. Le Gardien Ancien reste le point culminant de la vague 30.
+ * Escalade des boss : chaque tranche de dix vagues réemploie un monstre déjà appris.
+ * Le Gardien Ancien reste le point culminant de la vague 100.
  */
 export const WAVE_BOSS_SCHEDULE: readonly Readonly<{
   wave: number;
   kind: TowerMonsterKind;
   powerScale: number;
 }>[] = [
-  { wave: 10, kind: 'thug', powerScale: 1.5 },
-  { wave: 15, kind: 'scrap-reaver', powerScale: 1.45 },
-  { wave: 20, kind: 'yeti', powerScale: 1.5 },
-  { wave: 25, kind: 'infernal-tank', powerScale: 1.65 },
-  { wave: 30, kind: 'ancient-guardian', powerScale: 1 },
+  { wave: 10, kind: 'wolf', powerScale: 2.2 },
+  { wave: 20, kind: 'thug', powerScale: 1.8 },
+  { wave: 30, kind: 'scrap-reaver', powerScale: 1.7 },
+  { wave: 40, kind: 'stalker', powerScale: 1.7 },
+  { wave: 50, kind: 'yeti', powerScale: 1.7 },
+  { wave: 60, kind: 'sand-golem', powerScale: 1.8 },
+  { wave: 70, kind: 'dark-knight', powerScale: 1.8 },
+  { wave: 80, kind: 'polar-bear', powerScale: 1.9 },
+  { wave: 90, kind: 'siege-engine', powerScale: 2 },
+  { wave: 100, kind: 'ancient-guardian', powerScale: 1 },
 ];
 
 export type TowerWaveThreatBand = 'specialist' | 'heavy' | 'elite';
@@ -471,8 +550,8 @@ export const WAVE_MONSTER_COST: Readonly<Record<TowerMonsterKind, number>> = Obj
   ),
 }) as Readonly<Record<TowerMonsterKind, number>>;
 
-/** Le biome final n'interrompt la courbe ordinaire qu'après ses trente vagues. */
-export const TIMELANDS_START_WAVE = 31;
+/** Le biome final n'interrompt la courbe ordinaire qu'après ses cent vagues. */
+export const TIMELANDS_START_WAVE = 101;
 
 /** Poids de tirage de chaque rareté de carte de montée de niveau. */
 export const UPGRADE_RARITY_WEIGHTS = {

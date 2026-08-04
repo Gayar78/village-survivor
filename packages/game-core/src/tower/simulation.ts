@@ -92,6 +92,8 @@ import {
   MONSTER_RARITY_MODIFIERS,
   MONSTERS,
   minimumWaveForMonster,
+  minimumDistinctMonsterKindsForWave,
+  monsterPowerTier,
   monsterThreatBudgetScale,
   MULTISHOT_SPREAD_RAD,
   NATURAL_SCRAP,
@@ -99,7 +101,7 @@ import {
   TICK_MS,
   TIMELANDS_START_WAVE,
   TOWER_BIOMES,
-  TOWER_MONSTER_INCURSIONS,
+  TOWER_MONSTER_POWER_TIERS,
   TURRET,
   TURRET_ANGLES,
   TURRET_SHOP_EFFECTS,
@@ -110,7 +112,9 @@ import {
   WAVE_BOSS_SCHEDULE,
   WAVE_MONSTER_COST,
   WAVE_RARITY_RULES,
+  wavePowerMix,
   waveThreatLimit,
+  type TowerMonsterPowerTier,
   type TowerWaveThreatBand,
   WORLD,
   XP_BASE,
@@ -2691,11 +2695,16 @@ export class TowerSimulation {
       }
     }
 
+    const initialBudget = budget;
+    const spentByPowerTier = new Map<TowerMonsterPowerTier, number>();
+    const spentByKind = new Map<TowerMonsterKind, number>();
+    const spawnedKinds = new Set<TowerMonsterKind>();
+    const progressionWave = this.timelandsArrival.status === 'pending';
+    const pool = progressionWave
+      ? this.eligibleProgressionWaveKinds()
+      : this.eligibleTimelandsWaveKinds();
+
     while (budget >= 1 && this.monsters.filter((monster) => monster.hp > 0).length < activeLimit) {
-      const pool =
-        this.timelandsArrival.status === 'pending'
-          ? this.eligibleIncursionWaveKinds()
-          : this.eligibleTimelandsWaveKinds();
       const affordable = pool.filter((kind) => {
         const cost = WAVE_MONSTER_COST[kind];
         if (cost > budget) return false;
@@ -2709,10 +2718,15 @@ export class TowerSimulation {
       if (affordable.length === 0) {
         break;
       }
-      const kind =
-        this.timelandsArrival.status === 'pending'
-          ? affordable[this.random.integer(0, affordable.length - 1)]
-          : this.pickWeightedTimelandsKind(affordable);
+      const kind = progressionWave
+        ? this.pickProgressionWaveKind(
+            affordable,
+            initialBudget,
+            spentByPowerTier,
+            spentByKind,
+            spawnedKinds,
+          )
+        : this.pickWeightedTimelandsKind(affordable);
       if (kind === undefined) {
         break;
       }
@@ -2729,22 +2743,75 @@ export class TowerSimulation {
         spawnedThreatCounts.set(limit.band, (spawnedThreatCounts.get(limit.band) ?? 0) + 1);
         activeThreatCounts.set(limit.band, (activeThreatCounts.get(limit.band) ?? 0) + 1);
       }
+      if (progressionWave) {
+        const cost = WAVE_MONSTER_COST[kind];
+        const powerTier = monsterPowerTier(cost);
+        spentByPowerTier.set(powerTier, (spentByPowerTier.get(powerTier) ?? 0) + cost);
+        spentByKind.set(kind, (spentByKind.get(kind) ?? 0) + cost);
+        spawnedKinds.add(kind);
+      }
     }
   }
 
-  private eligibleIncursionWaveKinds(): TowerMonsterKind[] {
-    const zeroBasedWave = Math.max(0, this.wave - 1);
-    const incursionIndex = Math.floor(zeroBasedWave / BIOME_DURATION_WAVES);
-    const factions = TOWER_MONSTER_INCURSIONS[incursionIndex];
+  private eligibleProgressionWaveKinds(): TowerMonsterKind[] {
     return ORDINARY_MONSTER_KINDS.filter((kind) => {
       const monster = MONSTER_CATALOG_BY_ID.get(kind);
-      if (monster === undefined || minimumWaveForMonster(kind) > this.wave) {
-        return false;
-      }
-      // Les quinze premières vagues présentent les factions sans mélange. À partir
-      // du palier 16, le roster déjà appris peut composer librement les vagues.
-      return factions === undefined || factions.includes(monster.faction);
+      return monster !== undefined && minimumWaveForMonster(kind) <= this.wave;
     });
+  }
+
+  private pickProgressionWaveKind(
+    affordable: readonly TowerMonsterKind[],
+    initialBudget: number,
+    spentByPowerTier: ReadonlyMap<TowerMonsterPowerTier, number>,
+    spentByKind: ReadonlyMap<TowerMonsterKind, number>,
+    spawnedKinds: ReadonlySet<TowerMonsterKind>,
+  ): TowerMonsterKind | undefined {
+    let candidates = [...affordable];
+    const largestSingleCost = Math.max(...candidates.map((kind) => WAVE_MONSTER_COST[kind]));
+    const maximumKindBudget = Math.max(
+      largestSingleCost,
+      initialBudget * WAVE.maximumKindBudgetShare,
+    );
+    const belowKindCap = candidates.filter(
+      (kind) => (spentByKind.get(kind) ?? 0) + WAVE_MONSTER_COST[kind] <= maximumKindBudget,
+    );
+    if (belowKindCap.length > 0) {
+      candidates = belowKindCap;
+    }
+
+    const minimumKinds = minimumDistinctMonsterKindsForWave(this.wave);
+    if (spawnedKinds.size < minimumKinds) {
+      const unseen = candidates.filter((kind) => !spawnedKinds.has(kind));
+      if (unseen.length > 0) {
+        candidates = unseen;
+      }
+    }
+
+    const mix = wavePowerMix(this.wave);
+    let preferredTier: TowerMonsterPowerTier | undefined;
+    let largestRelativeDeficit = Number.NEGATIVE_INFINITY;
+    for (const tier of TOWER_MONSTER_POWER_TIERS) {
+      const targetBudget = initialBudget * mix[tier];
+      if (
+        targetBudget <= 0 ||
+        !candidates.some((kind) => monsterPowerTier(WAVE_MONSTER_COST[kind]) === tier)
+      ) {
+        continue;
+      }
+      const relativeDeficit =
+        (targetBudget - (spentByPowerTier.get(tier) ?? 0)) / Math.max(1, targetBudget);
+      if (relativeDeficit > largestRelativeDeficit) {
+        preferredTier = tier;
+        largestRelativeDeficit = relativeDeficit;
+      }
+    }
+    if (preferredTier !== undefined) {
+      candidates = candidates.filter(
+        (kind) => monsterPowerTier(WAVE_MONSTER_COST[kind]) === preferredTier,
+      );
+    }
+    return candidates[this.random.integer(0, candidates.length - 1)];
   }
 
   private eligibleTimelandsWaveKinds(): TowerMonsterKind[] {

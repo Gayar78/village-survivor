@@ -99,7 +99,7 @@ un joueur et se dirige vers le Cœur.
 ### Raretés
 
 Les raretés supérieures suivent désormais la courbe d'apprentissage : commune dès la vague 1
-(poids 70), rare dès la 6 (20), épique dès la 16 (8), légendaire dès la 26 (2). Les
+(poids 70), rare dès la 11 (20), épique dès la 41 (8), légendaire dès la 71 (2). Les
 multiplicateurs sont appliqués une seule fois, à l'apparition.
 
 ### Déblocage du bestiaire
@@ -108,13 +108,14 @@ Le coût de menace impose une limite globale, même lorsqu'une nouvelle faction 
 
 | Vagues | Coût maximal | Nouveautés principales |
 |---:|---:|---|
-| 1–5 | 3 | combattants simples et apprentissage |
-| 6–10 | 6 | rapides, tireurs et anti-village légers |
-| 11–15 | 9 | soins, explosions, résistances et zones persistantes |
-| 16–20 | 11 | invocations, contrôles et anti-tourelles |
-| 21–25 | 13 | siège, résurrection et compositions dangereuses |
-| 26–30 | 15 | élites et ennemis exceptionnels |
-| 31+ | sans limite | Terres du Temps et endgame |
+| 1–10 | 3 | combattants simples et apprentissage |
+| 11–25 | 6 | rapides, tireurs et anti-village légers |
+| 26–40 | 9 | soins, explosions, résistances et zones persistantes |
+| 41–55 | 11 | invocations, contrôles et anti-tourelles |
+| 56–70 | 13 | siège, résurrection et compositions dangereuses |
+| 71–85 | 15 | élites |
+| 86–100 | 15 | roster complet et ennemis exceptionnels |
+| 101+ | sans limite | Terres du Temps et endgame |
 
 Une mécanique peut retarder davantage un monstre : la Momie et le Nécromancien attendent par
 exemple la phase de résurrection, même si leur coût brut permettrait une arrivée plus tôt. Les
@@ -122,8 +123,15 @@ spécialistes de coût 8–10, les lourds de coût 11–13 et les élites de co�
 des plafonds distincts par vague et parmi les survivants actifs. Ces plafonds augmentent
 progressivement avec le nombre de joueurs.
 
-Le premier mini-boss arrive à la **vague 10**, puis la difficulté monte tous les cinq paliers :
-Truand, Défourailleur, Yéti, Tank infernal et enfin Gardien Ancien à la vague 30.
+Les déblocages sont cumulatifs : les faibles restent présents jusqu'à la vague 100. Selon le
+palier, ils consomment entre 100 % et 25 % du budget, puis les catégories Légère, Moyenne,
+Lourde et Élite complètent la composition. Une vague garantit au moins deux espèces distinctes
+au début, puis trois, quatre et enfin cinq. Un même type ne peut normalement pas consommer plus
+de 45 % du budget.
+
+Le premier mini-boss arrive à la **vague 10**, puis un boss déjà appris revient tous les dix
+paliers : Loup, Truand, Défourailleur, Harceleur, Yéti, Golem de sable, Chevalier sombre, Ours
+polaire, Engin de siège et enfin Gardien Ancien à la vague 100.
 
 ### Pression
 

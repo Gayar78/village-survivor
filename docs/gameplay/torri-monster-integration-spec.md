@@ -131,34 +131,50 @@ La difficulté peut réduire légèrement les délais, jamais les supprimer.
 
 ## 4. Vagues, difficulté et performances
 
-### 4.1 Incursions thématiques
+### 4.1 Progression cumulative
 
-- Une série de vagues met principalement en avant une ou deux factions.
-- Quelques intrus compatibles peuvent créer une surprise contrôlée.
-- Les quinze premières vagues présentent successivement Forêt/Grottes, Désert/Cimetière,
-  Mercenaires/Montagne, Tribu/Enfer, puis Machines. À partir de la vague 16, les factions déjà
-  apprises peuvent être combinées librement.
-- Vagues 1–5 : coût de menace maximal 3, monstres simples et communs uniquement.
-- Vagues 6–10 : coût maximal 6, premiers rapides, tireurs et anti-village légers.
-- Vagues 11–15 : coût maximal 9, soins, explosions, résistances et zones persistantes.
-- Vagues 16–20 : coût maximal 11, invocations, contrôleurs et spécialistes anti-tourelles.
-- Vagues 21–25 : coût maximal 13, siège, résurrection et compositions dangereuses.
-- Vagues 26–30 : coût maximal 15, élites et ennemis exceptionnels.
-- La vague 31 ouvre les Terres du Temps et l’endgame sans plafond de coût.
+- Tous les monstres faibles débloqués restent disponibles jusqu’à la dernière vague.
+- Vagues 1–10 : coût de menace maximal 3, monstres simples et communs uniquement.
+- Vagues 11–25 : coût maximal 6, premiers rapides, tireurs et anti-village légers.
+- Vagues 26–40 : coût maximal 9, soins, explosions, résistances et zones persistantes.
+- Vagues 41–55 : coût maximal 11, invocations, contrôleurs et spécialistes anti-tourelles.
+- Vagues 56–70 : coût maximal 13, siège, résurrection et compositions dangereuses.
+- Vagues 71–85 : coût maximal 15 et premières compositions d’élites.
+- Vagues 86–100 : roster ordinaire complet et ennemis exceptionnels.
+- La vague 101 ouvre les Terres du Temps et l’endgame sans plafond de coût.
 - Aucun panneau de découverte n’interrompt la partie : le joueur apprend par observation.
 
 Le coût n’est pas l’unique verrou. Une table de garde retarde les mécaniques à fort impact
 (résurrection, invocation, contrôle de position, réparation, siège mobile et zones persistantes)
-jusqu’à leur phase pédagogique. Les raretés Rare, Épique et Légendaire commencent
-respectivement aux vagues 6, 16 et 26.
+jusqu’à leur phase pédagogique. La Pondeuse, l’Ange infernal et l’Engin de siège attendent le
+roster complet de la vague 86. Les raretés Rare, Épique et Légendaire commencent respectivement
+aux vagues 11, 41 et 71.
+
+Chaque palier répartit son budget entre les classes cumulatives suivantes :
+
+| Vagues | Faible | Léger | Moyen | Lourd | Élite |
+|---:|---:|---:|---:|---:|---:|
+| 1–10 | 100 % | — | — | — | — |
+| 11–25 | 70 % | 30 % | — | — | — |
+| 26–40 | 55 % | 25 % | 20 % | — | — |
+| 41–55 | 40 % | 25 % | 20 % | 15 % | — |
+| 56–70 | 35 % | 20 % | 20 % | 15 % | 10 % |
+| 71–85 | 30 % | 20 % | 20 % | 15 % | 15 % |
+| 86–100 | 25 % | 20 % | 20 % | 17 % | 18 % |
+
+Ces pourcentages portent sur le budget de menace et non sur le nombre d’unités : les faibles
+restent donc majoritaires en nombre. Une vague garantit au moins deux espèces différentes dès
+la vague 1, trois dès la 11, quatre dès la 31 et cinq dès la 61. Un même type ne peut normalement
+pas consommer plus de 45 % du budget de la vague.
 
 Les coûts 8–10, 11–13 et 14+ possèdent chacun un plafond de créations par vague et un plafond
 de survivants actifs. En solo, ces plafonds sont respectivement de 2/4, 1/2 et 1/1
 (créés/actifs) ; ils augmentent par paliers avec le nombre de joueurs. Un gros budget coop ne
 peut donc plus être converti intégralement en monstres lourds.
 
-Les boss suivent une escalade fixe et lisible : Truand en vague 10, Défourailleur en 15, Yéti en
-20, Tank infernal en 25 et Gardien Ancien en 30.
+Les boss suivent une escalade fixe et lisible tous les dix paliers : Loup, Truand, Défourailleur,
+Harceleur, Yéti, Golem de sable, Chevalier sombre, Ours polaire, Engin de siège puis Gardien
+Ancien à la vague 100.
 
 ### 4.2 Budget de menace
 
