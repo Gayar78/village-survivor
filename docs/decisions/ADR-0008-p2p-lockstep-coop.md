@@ -25,8 +25,9 @@ figure dans le dépôt.
 
 ## Décision constatée
 
-La coopération repose sur un **lockstep pair-à-pair déterministe**, implémenté dans
-[`apps/client/src/net/towerSession.ts`](../../apps/client/src/net/towerSession.ts).
+La coopération reposait sur un **lockstep pair-à-pair déterministe**, implémenté dans
+`apps/client/src/net/towerSession.ts`. Ce fichier historique a été supprimé lorsque cet ADR a
+été remplacé par [ADR-0011](ADR-0011-authoritative-game-server.md).
 
 - Chaque navigateur exécute sa propre instance de `TowerSimulation` et applique les mêmes
   entrées au même numéro de tick. Aucun état de simulation ne transite sur le réseau.

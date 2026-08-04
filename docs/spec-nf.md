@@ -1,166 +1,129 @@
 # Village Survivor — Spécification non-fonctionnelle
 
-> Statut : approuvé
-> Version du projet : v1
+> Statut : approuvé — cible v2 en cours de réalisation
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 1er août 2026
+> Dernière revue : 3 août 2026
 > Niveau de garantie requis : `renforce`
 
-Ce document dit **comment** le produit est construit, hébergé, sécurisé, éprouvé et
-diagnostiqué. Pas ce qu'il fait : cela reste pour la spécification fonctionnelle.
+Ce document fixe comment la v2 est construite, hébergée, sécurisée, testée et diagnostiquée.
+Les comportements de jeu relèvent de la [spécification fonctionnelle](spec-fonctionnelle.md).
 
 ## Classement
 
 | Axe | Décision | Motifs |
 |---|---|---|
-| Niveau de garantie requis | `renforce` | produit partagé avec des tiers, dépendance à un service extérieur, traitement de données de tiers |
-| Complexité | quatre déclencheurs sur six | plusieurs services, asynchrone, API exposée, données persistantes |
-| Observabilité | `distribue` | imposé par `renforce`, et cohérent avec une pile à cinq services |
+| Garantie | `renforce` | produit partagé, service d'authentification, données de tiers |
+| Complexité | élevée | navigateur, serveur de jeu, Supabase, Nginx, télémétrie, asynchronisme et données persistantes |
+| Observabilité | `distribue` | une partie traverse le navigateur, le serveur de jeu et PostgREST |
 
-**Réévaluer si :** le jeu s'ouvre à des inconnus, de l'argent réel ou virtuel apparaît, des
-données personnelles s'ajoutent à l'adresse e-mail, ou un classement introduit une compétition
-entre joueurs. Chacun de ces faits ferait basculer le projet en `critique`.
+Réévaluer en `critique` si le jeu s'ouvre à des inconnus, introduit de l'argent réel, collecte
+des données plus sensibles ou crée une compétition classée.
 
 ## Déploiement et architecture
 
-| Sujet | Décision | Pourquoi |
-|---|---|---|
-| Où ça tourne | pile Docker auto-hébergée sur une machine du réseau local | aucun budget autorisé, aucune ouverture publique dans le périmètre |
-| Qui y accède | cercle fermé de 5 à 20 personnes, sessions de 2 à 4 joueurs | objectif validé |
-| Composants | navigateur (jeu et lobby), Postgres, authentification, API REST, temps réel, passerelle, **collecteur de télémétrie** | le collecteur est le seul ajout de cette phase |
-| Coût mensuel estimé | **0 €** | tout est auto-hébergé sur du matériel existant ; la seule dépense est l'électricité de la machine |
+| Sujet | Décision |
+|---|---|
+| Hébergement | pile Docker auto-hébergée sur une machine du réseau local |
+| Public visé | 5 à 20 comptes, une ou deux rooms, 10 joueurs maximum par room |
+| Jeu | serveur Node.js/TypeScript autoritaire, requis en solo comme en coopération |
+| Rooms | Colyseus `0.17.10`, client `0.17.43`, Schema `4.0.30` |
+| Simulation | une `TowerSimulation` par `TowerRoom`, pas fixe de 50 ms |
+| État | mémoire uniquement ; un redémarrage interrompt les parties actives |
+| Façade | Nginx, HTTP et WebSocket sous `/game/`, même origine que le client |
+| Coût logiciel mensuel | 0 € ; matériel et électricité existants |
 
-Le détail des composants et des flux vit dans [`architecture.md`](architecture.md), qui reste le
-document de référence sur ce point.
+Le navigateur envoie uniquement des commandes bornées et rend les états reçus. Il ne décide
+jamais de la position, des dégâts, des récompenses, du tick, de la seed, du roster effectif ni
+de l'état complet. Supabase garde les comptes, la progression et le lobby ; Realtime ne
+transporte plus la simulation. Voir [architecture.md](architecture.md) et
+[ADR-0011](decisions/ADR-0011-authoritative-game-server.md).
 
 ## Technique
 
-Ces choix sont hérités et confirmés, non rouverts : le produit existe et fonctionne.
+| Sujet | Décision |
+|---|---|
+| Langage | TypeScript strict, Node.js 22 ou supérieur |
+| Client | Phaser 4 et Vite 8 ; rendu sans règle de jeu |
+| Serveur | Express/Colyseus, dépendant de `game-core`, `content` et `protocol` |
+| Persistance | PostgreSQL/Supabase via PostgREST et RPC serveur |
+| Tests | Vitest, Playwright, tests SQL et charge bornée |
+| Télémétrie | OpenTelemetry, export OTLP asynchrone |
 
-| Sujet | Décision | Pourquoi |
-|---|---|---|
-| Langage | TypeScript strict | déjà en place, typage indispensable à un cœur déterministe |
-| Framework | Phaser 4, Vite 8 | déjà en place ; le rendu ne porte aucune règle |
-| Stockage | PostgreSQL via Supabase auto-hébergé | déjà en place, migrations versionnées |
-| Framework de test | Vitest pour l'unitaire et la simulation, Playwright pour le navigateur | déjà en place |
-| Télémétrie | OpenTelemetry, export OTLP/HTTP | standard ouvert, non lié à un fournisseur ; permet de changer de backend sans toucher au code |
+`packages/game-core` reste déterministe, indépendant du réseau, du navigateur, de l'horloge et
+de toute bibliothèque de télémétrie. Le serveur mesure l'appel à la simulation de l'extérieur.
 
-## Données
+## Données et cycle de vie
 
-| Sujet | Décision | Pourquoi |
-|---|---|---|
-| Nature et propriétaire | comptes, progression de compte, amitiés ; propriétaire : Gayar | le projet lui appartient |
-| Données personnelles | **adresse e-mail uniquement**, plus un pseudonyme choisi | minimum nécessaire à l'authentification |
-| Conservation | tant que le compte existe ; aucune purge automatique | cercle fermé, volume négligeable |
-| Sauvegarde et restauration | **aucune aujourd'hui** — voir HYP-003 | la perte est explicitement assumée par le propriétaire |
+Les comptes, bonus persistants et récompenses de fin de partie appartiennent à Gayar. Les
+seules données personnelles nécessaires sont l'adresse e-mail et le pseudonyme. L'état actif
+d'une room n'est pas sauvegardé. Les tables `game_runs` et `game_run_rewards` conservent le
+résultat nécessaire à un crédit d'or idempotent ; l'unicité `(run_id, user_id)` interdit le
+double crédit.
 
-Aucune donnée de partie n'est persistée : l'état d'une partie vit en mémoire et disparaît avec
-elle.
+Une room terminée est conservée 60 secondes afin d'afficher le résultat et terminer la
+persistance. Une room abandonnée ne crédite aucun or.
 
 ## Sécurité
 
-| Sujet | Décision | Pourquoi |
-|---|---|---|
-| Authentification | courriel et mot de passe, avec second facteur TOTP obligatoire | déjà en place, confirmé par le propriétaire |
-| Autorisation | politiques RLS par ligne, identité prise du jeton et jamais d'un paramètre | chaque compte ne voit que ses propres données |
-| Second facteur | exigé **aussi côté base** depuis `0005_require_mfa.sql` | sans cela, la double authentification coûtait sans rien protéger |
-| Secrets | jamais dans Git ; générés par `deploy/lan/setup.mjs`, `.env` ignoré | contrôle automatisé au commit |
-| Confidentialité des échanges | **aucun chiffrement de transport** sur le réseau local | HTTP en clair ; assumé pour un LAN de confiance, rédhibitoire pour une ouverture publique |
-| Audit applicable | aucun journal d'audit séparé | aucune obligation réglementaire, aucun enjeu financier |
+| Surface | Contrôle obligatoire |
+|---|---|
+| `POST /game/rooms` | JWT Supabase vérifié ; identité tirée du jeton |
+| Admission à une room | identité réservée, capacité et connexion unique vérifiées |
+| Métaprogression | lecture serveur avec `service_role`, jamais exposée au client |
+| Contrôles continus | séquence croissante, nombres finis, valeurs bornées, 30 messages/s |
+| Actions | union fermée, `actionId` dédupliqué, 10 messages/s, file de 16 maximum |
+| Récompenses | RPC `finalize_game_run` accessible uniquement à `service_role` |
+| Secrets | variables serveur seulement ; jamais Git, client, stockage web, log ou télémétrie |
+| Transport | HTTP non chiffré sur LAN de confiance ; TLS obligatoire avant toute ouverture |
 
-### Surfaces ouvertes, assumées
-
-Trois faiblesses connues ne sont **pas** corrigées, parce qu'elles tombent dans les
-ajournements de l'objectif — lutte contre la triche écartée, cercle fermé, conséquences
-acceptées. Elles sont détaillées dans [`qualite/traceabilite.md`](qualite/traceabilite.md) :
-
-1. les canaux temps réel sont publics et l'identité y est déclarative ;
-2. le montant d'or crédité en fin de partie est déclaré par le navigateur ;
-3. les fonctions `security definer` autres que le crédit d'or n'exigent pas le second facteur.
-
-**Chacune redevient bloquante le jour d'une ouverture publique.**
-
-## Tests
-
-**Profondeur : `renforce`** — logique métier, modes d'erreur, accès non autorisés et
-dépendances.
-
-L'état actuel couvre la logique métier (159 tests) et, depuis le 1er août 2026, **le contrat
-d'observabilité** ainsi que **la garde d'architecture du moteur**. Deux trous demeurent, tous
-deux rendus obligatoires par cette phase : **les accès non autorisés** ne sont testés nulle part,
-et **le comportement en cas de panne de la dépendance externe** non plus.
-
-Le détail vit dans [`qualite/strategie-tests.md`](qualite/strategie-tests.md).
+Les canaux Realtime du lobby restent une surface déclarative assumée dans le LAN. En revanche,
+le crédit d'or déclaré par le navigateur et le bus P2P ont disparu du chemin de production.
+Le serveur neutralise immédiatement un joueur déconnecté, conserve son avatar vulnérable
+30 secondes, puis le retire à une frontière de tick. Un retour tardif est refusé.
 
 ## Observabilité
 
 | Sujet | Décision |
 |---|---|
-| Finalité | **diagnostic et performance uniquement** — les mesures d'usage produit sont retirées du périmètre le 1er août 2026 |
-| Unité d'exécution tracée | **une partie**, du lancement à sa fin ; et, séparément, chaque parcours du lobby |
-| Span racine et frontières enfant | racine `game.session` ; enfants aux seules frontières utiles au diagnostic |
-| Export | OTLP/HTTP vers un collecteur de la pile locale |
-| Niveau de logs | `VITE_APP_LOG_LEVEL`, surchargeable à l'exécution sans reconstruire |
-| Défaut développement/test | `debug` |
-| Défaut production | `info` |
-| Sampling | `parentbased_always_on` — le volume à trois joueurs ne justifie aucun échantillonnage |
-| Données interdites | adresse e-mail, pseudonyme, mot de passe, jeton, secret TOTP |
-| Panne du backend | export asynchrone et borné ; le jeu ne ralentit ni ne s'arrête |
+| Trace serveur | racine `game.room` ; enfants création, admission, démarrage, reconnexion, persistance et fin |
+| Trace client | `game.client.session`, corrélée par propagation W3C |
+| Granularité | aucun span par tick, image, commande ou entité |
+| Métriques | rooms, joueurs, durée/retard des ticks, patches, refus, reconnexions, ferraille, crédits d'or |
+| Logs | `APP_LOG_LEVEL` côté serveur, `VITE_APP_LOG_LEVEL` côté client |
+| Données interdites | identité, courriel, pseudonyme, JWT, secret, clé de service, seed, `roomId`, `runId` |
+| Panne OTLP | perte de télémétrie acceptée ; aucune conséquence sur la partie |
 
-Le détail vit dans [`observabilite.md`](observabilite.md).
+Le détail se trouve dans [observabilite.md](observabilite.md).
 
-**Une contrainte domine tout le reste** : l'instrumentation ne doit jamais entrer dans le cœur
-de simulation. `packages/game-core` ne contient aujourd'hui aucun appel à l'horloge, aucun accès
-au navigateur et aucun aléatoire non maîtrisé — c'est ce qui rend la coopération en lockstep
-possible. Y introduire une bibliothèque de télémétrie casserait le déterminisme et donc le
-multijoueur. La mesure s'effectue **depuis la couche client**, qui observe la simulation de
-l'extérieur.
+## Performance et disponibilité
 
-## Charge et disponibilité
-
-| Sujet | Valeur |
+| Indicateur | Budget |
 |---|---|
-| Utilisateurs attendus | 5 à 20 comptes, 2 à 4 joueurs simultanés |
-| Sessions simultanées | une, exceptionnellement deux |
-| Budget de performance | un tick de simulation doit rester sous **1 ms** sous 200 monstres ; mesuré à 210 µs aujourd'hui |
-| Rendu | 60 images par seconde visées sur un poste de bureau ordinaire |
-| Indisponibilité acceptable | **illimitée** — le propriétaire a déclaré n'en subir aucune conséquence |
+| Tick de simulation, 200 monstres | p95 < 1 ms |
+| Boucle serveur | aucune itération au-delà de 50 ms |
+| Commande vers état sur LAN | p95 < 150 ms |
+| Patch Schema par client | p95 < 64 Kio |
+| Rendu client | 60 images/s visées |
 
-Aucun engagement de disponibilité n'est pris, et aucune astreinte n'existe. C'est cohérent avec
-un jeu joué entre collègues, et ce serait intenable pour un produit public.
+Le test de charge de référence dure 20 minutes avec quatre joueurs et 200 monstres. Aucun
+engagement de disponibilité n'est pris. Une panne serveur rend le jeu indisponible et ramène le
+client proprement au lobby ; il n'existe plus de mode hors ligne.
 
-## Décisions prises par l'agent
+## Stratégie de livraison
 
-Le profil du propriétaire prévoit que l'agent tranche les décisions techniques et en annonce les
-conséquences. Les voici.
+La migration technique a été menée en quatre boucles : ferraille bornée, solo autoritaire, coopération et
+reconnexion, puis récompenses/exploitation/suppression du P2P. Chaque boucle suit
+développement → documentation → tests → revue Claude indépendante → arbitrage → corrections et
+nouveaux tests → clôture. Une contre-revue exige une confirmation explicite du propriétaire.
 
-| Décision | Raison | Conséquence concrète |
-|---|---|---|
-| Télémétrie par **OpenTelemetry** | standard ouvert ; changer de backend ne touche pas le code du jeu | aucune dépendance à un fournisseur payant |
-| Backend `grafana/otel-lgtm`, **un seul conteneur** | rassemble traces, journaux et métriques avec une interface, sans configuration | +1 conteneur, environ **1 Go de mémoire**, 0 € |
-| Collecteur exposé **derrière la passerelle existante** (`/otel/v1/...`) | conserve l'origine unique du déploiement LAN | aucune règle de partage entre origines à écrire |
-| Unité tracée = **une partie**, jamais un tick | 20 ticks par seconde produiraient 72 000 traces par heure et par joueur | la boucle de jeu est suivie par des métriques agrégées |
-| **Aucun identifiant de joueur** dans la télémétrie | le diagnostic caractérise une panne par la graine et le tick, pas par l'identité | zéro donnée personnelle émise |
-| Niveau de log surchargeable par le stockage local du navigateur | un navigateur ne lit pas de variable d'environnement à l'exécution | changer de niveau ne demande **ni reconstruction ni modification de code** |
-| Rétention de télémétrie bornée à **7 jours** | le disque est celui d'un poste de travail | suffisant pour diagnostiquer, insuffisant pour une analyse à long terme |
-| La télémétrie reste **facultative au démarrage** | le jeu doit rester jouable sans la pile complète | un collecteur absent n'empêche ni de jouer ni de tester |
-
-### Ce que cela coûte, en clair
-
-- **Argent** : 0 €. Tout tourne sur la machine qui héberge déjà le jeu.
-- **Machine** : environ 1 Go de mémoire et quelques centaines de mégaoctets de disque par
-  semaine, purgés au-delà de sept jours.
-- **Travail** : l'instrumentation du client représente un incrément de développement à part
-  entière, à faire avant la campagne d'observation d'un mois — sans elle, le critère de réussite
-  ne peut pas être compté.
-- **Risque** : faible et borné. Le principal est d'introduire par mégarde une dépendance
-  temporelle dans le cœur de simulation, ce qui casserait la coopération. La stratégie de tests
-  prévoit une garde explicite contre ce risque.
+Les migrations de récompenses sont additives : déployer d'abord la nouvelle RPC, valider la
+bascule, puis seulement révoquer `authenticated` sur `credit_account_gold`.
 
 ## Hypothèses ouvertes
 
-| ID | Décision provisoire | Raison | Impact | Confiance | Validation attendue |
-|---|---|---|---|---|---|
-| HYP-003 | Aucune sauvegarde de la base n'est mise en place | La perte des comptes et de la progression est explicitement assumée | Une panne disque effacerait toute la progression des joueurs | haute | Premier joueur qui se plaindrait d'une perte, ou décision d'ouverture |
-| HYP-004 | Sept jours de rétention de télémétrie suffisent | La campagne d'observation dure un mois mais s'analyse par sessions | Une question posée plus de sept jours après une session restera sans réponse | moyenne | Première analyse rétrospective impossible |
-| HYP-005 | Un seul collecteur, sans redondance ni surveillance | Le volume est négligeable et l'indisponibilité sans conséquence | Une panne silencieuse du collecteur ferait perdre des mesures sans alerte | moyenne | Écart constaté entre parties jouées et parties enregistrées |
+| ID | Hypothèse | Validation attendue |
+|---|---|---|
+| HYP-003 | aucune sauvegarde de la base | première conséquence de perte ou ouverture publique |
+| HYP-004 | sept jours de télémétrie suffisent | première analyse rétrospective impossible |
+| HYP-005 | un collecteur unique sans redondance suffit | première perte de diagnostic constatée |

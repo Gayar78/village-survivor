@@ -12,9 +12,7 @@
 // dépendent réellement du réseau sont annotés « NOTE live-test ».
 
 import { supabase } from '../account/supabaseClient.js';
-import type { MetaBuildModifiers } from '@village-survivor/protocol';
 import {
-  type ActiveGameDescriptor,
   HUB_CAPACITY,
   type HubInvite,
   type HubMember,
@@ -32,14 +30,12 @@ export interface PresenceEntry {
   displayName: string;
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 }
 
 /** Identité minimale du joueur local passée à `start()`. */
 export interface RealtimeSession {
   userId: string;
   displayName: string;
-  metaBuild?: Partial<MetaBuildModifiers>;
 }
 
 export interface RealtimeService {
@@ -48,8 +44,6 @@ export interface RealtimeService {
   stop(): Promise<void>;
   /** Met à jour son propre statut de présence (et le hub courant). */
   setStatus(status: PresenceStatus, hubCode?: string): Promise<void>;
-  /** Publie ou efface la partie lockstep rejoinable de ce joueur. */
-  setActiveGame(game: ActiveGameDescriptor | null): Promise<void>;
   /** Abonnement à la présence globale : renvoie une Map userId -> PresenceEntry. Renvoie une fonction de désabonnement. */
   onPresence(cb: (entries: Map<string, PresenceEntry>) => void): () => void;
   /** Rejoint le hub d'un code donné (celui du chef). */
@@ -84,7 +78,6 @@ type GlobalPresencePayload = {
   displayName: string;
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 };
 
 /** Payload de présence poussé sur un canal `hub:<code>`. */
@@ -95,11 +88,24 @@ type HubPresencePayload = {
   isOwner: boolean;
   /** Sert à stabiliser l'ordre d'admission côté client (anciens clients : absent). */
   joinedAt?: number;
-  metaBuild?: Partial<MetaBuildModifiers>;
 };
 
 /** Payload broadcast d'exclusion (event `kick`). */
 type KickPayload = { userId: string };
+
+/** Projection minimale : un ancien appelant ne peut pas republier ses bonus dans la présence. */
+export function createHubPresencePayload(
+  session: RealtimeSession,
+  isOwner: boolean,
+  joinedAt: number,
+): HubPresencePayload {
+  return {
+    userId: session.userId,
+    displayName: session.displayName,
+    isOwner,
+    joinedAt,
+  };
+}
 
 // --- État du module (instance unique) -----------------------------------------
 
@@ -109,7 +115,6 @@ let myHubCodeRef: string | null = null;
 let currentStatus: PresenceStatus = 'offline';
 /** hubCode publié dans la présence globale (undefined si aucun). */
 let statusHubCode: string | undefined;
-let activeGame: ActiveGameDescriptor | undefined;
 
 let presenceChannel: RealtimeChannel | null = null;
 let personalChannel: RealtimeChannel | null = null;
@@ -127,74 +132,17 @@ const inviteCbs = new Set<(invite: HubInvite) => void>();
 
 const MAX_GAME_DESCRIPTOR_STRING = 128;
 
-function sanitizeMetaBuild(value: unknown): Partial<MetaBuildModifiers> | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-  const source = value as Partial<Record<keyof MetaBuildModifiers, unknown>>;
-  const result: { -readonly [Key in keyof MetaBuildModifiers]?: MetaBuildModifiers[Key] } = {};
-  const keys: readonly (keyof MetaBuildModifiers)[] = [
-    'damageMultiplier',
-    'fireRateMultiplier',
-    'moveSpeedMultiplier',
-    'maxHealthMultiplier',
-    'heartMaxHealthMultiplier',
-    'pickupRadiusMultiplier',
-  ];
-  for (const key of keys) {
-    const modifier = source[key];
-    if (
-      typeof modifier === 'number' &&
-      Number.isFinite(modifier) &&
-      modifier >= 0.5 &&
-      modifier <= 2
-    ) {
-      result[key] = modifier;
-    }
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
 /** Validation de frontière : la présence Realtime n'est jamais une source fiable. */
-export function isActiveGameDescriptor(value: unknown): value is ActiveGameDescriptor {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const game = value as Partial<ActiveGameDescriptor>;
-  if (
-    typeof game.seed !== 'string' ||
-    game.seed.length < 1 ||
-    game.seed.length > MAX_GAME_DESCRIPTOR_STRING ||
-    typeof game.code !== 'string' ||
-    game.code.length < 1 ||
-    game.code.length > MAX_GAME_DESCRIPTOR_STRING ||
-    typeof game.hostId !== 'string' ||
-    game.hostId.length < 1 ||
-    game.hostId.length > MAX_GAME_DESCRIPTOR_STRING ||
-    !Array.isArray(game.roster) ||
-    game.roster.length < 2 ||
-    game.roster.length > HUB_CAPACITY
-  ) {
-    return false;
-  }
-  const ids = new Set<string>();
-  return game.roster.every((entry) => {
-    if (
-      typeof entry !== 'object' ||
-      entry === null ||
-      typeof entry.id !== 'string' ||
-      entry.id.length < 1 ||
-      entry.id.length > MAX_GAME_DESCRIPTOR_STRING ||
-      typeof entry.name !== 'string' ||
-      entry.name.length < 1 ||
-      entry.name.length > MAX_GAME_DESCRIPTOR_STRING ||
-      ids.has(entry.id)
-    ) {
-      return false;
-    }
-    ids.add(entry.id);
-    return true;
-  });
+/** Le broadcast de lancement ne doit révéler que la référence opaque de room. */
+export function isLaunchPayload(value: unknown): value is LaunchPayload {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const payload = value as Partial<LaunchPayload>;
+  return (
+    Object.keys(value).length === 1 &&
+    typeof payload.roomId === 'string' &&
+    payload.roomId.length >= 1 &&
+    payload.roomId.length <= MAX_GAME_DESCRIPTOR_STRING
+  );
 }
 
 // --- Utilitaires de bas niveau ------------------------------------------------
@@ -271,7 +219,6 @@ function computePresenceEntries(channel: RealtimeChannel): Map<string, PresenceE
       displayName: p.displayName,
       status: p.status,
       ...(p.hubCode !== undefined ? { hubCode: p.hubCode } : {}),
-      ...(isActiveGameDescriptor(p.game) ? { game: p.game } : {}),
     });
   }
   return entries;
@@ -290,12 +237,10 @@ function computeHubState(channel: RealtimeChannel, code: string): HubState {
     if (isChief) {
       chiefUserId = p.userId;
     }
-    const metaBuild = sanitizeMetaBuild(p.metaBuild);
     found.push({
       userId: p.userId,
       displayName: p.displayName,
       isChief,
-      ...(metaBuild === undefined ? {} : { metaBuild }),
       joinedAt: typeof p.joinedAt === 'number' ? p.joinedAt : 0,
     });
   }
@@ -304,11 +249,10 @@ function computeHubState(channel: RealtimeChannel, code: string): HubState {
     if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
     return a.userId.localeCompare(b.userId);
   });
-  const members: HubMember[] = found.map(({ userId, displayName, isChief, metaBuild }) => ({
+  const members: HubMember[] = found.map(({ userId, displayName, isChief }) => ({
     userId,
     displayName,
     isChief,
-    ...(metaBuild === undefined ? {} : { metaBuild }),
   }));
   return { code, chiefUserId, members, capacity: HUB_CAPACITY };
 }
@@ -383,7 +327,6 @@ async function trackGlobalPresence(): Promise<void> {
     displayName: sessionRef.displayName,
     status: currentStatus,
     ...(statusHubCode !== undefined ? { hubCode: statusHubCode } : {}),
-    ...(activeGame !== undefined ? { game: activeGame } : {}),
   };
   const res = await presenceChannel.track(payload);
   if (res !== 'ok') {
@@ -395,14 +338,7 @@ async function trackHubPresence(isOwner: boolean): Promise<void> {
   if (hubChannel === null || sessionRef === null) {
     return;
   }
-  const metaBuild = sanitizeMetaBuild(sessionRef.metaBuild);
-  const payload: HubPresencePayload = {
-    userId: sessionRef.userId,
-    displayName: sessionRef.displayName,
-    isOwner,
-    joinedAt: hubJoinedAt,
-    ...(metaBuild === undefined ? {} : { metaBuild }),
-  };
+  const payload = createHubPresencePayload(sessionRef, isOwner, hubJoinedAt);
   const res = await hubChannel.track(payload);
   if (res !== 'ok') {
     console.warn(`[realtimeService] track présence hub : « ${res} »`);
@@ -471,46 +407,8 @@ async function openHubChannel(code: string, isOwner: boolean): Promise<void> {
   });
   channel.on<LaunchPayload>('broadcast', { event: 'launch' }, (message) => {
     const p = message.payload;
-    if (
-      typeof p?.seed === 'string' &&
-      Number.isSafeInteger(p.playerCount) &&
-      p.playerCount >= 1 &&
-      p.playerCount <= HUB_CAPACITY
-    ) {
-      // On transmet aussi les champs co-op (code/hostId/roster) quand ils sont présents
-      // et bien formés, sans jamais laisser un payload malformé casser le lancement.
-      const coop =
-        typeof p.code === 'string' && typeof p.hostId === 'string' && Array.isArray(p.roster)
-          ? {
-              code: p.code,
-              hostId: p.hostId,
-              roster: p.roster.filter(
-                (entry): entry is { id: string; name: string } =>
-                  typeof entry?.id === 'string' && typeof entry.name === 'string',
-              ),
-            }
-          : {};
-      if ('roster' in coop) {
-        const ids = coop.roster.map((entry) => entry.id);
-        const hubState = computeHubState(channel, code);
-        const currentIds = new Set(hubState.members.map((member) => member.userId));
-        if (
-          coop.roster.length !== p.playerCount ||
-          coop.roster.length > HUB_CAPACITY ||
-          new Set(ids).size !== ids.length ||
-          typeof coop.hostId !== 'string' ||
-          !ids.includes(coop.hostId) ||
-          coop.code !== code ||
-          coop.hostId !== hubState.chiefUserId ||
-          ids.some((id) => !currentIds.has(id)) ||
-          currentIds.size !== ids.length
-        ) {
-          console.warn('[realtimeService] lancement malformé ou au-delà de la capacité ignoré');
-          return;
-        }
-      }
-      emitLaunch({ seed: p.seed, playerCount: p.playerCount, ...coop });
-    }
+    if (isLaunchPayload(p)) emitLaunch(p);
+    else console.warn('[realtimeService] lancement serveur malformé ignoré');
   });
 
   await subscribeChannel(channel);
@@ -569,14 +467,6 @@ async function setStatusInternal(
   await trackGlobalPresence();
 }
 
-async function setActiveGameInternal(game: ActiveGameDescriptor | null): Promise<void> {
-  if (game !== null && !isActiveGameDescriptor(game)) {
-    throw new Error('Descripteur de partie co-op invalide.');
-  }
-  activeGame = game ?? undefined;
-  await setStatusInternal(game === null ? 'online' : 'in-game', undefined);
-}
-
 // --- Implémentation des méthodes publiques ------------------------------------
 
 async function doStart(session: RealtimeSession, myHubCode: string): Promise<void> {
@@ -588,7 +478,6 @@ async function doStart(session: RealtimeSession, myHubCode: string): Promise<voi
   myHubCodeRef = myHubCode;
   currentStatus = 'online';
   statusHubCode = undefined;
-  activeGame = undefined;
   joinedHubCode = null;
 
   await openPresenceChannel(session.userId);
@@ -611,7 +500,6 @@ async function doStop(): Promise<void> {
   joinedHubCode = null;
   currentStatus = 'offline';
   statusHubCode = undefined;
-  activeGame = undefined;
   sessionRef = null;
   myHubCodeRef = null;
 
@@ -672,25 +560,13 @@ async function doLaunch(payload: LaunchPayload): Promise<void> {
   }
   const code = joinedHubCode ?? myHubCodeRef ?? '';
   const state = computeHubState(hubChannel, code);
-  const ids = payload.roster?.map((entry) => entry.id) ?? [];
-  const currentIds = new Set(state.members.map((member) => member.userId));
   if (
+    !isLaunchPayload(payload) ||
     state.members.length === 0 ||
     state.members.length > HUB_CAPACITY ||
-    payload.playerCount !== state.members.length ||
-    payload.playerCount < 1 ||
-    payload.playerCount > HUB_CAPACITY ||
-    payload.roster === undefined ||
-    payload.roster.length !== payload.playerCount ||
-    new Set(ids).size !== ids.length ||
-    ids.some((id) => !currentIds.has(id)) ||
-    sessionRef?.userId !== state.chiefUserId ||
-    payload.hostId !== state.chiefUserId ||
-    payload.code !== code
+    sessionRef?.userId !== state.chiefUserId
   ) {
-    throw new Error(
-      `Lancement refusé : le roster doit correspondre aux 1 à ${HUB_CAPACITY} membres du hub.`,
-    );
+    throw new Error('Lancement refusé : seul le chef du hub peut diffuser la room serveur.');
   }
   const res = await hubChannel.send({ type: 'broadcast', event: 'launch', payload });
   if (res !== 'ok') {
@@ -768,7 +644,6 @@ export const realtimeService: RealtimeService = {
   start: (session, myHubCode) => doStart(session, myHubCode),
   stop: () => doStop(),
   setStatus: (status, hubCode) => setStatusInternal(status, hubCode),
-  setActiveGame: (game) => setActiveGameInternal(game),
   onPresence,
   joinHub: (code) => doJoinHub(code),
   leaveHub: () => doLeaveHub(),

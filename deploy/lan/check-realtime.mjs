@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Vérifie que le transport de la coopération fonctionne de bout en bout sur le déploiement LAN.
+// Vérifie que le transport du lobby fonctionne de bout en bout sur le déploiement LAN.
 //
-// C'est le point le plus fragile de cette architecture : la coopération est un lockstep
-// pair-à-pair dont tous les messages transitent par un canal de diffusion Realtime. Si ce canal
-// ne s'établit pas, le jeu se lance mais aucune partie à plusieurs ne peut démarrer.
+// Supabase Realtime ne transporte plus la simulation. Il sert uniquement à annoncer le `roomId`
+// réservé par le serveur autoritaire. Si ce canal ne s'établit pas, le chef ne peut pas inviter
+// son roster, même si le serveur de jeu reste sain.
 //
 // Le script parle directement le protocole Phoenix Channels attendu par Realtime, sans
 // dépendance : deux connexions rejoignent le même sujet, l'une diffuse, l'autre doit recevoir.
-// C'est exactement ce que fait `apps/client/src/net/towerSession.ts` avec les lots d'entrées.
+// C'est la même primitive de broadcast qu'utilise le hub pour annoncer une room prête.
 //
 // Lancement : node deploy/lan/check-realtime.mjs
 
@@ -96,45 +96,47 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 try {
   console.log(`Sujet de test : ${topic}`);
-  const alice = await connect('pair A');
-  console.log('pair A : canal rejoint');
-  const bob = await connect('pair B');
-  console.log('pair B : canal rejoint');
+  const publisher = await connect('chef');
+  console.log('chef : canal rejoint');
+  const subscriber = await connect('invité');
+  console.log('invité : canal rejoint');
 
   const sentAt = Date.now();
-  alice.socket.send(
+  publisher.socket.send(
     JSON.stringify({
       topic,
       event: 'broadcast',
-      payload: { type: 'broadcast', event: 'input-batch', payload: { tick: 42, from: 'A' } },
+      payload: { type: 'broadcast', event: 'room-ready', payload: { roomId: 'room-check' } },
       ref: '2',
       join_ref: '1',
     }),
   );
-  console.log('pair A : lot d’entrées diffusé');
+  console.log('chef : roomId diffusé');
 
   const deadline = Date.now() + TIMEOUT_MS;
-  while (bob.received.length === 0 && Date.now() < deadline) {
+  while (subscriber.received.length === 0 && Date.now() < deadline) {
     await wait(100);
   }
 
-  alice.socket.close();
-  bob.socket.close();
+  publisher.socket.close();
+  subscriber.socket.close();
 
-  if (bob.received.length === 0) {
-    console.error('ÉCHEC : le pair B n’a rien reçu. La coopération ne fonctionnera pas.');
+  if (subscriber.received.length === 0) {
+    console.error(
+      'ÉCHEC : l’invité n’a pas reçu le roomId. Le lobby coopératif ne fonctionnera pas.',
+    );
     process.exit(1);
   }
 
-  const message = bob.received[0];
+  const message = subscriber.received[0];
   console.log(
-    `pair B : reçu en ${String(Date.now() - sentAt)} ms — ${JSON.stringify(message.payload)}`,
+    `invité : reçu en ${String(Date.now() - sentAt)} ms — ${JSON.stringify(message.payload)}`,
   );
-  if (message.payload?.tick !== 42) {
+  if (message.payload?.roomId !== 'room-check') {
     console.error('ÉCHEC : charge utile altérée.');
     process.exit(1);
   }
-  console.log('\nOK : le transport du lockstep coopératif fonctionne sur le déploiement LAN.');
+  console.log('\nOK : le broadcast de roomId du lobby fonctionne sur le déploiement LAN.');
 } catch (error) {
   console.error(`ÉCHEC : ${error.message}`);
   process.exit(1);

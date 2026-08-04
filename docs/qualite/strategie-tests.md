@@ -1,29 +1,31 @@
 # Village Survivor — Stratégie de tests
 
 > Statut : approuvé
-> Version du projet : v1
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 1er août 2026
+> Dernière revue : 4 août 2026
 > Niveau de garantie requis : `renforce`
 
-Le niveau `renforce` demande de couvrir la logique métier, les modes d'erreur, **les accès non
-autorisés** et **les dépendances**. Les deux premiers le sont déjà ; les deux derniers ne le
-sont pas du tout. Ce document dit quoi ajouter et pourquoi.
+Le niveau `renforce` demande de couvrir la logique métier, les modes d'erreur, les accès non
+autorisés et les dépendances. La v2 ajoute une autorité serveur : ses contrats, sa sécurité et
+son cycle de vie deviennent des gates de release, au même titre que la simulation.
 
 ## Où en est la couverture
 
 | Domaine | État | Volume |
 |---|---|---|
-| Logique métier de la simulation | **couvert** | 159 tests Vitest |
+| Logique métier et frontières solo | **couvert** | suite Vitest complète, total consigné dans le rapport |
 | Contrat de session et roster coopératif | **couvert** | inclus ci-dessus |
 | Interface (HUD, boutique, méta-build) | **couvert** | inclus ci-dessus |
-| Démarrage du jeu dans un navigateur réel | **couvert** | 1 smoke Playwright, en intégration continue |
+| Démarrage du jeu dans un navigateur réel | **couvert** | 7 scénarios Playwright, en intégration continue |
 | Performance de la simulation | **couvert** | 1 scénario, hors navigateur |
-| **Accès non autorisés** | **absent** | — |
-| **Dépendance externe indisponible** | **absent** | — |
-| **Contrat d'observabilité** | **couvert** | trace réelle exportée et inspectée, données interdites, seuil de journalisation |
+| **Accès non autorisés** | **couvert sur la frontière v2** | JWT, roster, création forgée, commandes et RPC d'or |
+| **Dépendance externe indisponible** | **couvert sur la frontière v2** | PostgREST, serveur et export OTLP |
+| **Contrat d'observabilité** | **couvert automatiquement, preuve v2 finale manuelle** | propagation, données interdites, seuil et panne OTLP ; trace serveur LAN à relire |
 | **Garde d'architecture du moteur** | **couvert** | dépendances, imports, horloge, aléatoire, navigateur |
 | Parcours du lobby de bout en bout | **absent** | — |
+| Serveur autoritaire et contrats réseau | **solo et coop couverts** | Vitest serveur + clients Colyseus réels 2/4 et 10/31 s |
+| Récompenses serveur idempotentes | **couvert** | unitaires + deux appels concurrents sur PostgreSQL LAN |
 
 La couverture mesurée, 86 % des instructions, ne porte que sur `game-core` et `content`. Les
 services de compte, l'authentification, les canaux temps réel et le schéma SQL n'y figurent
@@ -39,8 +41,12 @@ rassurant à tort, et ne doit pas servir d'indicateur de confiance globale.
 | **Une session sans second facteur accède aux données** | élevé | intégration contre la pile locale : une session `aal1` doit être refusée en lecture comme en écriture | avant release |
 | **Un compte lit les données d'un autre** | élevé | intégration : lecture croisée refusée sur chaque table | avant release |
 | **L'instrumentation casse le déterminisme** | élevé | garde d'import : `game-core` ne doit dépendre d'aucune bibliothèque de télémétrie ni de l'horloge | `pnpm test` |
-| **Deux pairs divergent en coopération** | élevé | test d'empreinte sur une partie simulée à plusieurs avatars | `pnpm test` |
-| Le service externe est indisponible | moyen | le jeu solo démarre et se termine sans Supabase joignable | `pnpm test:smoke` |
+| Deux clients observent des états différents | élevé | intégration à deux puis quatre clients sur une même room | avant release |
+| JWT ou identité hors roster acceptés | élevé | JWT invalide, hors roster, double connexion et room pleine refusés | `pnpm test` |
+| Message malformé ou abusif accepté | élevé | fuzz borné, nombres non finis, séquence, débit et file d'actions | `pnpm test` |
+| Reconnexion incorrecte | élevé | coupures 10 s et 31 s, sortie volontaire, room vide, retour tardif | `pnpm test` et Playwright |
+| Double crédit d'or | élevé | deux finalisations concurrentes sur la même partie | intégration SQL |
+| Le serveur est indisponible | moyen | erreur lisible et retour propre au lobby, aucun fallback local | Playwright |
 | Le backend de télémétrie est indisponible | moyen | une partie se déroule normalement, collecteur éteint | avant release |
 | **Une donnée interdite part dans la télémétrie** | élevé | inspection des spans et journaux émis pendant une partie simulée | `pnpm test` |
 | Une régression de performance passe inaperçue | moyen | budget de durée par tick | `pnpm benchmark` |
@@ -50,26 +56,27 @@ rassurant à tort, et ne doit pas servir d'indicateur de confiance globale.
 | Type | Périmètre | Environnement | Fréquence |
 |---|---|---|---|
 | Unitaire et simulation | règles, déterminisme, roster, quêtes, atelier, budget de bénédictions | Node, sans navigateur | à chaque commit |
-| Contrat de session | barrière de démarrage, roster lockstep, empreintes | Node | à chaque commit |
+| Contrat de session | création, admission, Schema, contrôles, actions et événements | Node | à chaque commit |
 | Contrat d'observabilité | trace d'une partie, corrélation, données interdites, niveau de journalisation | Node | à chaque commit |
 | Garde d'architecture | `game-core` sans horloge, sans navigateur, sans télémétrie | Node | à chaque commit |
 | Smoke de production | le jeu démarre, pas d'API de débogage, pas d'injection par la graine | navigateur, build de production | à chaque commit |
 | **Intégration des autorisations** | politiques RLS, exigence de second facteur, isolation entre comptes | **pile Docker locale** | avant chaque release |
 | Performance | coût par tick sous charge, coût d'une projection | Node | à la demande et avant release |
+| Charge serveur | 20 min, 4 joueurs, 200 monstres, ticks et patches | Node + serveur | avant release |
+| Intégration SQL | finalisation concurrente, permissions `service_role` | pile Docker locale | avant release |
+| Multi-client | roster 2/4, synchronisation et reconnexion | Playwright + pile locale | avant release |
 | Bout en bout du lobby | connexion, second facteur, salon, lancement | navigateur + pile locale | *différé — voir ci-dessous* |
 
 **Pourquoi l'intégration des autorisations n'est pas en intégration continue.** Elle exige une
-base Postgres avec les cinq migrations et un service d'authentification. La monter dans le
+base Postgres avec les six migrations et un service d'authentification. La monter dans le
 pipeline coûterait plusieurs minutes par exécution pour un projet qui n'a ni budget ni urgence.
 Elle est donc **exécutée à la main contre la pile locale avant une release**, et cette exécution
 fait partie des critères de sortie. C'est un compromis assumé, pas un oubli : le risque couvert
 est élevé, et une vérification manuelle tracée vaut mieux qu'une automatisation absente.
 
-**Pourquoi le bout en bout du lobby est différé.** Il bute sur l'authentification obligatoire et
-son second facteur, qu'un scénario automatisé ne peut pas franchir sans soit un mode invité, soit
-un mécanisme de contournement réservé aux tests. Créer ce contournement affaiblirait la seule
-protection réellement en place. La décision est renvoyée à la phase fonctionnelle, où un mode
-invité peut être arbitré pour lui-même et non comme un artifice de test.
+Les parcours serveur utilisent des JWT de test émis par une pile isolée ou un secret dédié à
+l'environnement de test. Aucun contournement n'existe dans le build de production. Le scénario
+final avec TOTP reste manuel sur les deux postes LAN.
 
 ## Données de test
 
@@ -87,8 +94,8 @@ invité peut être arbitré pour lui-même et non comme un artifice de test.
 Les tests ci-dessous matérialisent le contrat défini dans [`../observabilite.md`](../observabilite.md).
 Ils sont exigés par la méthode et bloquent la release.
 
-- **Trace complète** : une partie simulée produit un span racine `game.session` portant un
-  identifiant de trace, et ses spans enfants aux frontières attendues.
+- **Trace complète** : une partie produit `game.client.session`, une racine serveur `game.room`
+  et ses enfants aux frontières attendues.
 - **Corrélation** : tout enregistrement émis dans le contexte d'une partie porte `trace_id` et
   `span_id`.
 - **Identification** : le service, sa version et son environnement sont lisibles sur les
@@ -100,9 +107,12 @@ Ils sont exigés par la méthode et bloquent la release.
   reconstruire ni toucher au code.
 - **Panne du backend** : collecteur injoignable, une partie démarre, se déroule et se termine
   normalement ; aucune attente, aucun blocage, aucun message au joueur.
-- **Garde de déterminisme** : `packages/game-core` ne dépend d'aucune bibliothèque de
+- **Précision et coût des ticks** : la fabrique de provider de production est branchée sur un
+  export mémoire qui vérifie les buckets autour de 1 ms ; 200 000 enregistrements restent sous
+  une garde anti-régression de 20 µs par mesure, avec la valeur réelle publiée dans le rapport.
+- **Garde du cœur** : `packages/game-core` ne dépend d'aucune bibliothèque de
   télémétrie, et ne contient toujours ni `Date.now`, ni `performance.now`, ni `Math.random`.
-  Cette garde est la plus importante du lot : si elle tombe, la coopération tombe avec elle.
+  L'autorité serveur ne justifie pas d'introduire des I/O ou une horloge dans le moteur.
 
 ## Critères d'entrée et de sortie
 
@@ -121,6 +131,9 @@ Ils sont exigés par la méthode et bloquent la release.
 6. aucune donnée interdite détectée dans la télémétrie ;
 7. niveau de journalisation modifiable sans changement de code ;
 8. **le produit a réellement été essayé** — une partie jouée, pas seulement compilée.
+9. une partie solo et une partie coopérative sur deux postes ont chacune une trace distribuée ;
+10. la charge de 20 minutes respecte tick p95 < 1 ms, boucle < 50 ms, commande→état p95
+    < 150 ms et patch p95 < 64 Kio.
 
 Les points 4 à 8 sont les gates de la méthode. Le point 8 mérite une insistance : ce projet a
 passé un mois à livrer du code dont personne n'avait vérifié qu'il donnait envie d'y jouer.

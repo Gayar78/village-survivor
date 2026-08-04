@@ -21,6 +21,7 @@
     "@opentelemetry/sdk-metrics": "^2.10.0",
     "@opentelemetry/sdk-trace-web": "^2.10.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@colyseus/sdk": "0.17.43",
     "@supabase/supabase-js": "^2.45.0",
     "@village-survivor/content": "workspace:*",
     "@village-survivor/game-core": "workspace:*",

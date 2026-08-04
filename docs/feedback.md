@@ -1,9 +1,9 @@
 # Village Survivor — Feedback
 
 > Statut : en cours
-> Version du projet : v1
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 2 août 2026
+> Dernière revue : 4 août 2026
 
 Ce document est normalement ouvert en phase 5. Il l'est ici plus tôt : une session de jeu
 réelle a eu lieu pendant la phase 4, avant l'incrément d'observabilité. Perdre ce retour aurait
@@ -411,3 +411,34 @@ l'interface le demande déjà.
 la bonne. La plus probable se vérifie en quelques lignes — comparer, d'un poste à l'autre, le
 résultat des fonctions mathématiques employées par la simulation. Corriger sans avoir tranché
 reviendrait à remplacer une partie du cœur de simulation sur une intuition.
+
+## Résolution v2 — serveur autoritaire (3 août 2026)
+
+Les deux symptômes de la session longue sont désormais traités par conception : la ferraille ne
+naît plus naturellement et expire après 600 ticks, tandis que la coopération n'exécute plus une
+simulation par navigateur. Une `TowerRoom` calcule l'état unique et les clients ne font que
+commander et rendre cet état ; la divergence au tick 18 220 n'est donc plus une classe de panne
+possible entre pairs.
+
+Le remplacement retire aussi les mécanismes de diagnostic devenus sans objet — historique de
+replay et empreinte globale — au profit de mesures serveur directement actionnables : durée et
+retard de tick, octets encodés par patch, commandes refusées, reconnexions et population de
+ferraille. Le test de référence simule 24 000 ticks, quatre joueurs et 200 monstres ; les valeurs
+finales sont consignées dans `qualite/rapport-tests.md`.
+
+Cette résolution technique ne remplace pas un retour joueur. Une partie solo et une partie coop
+sur deux postes LAN doivent encore confirmer le rendu, la reconnexion et la trace distribuée en
+conditions réelles.
+
+## Validation v2 — premier essai solo LAN (4 août 2026)
+
+Le propriétaire confirme que la première partie solo sur le déploiement LAN s'est déroulée
+normalement, sans anomalie observée. Le parcours solo réel est donc validé. La coopération sur
+deux postes et la lecture de la trace distribuée restent à effectuer avant de clore la phase de
+développement.
+
+La trace solo `ba04d5262cbd303bae5bfc3799e6ab3f` est complète et corrélée entre navigateur et
+serveur. Elle confirme la défaite normale, la persistance de l'or, l'absence d'erreur applicative
+et des budgets très confortables. Son analyse a révélé non pas un ralentissement, mais des
+buckets de durée trop larges pour prouver le p95 inférieur à 1 ms ; la précision est corrigée
+sans augmenter le travail de mesure par tick.

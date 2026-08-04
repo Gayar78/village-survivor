@@ -49,7 +49,7 @@ navigateurs différents, sans aucun signalement.
 
 **Origine.** Session du 2 août, rapport de tests ANO-001. *Dépend de V2-01.*
 
-### V2-03 — Borner la ferraille au sol *(bug de croissance)*
+### V2-03 — Borner la ferraille au sol *(bug de croissance)* — **Terminé le 3 août 2026**
 
 **Résultat attendu.** Le nombre d'objets au sol ne croît plus indéfiniment avec la durée.
 
@@ -58,11 +58,12 @@ minute, sans limite. Chaque pièce coûte un calcul de distance par joueur et pa
 allocation d'objet par tick dans la projection d'état, sa part du hachage d'empreinte chaque
 seconde, et un dessin par image.
 
-**Proposition.** Fusion de proximité — une pièce déposée près d'une autre s'y ajoute — plus un
-plafond avec éviction de la plus ancienne. Purement déterministe, sans effet sur le protocole.
+**Décision livrée.** Suppression de toute apparition naturelle ; seuls les monstres déposent un
+tas de leur valeur de récompense. Chaque tas expire après 600 ticks, le ramassage restant
+prioritaire au tick limite.
 
-**Critère d'acceptation.** Sur une partie de trente minutes, la population d'objets au sol reste
-sous un plafond connu, et le coût par tick ne croît plus avec la durée.
+**Preuve.** Les tests couvrent absence d'apparition sans mort, valeur du drop, expiration exacte,
+priorité du ramassage, quêtes directes et borne sur 1 200 ticks.
 
 **Origine.** Session du 2 août, `ROADMAP.md`.
 
@@ -118,7 +119,7 @@ Confort, ou idée à creuser.
 | ID | Élément | Origine |
 |---|---|---|
 | V2-10 | Instrumenter le lobby, l'atelier de méta-build et le lancement coopératif — trois unités d'exécution spécifiées et non livrées | `observabilite.md` |
-| V2-11 | Faire apparaître la ferraille naturelle près des joueurs plutôt que n'importe où — question de conception, pas de performance | Session du 2 août |
+| V2-11 | ~~Faire apparaître la ferraille naturelle près des joueurs~~ — obsolète : la génération naturelle est supprimée par V2-03 | Session du 2 août |
 | V2-12 | Réactiver la minification — le paquet pèse 7,2 Mo non minifié | `ROADMAP.md` |
 | V2-13 | Valider le contenu du jeu par un schéma explicite, comme l'exige l'ADR-0005 | `ROADMAP.md` |
 | V2-14 | Nettoyer trois tables mortes du schéma de base | `ROADMAP.md` |
@@ -128,9 +129,9 @@ Confort, ou idée à creuser.
 
 Ces points ne sont pas des tâches : ils déterminent ce que la v2 contient.
 
-1. **Conserver le lockstep pair-à-pair, ou revenir à un serveur autoritaire ?** Le propriétaire a
-   annoncé trancher avec son fils. Le choix change la portée de l'itération : mineure si le modèle
-   est conservé, majeure sinon. Voir [ADR-0008](docs/decisions/ADR-0008-p2p-lockstep-coop.md).
+1. ~~**Conserver le lockstep pair-à-pair, ou revenir à un serveur autoritaire ?**~~ **Tranché le
+   3 août 2026** : toutes les parties passent par le serveur autoritaire décrit par
+   [ADR-0011](docs/decisions/ADR-0011-authoritative-game-server.md).
 2. **Le jeu visé par [`gameplay.md`](gameplay.md) remplace-t-il le jeu livré ?** Le brouillon
    d'atelier décrit une campagne par niveaux avec cycle jour/nuit et condition de victoire, que le
    jeu actuel n'a pas. Tant que la décision n'est pas datée, les deux coexistent dans le dépôt.

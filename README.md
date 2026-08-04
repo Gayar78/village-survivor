@@ -39,25 +39,29 @@ Prérequis : Node.js 24 ou 26, et pnpm 11.15.1 (la version est épinglée par le
 
 ```bash
 pnpm install
-pnpm dev
+pnpm --filter @village-survivor/server dev
+pnpm dev # dans un second terminal
 ```
 
-Le client démarre sur `http://127.0.0.1:5173`.
+Le client démarre sur `http://127.0.0.1:5173` et le serveur de jeu sur le port 2567. Les variables
+Supabase serveur et client décrites dans [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md) sont
+requises.
 
 ### Deux pages, deux prérequis
 
 | Page | Contenu | Compte requis |
 |---|---|---|
-| `/play.html?seed=<graine>` | la partie elle-même, en solo | **non** |
+| `/play.html` | rendu d'une room solo ou coopérative | **oui, et serveur requis** |
 | `/` | connexion, menu, hub multijoueur, atelier de méta-build | **oui** |
 
-**Pour simplement jouer ou faire une recette en solo, ouvrez directement `/play.html`.** Elle ne
-dépend d'aucun service externe.
+Toutes les parties, solo comprises, utilisent le serveur autoritaire. Ouvrir directement
+`/play.html` sans session affiche une erreur et revient au lobby ; il n'existe aucun mode hors
+ligne ou repli local.
 
 ### Jouer à plusieurs sur un réseau local
 
-Un déploiement Docker complet permet de jouer en multijoueur sur un LAN **sans aucune
-dépendance à internet** : base de données, comptes et temps réel sont auto-hébergés.
+Un déploiement Docker complet permet de jouer sur un LAN **sans aucune dépendance à internet** :
+base, comptes, lobby, serveur autoritaire, télémétrie et passerelle sont auto-hébergés.
 
 ```bash
 node deploy/lan/setup.mjs && pnpm build && docker compose -f deploy/lan/docker-compose.yml up -d
@@ -69,7 +73,7 @@ Procédure détaillée, vérifications et portée de sécurité :
 Le lobby, en revanche, exige un projet Supabase : sans les variables `VITE_SUPABASE_URL` et
 `VITE_SUPABASE_ANON_KEY` dans un fichier `.env` à la racine, il affiche « Configuration requise »
 et ni le menu, ni la coopération, ni la progression de compte ne sont accessibles. Le guide pas à
-pas est [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md) — pensez à appliquer **les cinq**
+pas est [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md) — pensez à appliquer **les six**
 migrations de `supabase/migrations`, pas seulement la première.
 
 ## Contrôles
@@ -88,11 +92,10 @@ Pendant que l'atelier d'une tourelle est ouvert, votre avatar est ignoré par le
 ## Principes techniques
 
 - une simulation TypeScript indépendante de Phaser, du navigateur et du réseau ;
-- une boucle déterministe à pas fixe de 50 ms — le déterminisme n'est pas confort de test, la
-  coopération en lockstep en dépend entièrement ;
-- un client Phaser 4 qui ne communique que par une frontière `TowerSession` ;
-- une coopération pair-à-pair sans serveur de jeu ;
-- Supabase pour l'authentification, la progression de compte et le transport temps réel.
+- une boucle déterministe à pas fixe de 50 ms, exécutée par l'unique simulation serveur ;
+- un client Phaser 4 qui ne communique que par la frontière de rendu `TowerRenderableSession` ;
+- un serveur Colyseus autoritaire requis en solo comme en coopération ;
+- Supabase pour l'authentification, la progression de compte et le lobby temps réel.
 
 ## Documentation
 
@@ -127,12 +130,14 @@ Enchaîne formatage, lint, types, tests unitaires et build. C'est ce que vérifi
 | Commande | Portée |
 |---|---|
 | `pnpm format:check`, `pnpm lint`, `pnpm typecheck` | formatage, règles et types |
-| `pnpm test` | 159 tests unitaires, de simulation, de contrat et d'observabilité |
-| `pnpm build` | build de production des deux pages |
-| `pnpm test:smoke` | Playwright sur le build : le jeu démarre, aucune API de débogage, aucune erreur console |
+| `pnpm test` | tests unitaires, simulation, contrats réseau et observabilité |
+| `pnpm build` | build du client, du serveur et des packages |
+| `pnpm test:smoke` | vrai serveur, faux PostgREST, Chromium, 2/4 clients et reconnexions |
 | `pnpm benchmark` | coût d'un tick sous 200 monstres et coût d'une projection d'état |
+| test de charge serveur | `pnpm exec vitest run apps/server/src/load/authoritativeLoad.test.ts` |
+| intégration SQL LAN | `./deploy/lan/check-game-rewards.ps1` |
 
-Le smoke test vise `play.html` et fonctionne donc **sans clés Supabase** : il tourne en CI. Il
+Le smoke utilise des JWT et un PostgREST hermétiques de test : aucun secret réel n'est requis en CI. Il
 faut avoir téléchargé le navigateur une fois, avec `pnpm exec playwright install chromium`.
 
 Il n'existe en revanche **aucun test de bout en bout du lobby** : il faudrait un mode invité ou

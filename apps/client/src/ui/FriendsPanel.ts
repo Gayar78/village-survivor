@@ -1,25 +1,21 @@
 import { friendsService, type FriendBase } from '../hub/friendsService.js';
-import type { ActiveGameDescriptor, IncomingFriendRequest, PresenceStatus } from '../hub/types.js';
+import type { IncomingFriendRequest, PresenceStatus } from '../hub/types.js';
 import { Toasts } from './Toasts.js';
 
 /** Instantané de présence exposé par l'appelant pour un joueur donné. */
 interface PresenceSnapshot {
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 }
 
 /** Dépendances injectées par l'écran hub. */
 export interface FriendsPanelDeps {
-  currentUserId: string;
   /** Fournit la présence courante indexée par userId (source temps réel). */
   presenceProvider: () => Map<string, PresenceSnapshot>;
   /** Demande de rejoindre le hub d'un ami (par code). */
   onJoinHub: (code: string) => void;
   /** Demande d'inviter un ami en ligne dans notre hub. */
   onInvite: (friendUserId: string) => void;
-  /** Reprend une partie où le joueur courant faisait déjà partie du roster. */
-  onRejoinGame: (game: ActiveGameDescriptor) => void;
 }
 
 /** Échappe le texte dynamique injecté dans du innerHTML. */
@@ -47,8 +43,6 @@ export class FriendsPanel {
   private readonly deps: FriendsPanelDeps;
   private readonly toasts: Toasts;
 
-  private readonly currentUserId: string;
-
   private friends: FriendBase[] = [];
   private requests: IncomingFriendRequest[] = [];
   private error: string | null = null;
@@ -58,7 +52,6 @@ export class FriendsPanel {
   public constructor(element: HTMLElement, deps: FriendsPanelDeps) {
     this.element = element;
     this.deps = deps;
-    this.currentUserId = deps.currentUserId;
     this.element.classList.add('friends-panel');
     this.toasts = new Toasts(FriendsPanel.ensureToastRoot());
     this.startPolling();
@@ -202,10 +195,6 @@ export class FriendsPanel {
     snapshot: PresenceSnapshot | undefined,
     online: boolean,
   ): string {
-    if (snapshot?.game?.roster.some((entry) => entry.id === this.currentUserId)) {
-      return `<button type="button" class="friends-btn friends-btn--join"
-        data-action="rejoin-game" data-userid="${escapeHtml(friend.userId)}">Rejoindre la partie</button>`;
-    }
     if (snapshot && snapshot.hubCode) {
       return `<button type="button" class="friends-btn friends-btn--join"
         data-action="join" data-userid="${escapeHtml(friend.userId)}"
@@ -255,11 +244,6 @@ export class FriendsPanel {
         }
       } else if (action === 'invite') {
         this.deps.onInvite(userId);
-      } else if (action === 'rejoin-game') {
-        const game = this.deps.presenceProvider().get(userId)?.game;
-        if (game?.roster.some((entry) => entry.id === this.currentUserId)) {
-          this.deps.onRejoinGame(game);
-        }
       } else if (action === 'remove') {
         this.handleRemove(userId);
       }

@@ -7,13 +7,12 @@ import { describe, expect, it } from 'vitest';
 /**
  * Garde d'architecture du cœur de simulation.
  *
- * **C'est la garde la plus importante du projet : si elle tombe, la coopération tombe avec
- * elle.** Le lockstep exige que tous les navigateurs calculent exactement le même état à partir
- * des mêmes entrées. Une horloge, un aléatoire non maîtrisé ou une bibliothèque de télémétrie —
- * qui horodate, mesure et appelle le réseau — introduiraient une valeur différente d'un poste à
- * l'autre, et les parties divergeraient.
+ * **C'est la garde la plus importante du moteur.** Le serveur doit calculer un état reproductible
+ * à partir des mêmes entrées. Une horloge, un aléatoire non maîtrisé ou une bibliothèque de
+ * télémétrie — qui horodate, mesure et appelle le réseau — rendrait les tests et diagnostics
+ * impossibles à reproduire.
  *
- * L'instrumentation existe : elle mesure `step()` depuis la couche client, sans que `step()` ne
+ * L'instrumentation existe : elle mesure `step()` depuis la couche serveur, sans que `step()` ne
  * sache qu'il est mesuré. Ce test vérifie que cette frontière tient.
  */
 

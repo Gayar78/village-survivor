@@ -1,26 +1,19 @@
 import { TOWER_WEAPONS } from '@village-survivor/content';
-import type { MetaBuildModifiers, TowerGameState, TowerInput } from '@village-survivor/protocol';
+import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
+import type { TowerRenderableSession } from './net/TowerRenderableSession.js';
 import {
-  createTowerCoopSession,
-  TowerLocalSession,
-  type TowerCoopConfig,
-  type TowerRenderableSession,
-} from './net/towerSession.js';
-import { authService } from './account/authService.js';
-import { statsService } from './account/statsService.js';
-import { friendsService } from './hub/friendsService.js';
-import { realtimeService } from './hub/realtimeService.js';
+  TowerServerSession,
+  TOWER_SERVER_ROOM_KEY,
+  type TowerServerSessionOptions,
+} from './net/TowerServerSession.js';
 import { gameUrl } from './gameUrl.js';
-import { randomSeed } from './randomSeed.js';
 import { createLogger } from './observability/logger.js';
 import { describeError } from './observability/redact.js';
 import { flushTelemetry, initTelemetry } from './observability/telemetry.js';
-import { SpanStatusCode } from '@opentelemetry/api';
 import {
   endGameSessionSpan,
-  startGameChildSpan,
   startGameSessionSpan,
   type GameMode,
 } from './observability/gameTelemetry.js';
@@ -37,8 +30,8 @@ import {
 } from './towerLevelShortcuts.js';
 import './styles.css';
 
-// Page de JEU (« Tower / arme à feu », Phase 1). Assemble : session (solo ou co-op
-// host-autoritaire), scène de rendu, HUD, boutique de tourelle, écran de niveau, et la
+// Page de JEU (« Tower / arme à feu »). Assemble la session serveur autoritaire,
+// la scène de rendu, le HUD, la boutique de tourelle, l'écran de niveau et la
 // capture des entrées (déplacement clavier + visée souris + tir + arsenal 1/2/3).
 
 const gameElement = document.querySelector<HTMLElement>('#game');
@@ -69,66 +62,45 @@ const syncStatus = {
   detail: syncStatusDetailElement,
 };
 
-// Config co-op posée par le lobby (même clé/forme que l'ancien jeu). Consommée une fois.
-const NETCODE_KEY = 'vs-coop-netcode';
-const SOLO_META_BUILD_KEY = 'vs-solo-meta-build';
-function readCoopConfig(): TowerCoopConfig | null {
-  const raw = sessionStorage.getItem(NETCODE_KEY);
+// Le lobby ne transmet qu'un identifiant opaque. Le JWT reste uniquement en mémoire Supabase.
+function readServerRoom(): TowerServerSessionOptions | null {
+  const raw = sessionStorage.getItem(TOWER_SERVER_ROOM_KEY);
   if (raw === null) {
     return null;
   }
-  sessionStorage.removeItem(NETCODE_KEY);
+  sessionStorage.removeItem(TOWER_SERVER_ROOM_KEY);
   try {
     const parsed: unknown = JSON.parse(raw);
     if (
       typeof parsed === 'object' &&
       parsed !== null &&
-      typeof (parsed as TowerCoopConfig).seed === 'string' &&
-      typeof (parsed as TowerCoopConfig).code === 'string' &&
-      typeof (parsed as TowerCoopConfig).hostId === 'string' &&
-      typeof (parsed as TowerCoopConfig).me === 'string' &&
-      Array.isArray((parsed as TowerCoopConfig).roster)
+      Object.keys(parsed).length === 1 &&
+      typeof (parsed as TowerServerSessionOptions).roomId === 'string' &&
+      ((parsed as TowerServerSessionOptions).roomId?.length ?? 0) > 0
     ) {
-      return parsed as TowerCoopConfig;
+      return parsed as TowerServerSessionOptions;
     }
   } catch (error) {
-    console.warn('Configuration co-op illisible, démarrage en solo.', error);
+    console.warn('Référence de room illisible, démarrage en solo.', error);
   }
   return null;
 }
 
-/** Lit une build résolue par le menu, sans jamais bloquer une partie si elle est altérée. */
-function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
-  const raw = sessionStorage.getItem(SOLO_META_BUILD_KEY);
-  sessionStorage.removeItem(SOLO_META_BUILD_KEY);
-  if (raw === null) {
-    return undefined;
-  }
-  try {
-    const value: unknown = JSON.parse(raw);
-    return typeof value === 'object' && value !== null
-      ? (value as Partial<MetaBuildModifiers>)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const parameters = new URLSearchParams(location.search);
-const seed = parameters.get('seed') ?? randomSeed();
-
 function goToLobby(): void {
   location.assign('index.html');
 }
+let lobbyReturnTimer: number | undefined;
+function scheduleLobbyReturn(): void {
+  if (lobbyReturnTimer !== undefined) return;
+  lobbyReturnTimer = window.setTimeout(goToLobby, 3_500);
+}
 function restartGame(): void {
-  sessionStorage.removeItem(NETCODE_KEY);
+  sessionStorage.removeItem(TOWER_SERVER_ROOM_KEY);
   location.assign(gameUrl());
 }
 
-const coopConfig = readCoopConfig();
-const soloMetaBuild = readSoloMetaBuild();
-const activeCoopConfig = coopConfig !== null && coopConfig.roster.length > 1 ? coopConfig : null;
-const isCoopSession = activeCoopConfig !== null;
+const serverRoom = readServerRoom();
+const isCoopSession = serverRoom !== null;
 
 // La télémétrie démarre avant la partie et ne conditionne rien : sans collecteur configuré,
 // `initTelemetry` ne fait rien et le jeu se déroule à l'identique.
@@ -136,10 +108,8 @@ const telemetry = initTelemetry();
 const log = createLogger('session');
 const gameMode: GameMode = isCoopSession ? 'coop' : 'solo';
 const gameSessionSpan = startGameSessionSpan({
-  seed: activeCoopConfig?.seed ?? seed,
   mode: gameMode,
-  playersCount: activeCoopConfig?.roster.length ?? 1,
-  ...(activeCoopConfig === null ? {} : { roomCode: activeCoopConfig.code }),
+  playersCount: 1,
 });
 let gameSessionEnded = false;
 
@@ -155,45 +125,47 @@ function endGameSession(outcome: 'defeat' | 'left' | 'error', attributes = {}): 
 
 log.info('partie lancée', {
   'vs.mode': gameMode,
-  'vs.players.count': activeCoopConfig?.roster.length ?? 1,
+  'vs.players.count': 1,
   'vs.telemetry.enabled': telemetry.exportEnabled,
 });
 
-const session: TowerRenderableSession =
-  activeCoopConfig !== null
-    ? createTowerCoopSession(activeCoopConfig)
-    : new TowerLocalSession({
-        seed,
-        ...(soloMetaBuild === undefined ? {} : { metaBuild: soloMetaBuild }),
-      });
+const session: TowerRenderableSession = new TowerServerSession(serverRoom ?? {});
 
 type CoopStatusTone = 'pending' | 'issue';
 
-function showCoopStatus(tone: CoopStatusTone, title: string, detail: string): void {
-  if (!isCoopSession) {
-    return;
-  }
+function showConnectionStatus(tone: CoopStatusTone, title: string, detail: string): void {
   syncStatus.element.dataset.tone = tone;
   syncStatus.title.textContent = title;
   syncStatus.detail.textContent = detail;
   syncStatus.element.hidden = false;
 }
 
-if (activeCoopConfig !== null) {
-  const role = activeCoopConfig.me === activeCoopConfig.hostId ? 'hôte' : 'invité';
-  showCoopStatus(
+if (isCoopSession) {
+  showConnectionStatus(
     'pending',
-    `Co-op P2P · ${role}`,
-    'Synchronisation au lancement : gardez cet onglet actif.',
+    'Équipe serveur en attente',
+    'Connexion à la room et attente de tous les membres réservés…',
+  );
+}
+if (!isCoopSession) {
+  showConnectionStatus(
+    'pending',
+    'Connexion au serveur',
+    'Création de la partie solo autoritaire…',
   );
 }
 
-const unsubscribeConnectionIssue = session.onConnectionIssue((message) => {
-  showCoopStatus(
+const unsubscribeConnectionIssue = session.onConnectionIssue((message, terminal) => {
+  showConnectionStatus(
     'issue',
-    'Synchronisation P2P en attente',
-    `${message} Gardez cet onglet au premier plan.`,
+    message.startsWith('En attente')
+      ? 'Équipe serveur en attente'
+      : message.startsWith('Reconnexion')
+        ? 'Reconnexion au serveur'
+        : 'Connexion au serveur interrompue',
+    terminal === true ? `${message} Retour au menu dans quelques secondes.` : message,
   );
+  if (terminal === true) scheduleLobbyReturn();
 });
 
 const scene = new TowerScene(session);
@@ -242,68 +214,10 @@ const gameOver = new GameOverScreen(gameOverElement, {
 });
 
 let latestState: TowerGameState | undefined;
-let accountGoldCredited = false;
-
-async function creditAccountGoldAtEndOfRun(gold: number): Promise<void> {
-  if (accountGoldCredited || !Number.isSafeInteger(gold) || gold <= 0) {
-    return;
-  }
-  accountGoldCredited = true;
-  const span = startGameChildSpan('account.gold.credit', { 'vs.gold': gold });
-  try {
-    const account = await authService.getSession();
-    if (account !== null) {
-      await statsService.creditAccountGold(gold);
-    }
-    span.end();
-  } catch (error) {
-    // L'écran de fin doit rester utilisable même si Supabase est indisponible.
-    span.recordException(describeError(error));
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    span.end();
-    log.error("échec de l'enregistrement de l'or de cette partie", {
-      'vs.error': describeError(error),
-    });
-  }
-}
-
-/**
- * La présence ne transporte qu'une invitation de reprise (graine + roster),
- * jamais l'état du jeu. Une erreur Supabase ne doit surtout pas empêcher la
- * partie locale de démarrer.
- */
-async function publishActiveCoopGame(): Promise<void> {
-  if (activeCoopConfig === null) {
-    return;
-  }
-  try {
-    const account = await authService.getSession();
-    if (account === null) {
-      return;
-    }
-    const friendCode = await friendsService.getMyFriendCode();
-    await realtimeService.start(
-      {
-        userId: account.userId,
-        displayName: account.displayName.length > 0 ? account.displayName : account.email,
-      },
-      friendCode,
-    );
-    await realtimeService.setActiveGame({
-      seed: activeCoopConfig.seed,
-      code: activeCoopConfig.code,
-      hostId: activeCoopConfig.hostId,
-      roster: activeCoopConfig.roster,
-      ...(activeCoopConfig.metaBuildsByPlayerId === undefined
-        ? {}
-        : { metaBuildsByPlayerId: activeCoopConfig.metaBuildsByPlayerId }),
-    });
-  } catch (error) {
-    console.warn('Présence de reprise co-op indisponible :', error);
-  }
-}
 
 session.subscribe((state) => {
+  syncStatus.element.hidden = true;
+  gameSessionSpan.setAttribute('vs.players.count', state.players.length);
   latestState = state;
   if (
     pendingLevelSelection !== undefined &&
@@ -318,7 +232,6 @@ session.subscribe((state) => {
   turretShop.render(state);
   levelUp.render(state);
   if (state.status === 'defeat') {
-    void creditAccountGoldAtEndOfRun(state.player.gold);
     endGameSession('defeat', {
       'vs.wave': state.wave,
       'vs.duration.ms': state.elapsedMs,
@@ -459,7 +372,6 @@ window.addEventListener(
     unsubscribeConnectionIssue();
     endGameSession('left');
     void session.stop();
-    void realtimeService.stop();
   },
   { once: true },
 );
@@ -471,6 +383,14 @@ window.addEventListener('error', (event) => {
   endGameSession('error', { 'vs.error': describeError(event.error) });
 });
 
-void session.start();
-void publishActiveCoopGame();
+void session.start().catch((error) => {
+  showConnectionStatus(
+    'issue',
+    'Partie indisponible',
+    error instanceof Error ? error.message : 'Le serveur de jeu est indisponible.',
+  );
+  log.error('échec du démarrage de la session serveur', { 'vs.error': describeError(error) });
+  endGameSession('error', { 'vs.error': describeError(error) });
+  scheduleLobbyReturn();
+});
 requestAnimationFrame(inputLoop);

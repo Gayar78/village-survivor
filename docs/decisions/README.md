@@ -1,9 +1,9 @@
 # Village Survivor — Décisions d'architecture
 
 > Statut : approuvé
-> Version du projet : v1
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
+> Dernière revue : 3 août 2026
 
 Les Architecture Decision Records (ADR) conservent les choix structurants du projet. Ils
 complètent le [cadrage technique initial](../requirements/initial-technical-baseline.md) sans le
@@ -37,6 +37,7 @@ courants.
 | [0008](ADR-0008-p2p-lockstep-coop.md) | Constaté | Coopération en lockstep pair-à-pair sans serveur |
 | [0009](ADR-0009-account-persistence.md) | Constaté | Comptes Supabase et progression persistante |
 | [0010](ADR-0010-local-render-prediction.md) | Accepté | Dessiner l'avatar local en avance sur la simulation |
+| [0011](ADR-0011-authoritative-game-server.md) | Accepté | Faire exécuter toutes les parties par un serveur autoritaire |
 
 ### Notes sur les statuts particuliers
 
@@ -52,6 +53,10 @@ décrivait en propre — les six effets retenus, les passes ordonnées avec ombr
 transition jour/nuit progressive et le module d'état visuel `apps/client/src/render` —
 appartenait à l'ancien jeu et **a été supprimé le 31 juillet 2026**. Les passes de rendu Tower
 ne sont consignées nulle part.
+
+**ADR-0008** est remplacé par ADR-0011 à compter de la v2. Son statut « constaté » décrit
+toujours correctement la manière dont le P2P avait été introduit ; ADR-0011 porte la décision
+humaine qui le retire du chemin de production.
 
 ## Convention
 

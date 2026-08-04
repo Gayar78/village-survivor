@@ -16,9 +16,34 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'pnpm --filter @village-survivor/client preview --host 127.0.0.1',
-    port: 4173,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command: 'node tests/smoke/fake-postgrest.mjs',
+      port: 31981,
+      reuseExistingServer: false,
+      env: {
+        FAKE_POSTGREST_PORT: '31981',
+        FAKE_SERVICE_ROLE_KEY: 'smoke-service-role-key',
+      },
+    },
+    {
+      command: 'pnpm --filter @village-survivor/server start',
+      port: 2567,
+      reuseExistingServer: false,
+      env: {
+        JWT_SECRET: 'smoke-jwt-secret-at-least-sixteen-characters',
+        SERVICE_ROLE_KEY: 'smoke-service-role-key',
+        POSTGREST_URL: 'http://127.0.0.1:31981',
+        PORT: '2567',
+        APP_LOG_LEVEL: 'error',
+        // Export volontairement impossible : la partie doit rester fonctionnelle.
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:1',
+      },
+    },
+    {
+      command: 'pnpm --filter @village-survivor/client preview --host 127.0.0.1',
+      port: 4173,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 });

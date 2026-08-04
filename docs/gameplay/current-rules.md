@@ -1,9 +1,9 @@
 # Village Survivor — Règles de gameplay courantes
 
 > Statut : approuvé
-> Version du projet : v1
+> Version du projet : v2 — boucle 3
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
+> Dernière revue : 3 août 2026
 > Portée : le jeu « Tower », seul jeu atteignable depuis les pages du client
 
 Ce document décrit ce que le code fait réellement. Les valeurs proviennent de
@@ -22,6 +22,10 @@ proviennent de [`packages/protocol/src/tower.ts`](../../packages/protocol/src/to
 
 Une partie est une **survie sans fin**. Le statut ne connaît que trois valeurs : `ready`,
 `running` et `defeat`. **Il n'existe aucune condition de victoire.**
+
+En production, toute partie est simulée par une room serveur autoritaire ; le navigateur envoie
+seulement déplacement, visée, tir et actions d'interface. Ce transport ne modifie aucune règle
+de combat décrite ci-dessous.
 
 La partie est perdue si :
 
@@ -143,9 +147,12 @@ dépensé en achetant des monstres au coût indiqué dans le tableau ci-dessus.
 
 Deux monnaies distinctes coexistent.
 
-**La ferraille** est le fonds de défense **commun**. Elle apparaît au sol par cinq tas d'une
-unité toutes les 7 secondes, jamais à moins de 300 unités du Cœur, et se ramasse en passant
-dessus. Les quêtes communes en versent également. Elle finance tout ce qui touche à la base.
+**La ferraille** est le fonds de défense **commun**. Elle n'apparaît jamais spontanément : toute
+mort de monstre, quelle qu'en soit la cause, dépose exactement un tas dont la valeur est la
+récompense du monstre. Un tas non ramassé disparaît après **600 ticks**, soit 30 secondes de
+simulation. Le ramassage est traité avant l'expiration : un joueur à portée au tick limite
+récupère encore le tas. Les quêtes communes versent leur récompense directement dans le fonds,
+sans créer d'objet au sol. La ferraille finance tout ce qui touche à la base.
 
 **L'or** est **personnel** : chaque élimination rapporte la récompense du monstre × 3. Il ne
 sert à rien pendant la partie — il est crédité au compte du joueur en fin de partie et alimente
@@ -211,19 +218,16 @@ personnel ni la méta-progression.
 
 ## Coopération
 
-Jusqu'à **dix avatars actifs** partagent une partie. Le modèle est un **lockstep pair-à-pair** :
-chaque navigateur exécute la même simulation et n'échange que des entrées, jamais d'état. Les
-arrivées et départs sont planifiés à une frontière de tick précise, identique chez tous les pairs.
-Un joueur peut rejoindre une partie en cours : il rejoue la graine et l'historique d'entrées
-avant de demander sa réintégration.
+Jusqu'à **dix avatars actifs** partagent l'unique simulation de la room. Le chef réserve le roster
+et tous ses membres doivent rejoindre dans les **quinze secondes** ; un roster partiel annule la
+partie. Une fois démarrée, aucune nouvelle identité ne peut entrer.
 
-**La reconnexion a une limite de temps.** Le rejeu part du premier tick de la partie, et
-l'historique conservé couvre **vingt minutes**. Au-delà, un joueur déconnecté ne peut plus
-revenir : il reçoit un refus explicite et la partie continue sans lui. Le correctif de fond —
-des points de reprise périodiques, qui rendraient le rejeu proportionnel au temps écoulé depuis
-le dernier d'entre eux — est consigné dans la feuille de route.
+**La reconnexion a une limite de trente secondes.** Dès une coupure, l'entrée devient neutre mais
+l'avatar reste présent et vulnérable. Un retour dans la fenêtre reprend le même avatar depuis un
+état serveur complet. À l'échéance, l'avatar est retiré et l'identité ne peut plus revenir. Une
+sortie volontaire est immédiate ; le départ du dernier joueur abandonne la room.
 
-Voir [ADR-0008](../decisions/ADR-0008-p2p-lockstep-coop.md) pour la décision et ses limites.
+Voir [ADR-0011](../decisions/ADR-0011-authoritative-game-server.md) pour la décision.
 
 ## Méta-progression (hors partie)
 
@@ -260,5 +264,6 @@ sont listés ici pour qu'aucun ne disparaisse silencieusement.
 4. **Le contenu Tower n'est pas validé.** ADR-0005 exige un schéma explicite et une validation au
    chargement pour chaque catégorie de contenu. Le catalogue Tower est un ensemble de constantes
    TypeScript sans schéma, et une partie du réglage vit dans le moteur plutôt que dans le contenu.
-5. **L'or de compte est déclaré par le client.** La simulation étant hébergée par le navigateur,
-   rien n'empêche un client modifié de déclarer un montant arbitraire en fin de partie.
+5. ~~L'or de compte était déclaré par le client.~~ **Résolu par le serveur autoritaire** : le
+   serveur conserve les gains, et seule la RPC `finalize_game_run` réservée à `service_role`
+   crédite les portefeuilles de manière transactionnelle et idempotente.

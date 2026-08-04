@@ -10,6 +10,35 @@ Le dépôt contient deux jeux successifs. Le MVP « M1 » (exploration diurne, d
 été livré du 20 au 26 juillet 2026, puis **remplacé** par le jeu « Tower » du 28 au 30 juillet.
 Les deux sont consignés ci-dessous, dans cet ordre.
 
+### Migration v2 — boucle 1 : ferraille bornée
+
+- supprimé toute apparition automatique de ferraille ; seuls les monstres en déposent, à hauteur
+  de leur récompense ;
+- ajouté une expiration exacte après 600 ticks (30 secondes), avec priorité au ramassage au tick
+  limite ;
+- ajouté l'événement `scrap-expired` et les tests de partie longue ; les récompenses de quête
+  continuent de créditer directement la caisse commune.
+
+### Migration v2 — boucles 2 à 4 : serveur autoritaire
+
+- ajouté `apps/server`, Colyseus et `TowerServerSession`; toutes les parties solo et coopératives
+  utilisent une unique simulation serveur à 20 Hz, sans repli local ;
+- ajouté roster réservé, attente de 15 secondes, reconnexion de 30 secondes, retrait volontaire,
+  abandon et conservation des gains des participants retirés ;
+- ajouté la migration `0006`, la RPC transactionnelle `finalize_game_run` réservée à
+  `service_role` et le test de deux finalisations PostgreSQL concurrentes ; le crédit navigateur
+  et son droit RPC ont été retirés ;
+- ajouté le conteneur `game-server`, le proxy HTTP/WebSocket `/game/`, un healthcheck et une
+  limite initiale de 512 Mio ;
+- ajouté traces `game.room`, propagation W3C, métriques serveur et logs bornés sans identité,
+  jeton, seed, `roomId` ou `runId` ;
+- affiné l'histogramme des ticks autour du budget de 1 ms avec quatorze seuils ciblés, sans
+  augmenter le nombre de buckets ni le coût du chemin de jeu ;
+- retiré la session locale/lockstep, les replays, empreintes P2P et métriques de simulation côté
+  navigateur ;
+- ajouté les scénarios 2/4 clients, coupures 10/31 secondes, pannes serveur/OTLP et la charge de
+  24 000 ticks avec quatre joueurs et 200 monstres.
+
 ---
 
 ## Correctifs de jouabilité — 1er août 2026

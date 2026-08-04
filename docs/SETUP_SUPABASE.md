@@ -1,11 +1,13 @@
 # Village Survivor — Configuration de Supabase
 
 > Statut : approuvé
-> Version du projet : v1
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
+> Dernière revue : 3 août 2026
 
-Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://supabase.com) sur le jeu (front Vite/TypeScript, 100 % navigateur). Il s'adresse à quelqu'un qui n'a jamais utilisé Supabase.
+Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://supabase.com) sur le
+client Vite et le serveur de jeu Node/TypeScript. Il s'adresse à quelqu'un qui n'a jamais utilisé
+Supabase.
 
 À la fin de ce guide, vous aurez :
 
@@ -14,7 +16,9 @@ Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://sup
 - la double authentification (TOTP) disponible pour les joueurs,
 - le jeu qui tourne en local sur `http://localhost:5173` et qui parle à Supabase.
 
-> Le code du jeu lit uniquement deux variables d'environnement Vite : `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`. Tout ce guide sert à obtenir ces deux valeurs et à configurer le projet Supabase qui va avec.
+> Le navigateur lit uniquement `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`. Le processus
+> `apps/server` lit séparément `JWT_SECRET`, `SERVICE_ROLE_KEY` et `POSTGREST_URL`; ces secrets ne
+> portent jamais le préfixe `VITE_`.
 
 ---
 
@@ -59,15 +63,18 @@ Ce guide explique, pas à pas, comment brancher un projet [Supabase](https://sup
 ### ⚠️ Sécurité : anon vs service_role
 
 - La clé **`anon public`** est conçue pour être exposée côté navigateur. Elle est **publique** et sans danger dans le front : la sécurité réelle des données est assurée par les **politiques RLS (Row Level Security)** définies dans la migration SQL (chaque utilisateur ne peut lire/écrire que ses propres lignes).
-- La clé **`service_role`**, visible dans le même écran, **contourne toutes les politiques RLS**. Elle ne doit **jamais** être utilisée dans le code front, ni committée dans le dépôt, ni mise dans un fichier `.env` chargé par Vite. Elle est réservée à un usage serveur (scripts d'administration, fonctions edge, etc.), qui n'existe pas dans ce projet 100 % navigateur — donc vous ne devriez jamais avoir besoin de la copier.
+- La clé **`service_role`**, visible dans le même écran, **contourne toutes les politiques RLS**.
+  Elle ne doit **jamais** être utilisée dans le code front, committée, journalisée ou préfixée
+  `VITE_`. Elle est requise uniquement dans l'environnement de `apps/server` pour charger les
+  bonus et finaliser les récompenses.
 - Le fichier `.env` est local à votre machine : vérifiez qu'il est bien listé dans `.gitignore` avant tout `git add`.
 
 ---
 
 ## 3. Appliquer les migrations SQL
 
-Le schéma est réparti en **cinq migrations**, dans `supabase/migrations/`. Elles doivent être
-appliquées **dans l'ordre** et **toutes** : le jeu utilise les cinq. Chacune est idempotente,
+Le schéma est réparti en **six migrations**, dans `supabase/migrations/`. Elles doivent être
+appliquées **dans l'ordre** et **toutes** : le jeu utilise les six. Chacune est idempotente,
 donc rejouable sans dommage.
 
 | Fichier | Contenu |
@@ -77,6 +84,7 @@ donc rejouable sans dommage.
 | `0003_account_gold_wallet.sql` | table `account_gold_wallets`, RPC `credit_account_gold` |
 | `0004_meta_progression.sql` | tables `meta_character_profiles`, `meta_owned_skills`, `meta_owned_gems` et les RPC de profils, bénédictions, compétences et forge |
 | `0005_require_mfa.sql` | fonction `mfa_satisfied()`, politiques restrictives exigeant la double authentification, garde sur `credit_account_gold` |
+| `0006_authoritative_game_rewards.sql` | tables `game_runs`/`game_run_rewards`, RPC transactionnelle `finalize_game_run` réservée à `service_role`, révocation de l'ancien crédit client |
 
 Chaque migration installe aussi ses propres politiques RLS. Sauter l'une d'elles produit des
 erreurs du type `relation "..." does not exist` au premier usage de la fonctionnalité concernée
@@ -90,10 +98,12 @@ erreurs du type `relation "..." does not exist` au premier usage de la fonctionn
 4. Collez-le dans le SQL Editor de Supabase.
 5. Cliquez sur **Run** (ou `Ctrl+Enter`) et vérifiez qu'aucune erreur n'apparaît.
 6. **Répétez les étapes 2 à 5 pour `0002_friends.sql`, `0003_account_gold_wallet.sql`,
-   `0004_meta_progression.sql` puis `0005_require_mfa.sql`, dans cet ordre.**
+   `0004_meta_progression.sql`, `0005_require_mfa.sql` puis
+   `0006_authoritative_game_rewards.sql`, dans cet ordre.**
 7. Allez dans **Table Editor** et confirmez la présence de `profiles`, `player_stats`,
    `coffre_balances`, `unlocked_spells`, `account_items`, `friend_requests`, `friendships`,
-   `account_gold_wallets`, `meta_character_profiles`, `meta_owned_skills` et `meta_owned_gems`.
+   `account_gold_wallets`, `meta_character_profiles`, `meta_owned_skills`, `meta_owned_gems`,
+   `game_runs` et `game_run_rewards`.
 
 ### Méthode B — CLI Supabase (utilisateurs avancés)
 
@@ -244,20 +254,28 @@ Le jeu propose la double authentification par application TOTP (Google Authentic
    pnpm install
    ```
 
-3. Lancez le serveur de développement du client :
+3. Dans un premier terminal, fournissez les secrets au serveur de jeu et lancez-le :
+
+   ```powershell
+   $env:JWT_SECRET = '<JWT secret du projet>'
+   $env:SERVICE_ROLE_KEY = '<service_role>'
+   $env:POSTGREST_URL = 'https://<ref-projet>.supabase.co/rest/v1'
+   pnpm --filter @village-survivor/server dev
+   ```
+
+4. Dans un second terminal, lancez le client :
 
    ```bash
    pnpm dev
    ```
 
-4. Ouvrez [http://127.0.0.1:5173](http://127.0.0.1:5173) dans votre navigateur. Le serveur
+5. Ouvrez [http://127.0.0.1:5173](http://127.0.0.1:5173) dans votre navigateur. Le serveur Vite
    n'écoute que sur cette adresse ; si vous préférez `http://localhost:5173`, ajoutez les deux
    formes aux **Redirect URLs** de l'étape 4.
 
-   > Ce guide ne concerne que le **lobby** : connexion, hub multijoueur et méta-progression. La
-   > page de jeu `http://127.0.0.1:5173/play.html` fonctionne en solo sans aucune configuration
-   > Supabase.
-5. Testez le flux complet :
+   > Toutes les parties, solo comprises, exigent le serveur de jeu et une session Supabase. Il
+   > n'existe aucun repli local.
+6. Testez le flux complet :
    - créez un compte par email/mot de passe,
    - activez la double authentification (scannez le QR code avec votre application TOTP),
    - déconnectez-vous, puis reconnectez-vous en saisissant le code TOTP,

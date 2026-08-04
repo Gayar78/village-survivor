@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const supabaseMock = vi.hoisted(() => ({
   getUser: vi.fn(),
   from: vi.fn(),
-  rpc: vi.fn(),
 }));
 
 vi.mock('./supabaseClient.js', () => ({
   supabase: {
     auth: { getUser: supabaseMock.getUser },
     from: supabaseMock.from,
-    rpc: supabaseMock.rpc,
   },
 }));
 
@@ -54,43 +52,6 @@ describe("portefeuille d'or du compte", () => {
 
     await expect(statsService.loadAccountGold()).rejects.toThrow(
       "Échec du chargement du solde d'or : database unavailable",
-    );
-  });
-
-  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
-    'refuse un crédit non sûr ou négatif (%s)',
-    async (amount) => {
-      await expect(statsService.creditAccountGold(amount)).rejects.toThrow('entier sûr');
-      expect(supabaseMock.rpc).not.toHaveBeenCalled();
-    },
-  );
-
-  it('crédite atomiquement via la RPC et renvoie le nouveau solde', async () => {
-    supabaseMock.rpc.mockResolvedValue({ data: 107, error: null });
-
-    await expect(statsService.creditAccountGold(7)).resolves.toBe(107);
-    expect(supabaseMock.rpc).toHaveBeenCalledWith('credit_account_gold', {
-      p_amount: 7,
-    });
-  });
-
-  it('accepte un crédit nul sans produire de nombre négatif', async () => {
-    supabaseMock.rpc.mockResolvedValue({ data: 100, error: null });
-
-    await expect(statsService.creditAccountGold(0)).resolves.toBe(100);
-  });
-
-  it('refuse un solde RPC qui ne peut pas être représenté sûrement', async () => {
-    supabaseMock.rpc.mockResolvedValue({ data: Number.MAX_SAFE_INTEGER + 1, error: null });
-
-    await expect(statsService.creditAccountGold(1)).rejects.toThrow('solde');
-  });
-
-  it('propage une erreur lisible de crédit Supabase', async () => {
-    supabaseMock.rpc.mockResolvedValue({ data: null, error: new Error('rpc failed') });
-
-    await expect(statsService.creditAccountGold(5)).rejects.toThrow(
-      "Impossible de créditer l'or du compte : rpc failed",
     );
   });
 });

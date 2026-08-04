@@ -2,11 +2,11 @@ import type { TowerInput } from '@village-survivor/protocol';
 import { TOWER_ENDGAME_TIERS } from '@village-survivor/content';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/index.js';
+import { TowerSimulation } from '../src/index.js';
 
 const idle: TowerInput = { sequence: 0, moveX: 0, moveY: 0, aimX: 1, aimY: 0 };
 
-describe('Tower Timelands lockstep', () => {
+describe('Tower Timelands authoritative simulation', () => {
   it('entre une seule fois, invoque un Warden unique et gele les monstres existants', () => {
     const simulation = new TowerSimulation('timelands-entry');
     simulation.start();
@@ -43,9 +43,6 @@ describe('Tower Timelands lockstep', () => {
       first.step({ 'player-1': idle });
       second.step({ 'player-1': idle });
     }
-    expect(createTowerStateFingerprint(second.createSnapshot())).toBe(
-      createTowerStateFingerprint(first.createSnapshot()),
-    );
     expect(second.createSnapshot()).toEqual(first.createSnapshot());
   });
 

@@ -96,8 +96,8 @@ import {
   monsterPowerTier,
   monsterThreatBudgetScale,
   MULTISHOT_SPREAD_RAD,
-  NATURAL_SCRAP,
   PLAYER,
+  SCRAP_LIFETIME_TICKS,
   TICK_MS,
   TIMELANDS_START_WAVE,
   TOWER_BIOMES,
@@ -235,7 +235,7 @@ function toRadians(degrees: number): number {
  *
  * Résolution exacte de |from + t·(to − from) − centre|² = radius², puis conservation de la
  * première racine si elle tombe dans le segment. N'utilise que des opérations IEEE-754 exactes,
- * ce qui préserve le déterminisme dont dépend le lockstep coopératif.
+ * ce qui préserve la reproductibilité de la simulation autoritaire et de ses tests.
  */
 function segmentCircleEntry(
   from: Vector2,
@@ -412,7 +412,6 @@ export class TowerSimulation {
   private readonly temporalHistory: TemporalHistoryFrame[] = [];
 
   private waveTimerMs = 0;
-  private naturalScrapTimerMs = 0;
 
   public constructor(seed: string, options?: TowerSimulationOptions) {
     this.seed = seed;
@@ -610,7 +609,7 @@ export class TowerSimulation {
     }));
 
     for (const { player, input } of entries) {
-      // Entrée persistante : elle est remplacée à chaque tick lockstep. La portée,
+      // Entrée persistante : elle est remplacée à chaque tick autoritaire. La portée,
       // l'état du joueur et celui de la tourelle restent validés dynamiquement.
       player.turretWorkshopOpen = input.turretWorkshopOpen === true;
       this.updateDownedState(player, deltaMs);
@@ -635,10 +634,10 @@ export class TowerSimulation {
     this.updateMonsters(deltaMs, deltaSeconds);
     this.updateMonsterZones(deltaMs);
     this.updateScrapPickup();
+    this.updateScrapExpiration();
     this.removeDeadMonsters();
 
     this.updateWaves(deltaMs);
-    this.updateNaturalScrap(deltaMs);
 
     for (const { player, input } of entries) {
       if (this.temporalScaleForPlayer(player.id) <= 0) {
@@ -2585,6 +2584,7 @@ export class TowerSimulation {
       id: `scrap-${this.scrapCounter}`,
       position: { x: position.x, y: position.y },
       amount,
+      expiresAtTick: this.tick + SCRAP_LIFETIME_TICKS,
     });
   }
 
@@ -2608,27 +2608,14 @@ export class TowerSimulation {
     }
   }
 
-  private updateNaturalScrap(deltaMs: number): void {
-    this.naturalScrapTimerMs += deltaMs;
-    while (this.naturalScrapTimerMs >= NATURAL_SCRAP.intervalMs) {
-      this.naturalScrapTimerMs -= NATURAL_SCRAP.intervalMs;
-      for (let index = 0; index < NATURAL_SCRAP.count; index += 1) {
-        this.dropScrap(this.randomNaturalScrapPosition(), NATURAL_SCRAP.amount);
+  private updateScrapExpiration(): void {
+    for (let index = this.scraps.length - 1; index >= 0; index -= 1) {
+      const scrap = this.scraps[index];
+      if (scrap !== undefined && this.tick >= scrap.expiresAtTick) {
+        this.addEvent('scrap-expired', { position: scrap.position, amount: scrap.amount });
+        this.scraps.splice(index, 1);
       }
     }
-  }
-
-  private randomNaturalScrapPosition(): Vector2 {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      const angle = this.random.between(0, Math.PI * 2);
-      const radius = this.random.between(NATURAL_SCRAP.minRadiusFromHeart, WORLD.spawnZoneRadius);
-      const unit = exactUnitFromAngle(angle);
-      const position = { x: unit.x * radius, y: unit.y * radius };
-      if (distance(position, this.heart.position) >= NATURAL_SCRAP.minRadiusFromHeart) {
-        return position;
-      }
-    }
-    return { x: NATURAL_SCRAP.minRadiusFromHeart, y: 0 };
   }
 
   // ── Vagues ──────────────────────────────────────────────────────────────────
@@ -3238,7 +3225,7 @@ export class TowerSimulation {
   }
 
   /**
-   * Valide l'intention lockstep contre l'état courant du monde. Ce calcul reste
+   * Valide l'intention réseau contre l'état courant du monde. Ce calcul reste
    * dynamique : la destruction de la tourelle ou une sortie de portée pendant le
    * tick retire immédiatement la protection.
    */

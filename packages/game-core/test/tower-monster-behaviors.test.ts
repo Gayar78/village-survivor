@@ -2,7 +2,7 @@ import { TOWER_ACTIVE_MONSTERS, type TowerMonsterSignature } from '@village-surv
 import type { TowerInput, TowerMonsterKind } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 import { monsterBehaviorProfile } from '../src/tower/monster-behaviors.js';
 import type { MutableTowerMonster, MutableTowerPlayer } from '../src/tower/state.js';
 
@@ -103,7 +103,7 @@ describe('Tower Torri monster behavior primitives', () => {
     expect(mummy.hp).toBe(0);
   });
 
-  it('projette les zones persistantes et les boucliers dans le snapshot lockstep', () => {
+  it('projette les zones persistantes et les boucliers dans le snapshot serveur', () => {
     const zones = new TowerSimulation('torri-persistent-zones');
     zones.start();
     const player = internals(zones).players[0];
@@ -128,10 +128,10 @@ describe('Tower Torri monster behavior primitives', () => {
   });
 
   it('reste strictement dÃ©terministe avec mouvements, invocations et tÃ©lÃ©graphes', () => {
-    const first = new TowerSimulation('torri-abilities-lockstep', {
+    const first = new TowerSimulation('torri-abilities-determinism', {
       playerIds: ['alpha', 'bravo'],
     });
-    const second = new TowerSimulation('torri-abilities-lockstep', {
+    const second = new TowerSimulation('torri-abilities-determinism', {
       playerIds: ['alpha', 'bravo'],
     });
     first.start();
@@ -155,9 +155,7 @@ describe('Tower Torri monster behavior primitives', () => {
       const inputs = { alpha: input(tick), bravo: input(tick) };
       first.step(inputs);
       second.step(inputs);
-      expect(createTowerStateFingerprint(second.createSnapshot())).toBe(
-        createTowerStateFingerprint(first.createSnapshot()),
-      );
+      expect(second.createSnapshot()).toEqual(first.createSnapshot());
     }
   });
 

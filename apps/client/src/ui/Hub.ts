@@ -1,8 +1,7 @@
 import { friendsService } from '../hub/friendsService.js';
-import { isActiveGameDescriptor, realtimeService } from '../hub/realtimeService.js';
-import type { MetaBuildModifiers } from '@village-survivor/protocol';
+import { realtimeService } from '../hub/realtimeService.js';
+import { createTowerServerRoom } from '../net/TowerServerSession.js';
 import {
-  type ActiveGameDescriptor,
   HUB_CAPACITY,
   type HubInvite,
   type HubMember,
@@ -10,7 +9,6 @@ import {
   type LaunchPayload,
   type PresenceStatus,
 } from '../hub/types.js';
-import { randomSeed } from '../randomSeed.js';
 import { FriendsPanel } from './FriendsPanel.js';
 import { Toasts } from './Toasts.js';
 import { gameUrl } from '../gameUrl.js';
@@ -19,12 +17,11 @@ import { gameUrl } from '../gameUrl.js';
 interface HubSession {
   userId: string;
   displayName: string;
-  metaBuild?: Partial<MetaBuildModifiers>;
 }
 
 /** Callbacks fournis par l'orchestrateur (main.ts). */
 export interface HubCallbacks {
-  /** Démarre la partie localement avec la graine + le nombre de joueurs. */
+  /** Démarre la partie localement avec la référence opaque de room. */
   onLaunch: (payload: LaunchPayload) => void;
   session: HubSession;
 }
@@ -33,7 +30,6 @@ export interface HubCallbacks {
 interface PresenceSnapshot {
   status: PresenceStatus;
   hubCode?: string;
-  game?: ActiveGameDescriptor;
 }
 
 /** Échappe le texte dynamique injecté dans du innerHTML. */
@@ -64,15 +60,10 @@ function initialsOf(name: string): string {
 }
 
 /** Construit un instantané de présence sans propriété optionnelle undefined. */
-function toSnapshot(
-  status: PresenceStatus,
-  hubCode: string | undefined,
-  game: ActiveGameDescriptor | undefined,
-): PresenceSnapshot {
+function toSnapshot(status: PresenceStatus, hubCode: string | undefined): PresenceSnapshot {
   return {
     status,
     ...(hubCode === undefined ? {} : { hubCode }),
-    ...(game === undefined ? {} : { game }),
   };
 }
 
@@ -143,7 +134,7 @@ export class Hub {
       realtimeService.onPresence((entries) => {
         const snapshot = new Map<string, PresenceSnapshot>();
         entries.forEach((entry, userId) => {
-          snapshot.set(userId, toSnapshot(entry.status, entry.hubCode, entry.game));
+          snapshot.set(userId, toSnapshot(entry.status, entry.hubCode));
         });
         this.presence = snapshot;
         this.friendsPanel?.updatePresence();
@@ -194,11 +185,9 @@ export class Hub {
     const friendsMount = this.element.querySelector<HTMLElement>('#hub-friends-mount');
     if (friendsMount) {
       this.friendsPanel = new FriendsPanel(friendsMount, {
-        currentUserId: this.session.userId,
         presenceProvider: () => this.presenceProvider(),
         onJoinHub: (code) => this.joinHub(code),
         onInvite: (friendUserId) => this.inviteFriend(friendUserId),
-        onRejoinGame: (game) => this.rejoinGame(game),
       });
     }
 
@@ -344,34 +333,9 @@ export class Hub {
   private presenceProvider(): Map<string, PresenceSnapshot> {
     const copy = new Map<string, PresenceSnapshot>();
     this.presence.forEach((entry, userId) => {
-      copy.set(userId, toSnapshot(entry.status, entry.hubCode, entry.game));
+      copy.set(userId, toSnapshot(entry.status, entry.hubCode));
     });
     return copy;
-  }
-
-  private rejoinGame(game: ActiveGameDescriptor): void {
-    if (
-      !isActiveGameDescriptor(game) ||
-      !game.roster.some((entry) => entry.id === this.session.userId)
-    ) {
-      this.toasts?.info('Cette partie ne peut plus être rejointe.');
-      return;
-    }
-    sessionStorage.setItem(
-      'vs-coop-netcode',
-      JSON.stringify({
-        seed: game.seed,
-        code: game.code,
-        hostId: game.hostId,
-        me: this.session.userId,
-        roster: game.roster,
-        ...(game.metaBuildsByPlayerId === undefined
-          ? {}
-          : { metaBuildsByPlayerId: game.metaBuildsByPlayerId }),
-        rejoin: true,
-      }),
-    );
-    location.assign(gameUrl());
   }
 
   private copyCode(): void {
@@ -393,47 +357,35 @@ export class Hub {
     if (!this.isChief() || this.launchInFlight) {
       return;
     }
-    // Roster ordonné (chef en premier) : chaque membre du hub devient un avatar. Les
-    // identifiants d'avatar sont les userId, l'hôte est le chef (= le joueur local ici).
     const members = this.members();
     if (members.length < 1 || members.length > HUB_CAPACITY) {
       this.error = `Impossible de lancer au-delà de ${HUB_CAPACITY} joueurs.`;
       this.renderHub();
       return;
     }
-    const roster = [...members]
-      .sort((a, b) => (a.isChief === b.isChief ? 0 : a.isChief ? -1 : 1))
-      .map((member) => ({
-        id: member.userId,
-        name: member.displayName,
-        ...(member.metaBuild === undefined ? {} : { metaBuild: member.metaBuild }),
-      }));
-    const code = this.currentCode();
-    const payload: LaunchPayload = {
-      seed: randomSeed(),
-      playerCount: members.length,
-      ...(code.length > 0 && roster.length > 0
-        ? { code, hostId: this.session.userId, roster }
-        : {}),
-    };
     this.launchInFlight = true;
     this.error = null;
     this.renderHub();
     void (async () => {
       try {
-        // Le solo reste entièrement local et ne dépend pas de Supabase Realtime.
-        if (members.length > 1) {
-          await realtimeService.launch(payload);
+        if (members.length === 1) {
+          location.assign(gameUrl());
+          return;
         }
+        const created = await createTowerServerRoom({
+          mode: 'coop',
+          rosterUserIds: members.map(({ userId }) => userId),
+        });
+        const payload: LaunchPayload = { roomId: created.roomId };
+        await realtimeService.launch(payload);
+        // Le broadcast n'est pas renvoyé au chef : son lancement reste local.
+        this.callbacks.onLaunch(payload);
       } catch (error) {
         this.launchInFlight = false;
         this.error = this.describe(error);
         this.renderHub();
         return;
       }
-      // Démarrage local du chef. Les membres non-chef sont démarrés par main.ts
-      // via l'abonnement réseau au lancement (hors périmètre de ce lot).
-      this.callbacks.onLaunch(payload);
     })();
   }
 

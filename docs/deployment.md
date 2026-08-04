@@ -1,24 +1,23 @@
 # Village Survivor — Déploiement
 
-> Statut : approuvé
-> Version du projet : v1
+> Statut : déploiement v2 implémenté — validation finale sur deux postes en attente
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
-> État : déploiement LAN auto-hébergé fonctionnel, aucun hébergement public
+> Dernière revue : 3 août 2026
+> État : client, Supabase et serveur de jeu réunis dans la stack LAN canonique
 
 ## 1. État réel
 
 Le client produit un site statique dans `apps/client/dist`, composé de deux pages :
 `index.html` (lobby) et `play.html` (partie).
 
-Un **environnement LAN auto-hébergé existe et fonctionne** depuis le 31 juillet 2026 : le jeu y
-est jouable en multijoueur sans aucune dépendance à internet (voir §7). En revanche, aucun
-**hébergement public** n'est configuré : ni compte Cloudflare, ni URL publique, ni pipeline de
-publication.
+L'environnement LAN auto-hébergé réunit le client, Supabase et `game-server`. Le serveur Node
+est construit depuis `apps/server/Dockerfile`, limité à 512 Mio, contrôlé par `/health`, et Nginx
+publie HTTP/WebSocket sous `/game/` sur la même origine. Une panne du processus interrompt les
+rooms en mémoire et le client revient au lobby ; aucune reprise de room n'est promise.
 
-Il n'existe aucun serveur de jeu à déployer — la simulation tourne dans le navigateur et la
-coopération est pair-à-pair. Le seul service externe est **Supabase**, qui n'est pas déployé par
-ce dépôt mais configuré à la main dans son tableau de bord.
+Aucun hébergement public n'est configuré : ni compte Cloudflare, ni URL publique, ni pipeline
+de publication.
 
 ## 2. Intégration continue
 
@@ -41,44 +40,48 @@ Les tests navigateur avaient été retirés le 27 juillet 2026, quand l'authenti
 obligatoire est apparue : l'application affichait d'abord l'écran de connexion, que les
 scénarios ne connaissaient pas, et la CI n'a pas de clés Supabase.
 
-**Le smoke test a été rétabli le 31 juillet 2026** en le faisant viser `play.html` plutôt que
-`/`. Cette page démarre sans projet Supabase, ce qui rend le test exécutable partout, y compris
-en CI. Il vérifie que le jeu se lance réellement dans un navigateur, que le build n'expose
-aucune API de débogage et que la graine reçue par l'URL n'est jamais interprétée comme du HTML.
+Le smoke vise `play.html` avec le vrai serveur Colyseus, un faux PostgREST local et des JWT signés
+par un secret de test. Il vérifie le parcours solo, les rooms coopératives de deux et quatre
+clients, l'annulation d'un roster partiel, les coupures de dix et trente et une secondes, le refus
+d'un JWT invalide, l'impossibilité de forger une room par le matchmaker public et l'absence d'API
+de débogage. Aucun bypass d'auth n'existe dans le build.
 
-**Ce qui n'est toujours pas couvert** : le lobby. Connexion, hub et lancement coopératif n'ont
-aucun test de bout en bout, faute de mode invité ou de mock d'authentification.
+**Ce qui n'est toujours pas couvert** : l'interface du lobby de bout en bout. Son contrat de
+broadcast `roomId` est testé, puis les clients Colyseus réels couvrent l'admission et la partie.
 
 Aucune étape de publication n'existe, donc aucune règle du type « un échec interdit le
 déploiement » ne s'applique encore.
 
 ## 3. Variables d'environnement
 
-Le client lit exactement deux variables, chargées depuis un `.env` **à la racine du monorepo**
-(et non dans `apps/client` — voir le champ `envDir` de la configuration Vite) :
+Le client lit les variables publiques suivantes depuis le `.env` à la racine :
 
 | Variable | Rôle |
 |---|---|
 | `VITE_SUPABASE_URL` | adresse du projet Supabase |
 | `VITE_SUPABASE_ANON_KEY` | clé publique `anon` |
+| `VITE_GAME_SERVER_URL` | optionnelle : origine du serveur ; défaut port 2567 en local, `/game` déployé |
 
 Ces deux valeurs sont **intégrées au paquet JavaScript** et donc publiques. C'est le
 fonctionnement prévu de Supabase : la sécurité repose sur les politiques RLS, pas sur le secret
 de la clé `anon`.
 
-La clé `service_role`, elle, contourne toutes les politiques RLS. Elle ne doit jamais figurer
-dans un `.env` lu par Vite, ni dans le dépôt, ni dans un bundle. Aucun composant de ce projet
-n'en a besoin.
+Le processus `apps/server` lit `JWT_SECRET`, `SERVICE_ROLE_KEY`, `POSTGREST_URL`, `PORT`,
+`APP_LOG_LEVEL` et, facultativement, `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Ces noms ne portent jamais `VITE_` : Vite ne les expose pas au bundle. La clé `service_role`
+contourne les RLS et reste strictement côté serveur.
 
-Sans ces variables, `play.html` reste jouable en solo ; `index.html` affiche « Configuration
-requise ».
+Sans session Supabase ou sans serveur, `play.html` affiche une erreur lisible et ne démarre
+aucune simulation locale. Il n'existe plus de mode solo hors ligne.
 
 ## 4. Base de données
 
-Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — cinq fichiers SQL
-idempotents. **Leur application est manuelle** : éditeur SQL du tableau de bord, ou
-`supabase db push`. Aucun automatisme ne les applique, et rien ne vérifie qu'un environnement est
-à jour. Voir [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md).
+Le schéma vit dans [`supabase/migrations/`](../supabase/migrations) — six fichiers SQL
+idempotents. Sur la stack LAN, `deploy/lan/apply-migrations.ps1` les applique dans l'ordre après
+le démarrage de GoTrue. `0006_authoritative_game_rewards.sql` ajoute le journal de runs et la RPC
+transactionnelle réservée à `service_role`, puis révoque l'ancien crédit client. Sur Supabase
+hébergé, l'application reste manuelle via l'éditeur SQL ou `supabase db push`. Voir
+[`SETUP_SUPABASE.md`](SETUP_SUPABASE.md).
 
 Une mise à jour du client qui suppose une migration non appliquée casse silencieusement les
 fonctionnalités concernées.
@@ -88,6 +91,10 @@ fonctionnalités concernées.
 ```bash
 pnpm build
 ```
+
+Cette commande compile désormais le client, les packages et `apps/server`. Le serveur produit
+du JavaScript dans `apps/server/dist`; en développement la commande
+`pnpm --filter @village-survivor/server dev` utilise `tsx`.
 
 Points à connaître :
 
@@ -102,8 +109,10 @@ ligne publique.
 
 ## 6. Cible d'hébergement
 
-La cible reste **Cloudflare Workers Static Assets** pour un site statique, décidée au cadrage et
-jamais remise en cause. Aucun serveur n'est à héberger.
+Le client statique peut toujours être publié séparément, mais une partie exige désormais un
+serveur Node/Colyseus. La cible LAN approuvée place ce processus derrière Nginx sous `/game/`.
+Un hébergement public futur devra donc fournir WebSocket et processus Node ; Static Assets seul
+ne suffit plus.
 
 Le déploiement suppose, en plus de la mise en ligne des fichiers :
 
@@ -116,8 +125,8 @@ Le déploiement suppose, en plus de la mise en ligne des fichiers :
 
 | Environnement | Client | Supabase | État |
 |---|---|---|---|
-| Local | `pnpm dev` sur `127.0.0.1:5173` | projet personnel du développeur | fonctionnel |
-| **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080` | stack Docker locale | **fonctionnel** |
+| Local | Vite 5173 + jeu 2567 | projet personnel du développeur | solo et coop autoritaires fonctionnels |
+| **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080`, `/game/` | stack Docker locale | stack complète saine, validation deux postes à faire |
 | Preview / staging | non configuré | non configuré | inexistant |
 | Production | non configuré | non configuré | inexistant |
 
@@ -130,7 +139,7 @@ origine** — ce qui supprime toute question de CORS.
 
 Procédure complète, pièges et portée de sécurité : [`deploy/lan/README.md`](../deploy/lan/README.md).
 
-Trois points structurants en découlent :
+Quatre points structurants en découlent :
 
 - **l'adresse du serveur est figée dans le paquet** par Vite, donc changer d'adresse impose de
   reconstruire le client ;
@@ -139,6 +148,8 @@ Trois points structurants en découlent :
 - **les connexions OAuth ne fonctionnent pas en LAN** : servi en HTTP clair, le navigateur
   n'accorde pas de contexte sécurisé, et les fournisseurs ne peuvent pas rappeler une adresse
   privée. La connexion par courriel et mot de passe, elle, fonctionne.
+- le proxy `/game/` conserve l'upgrade WebSocket et retire ce préfixe avant de transmettre au
+  serveur ; seul le port Nginx est exposé aux navigateurs.
 
 Un environnement de preview partageant le projet Supabase de production partagerait aussi ses
 comptes et ses données. Si des previews sont mises en place, elles devront viser un projet

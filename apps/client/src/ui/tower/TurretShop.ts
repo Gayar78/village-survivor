@@ -35,7 +35,7 @@ function escapeHtml(value: string): string {
 /**
  * Atelier de défense ouvert uniquement à portée d’une tourelle. Toutes les actions
  * restent de simples chaînes passées au callback : le client ne modifie jamais l’état
- * local et la session garde donc son chemin lockstep/idempotent habituel.
+ * local et la session garde donc son chemin d'action serveur idempotent habituel.
  */
 export class TurretShop {
   private readonly element: HTMLElement;

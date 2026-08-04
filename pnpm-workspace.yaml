@@ -4,9 +4,21 @@ packages:
 
 minimumReleaseAge: 1440
 
+# Colyseus publie plusieurs transports comme peers. Le projet déclare explicitement le
+# transport WebSocket qu'il utilise et n'installe pas implicitement uWebSockets.js.
+autoInstallPeers: false
+
+peerDependencyRules:
+  ignoreMissing:
+    - '@colyseus/uwebsockets-transport'
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+
 overrides:
   # GHSA-mh99-v99m-4gvg — déni de service par expansion non bornée. La faille arrive par
   # minimatch, tiré par ESLint : elle ne touche donc que l'outillage de développement et
   # l'intégration continue, jamais le paquet livré au navigateur. Corrigée en 5.0.8.
   # L'override peut disparaître dès qu'ESLint aura relevé sa propre contrainte.
-  brace-expansion: '>=5.0.8'
+  brace-expansion: 5.0.8

@@ -46,7 +46,7 @@ export interface MutableTowerPlayer {
   upgradeChoices: TowerUpgradeCard[];
   downedRemainingMs: number;
   hostileSlowRemainingMs: number;
-  /** Intention persistante reçue par l'entrée lockstep courante. */
+  /** Intention persistante reçue par l'entrée autoritaire courante. */
   turretWorkshopOpen: boolean;
   activeWeaponId: TowerWeaponId;
   weapons: MutableTowerWeapon[];
@@ -101,7 +101,13 @@ export interface MutableTowerMonster {
   burnOwnerId: string | undefined;
   slowRemainingMs: number;
   slowStacks: number;
-  /** Prevents any death explosion from being applied twice. */
+  /**
+   * Monstre explosif uniquement : sa charge a-t-elle déjà sauté ?
+   *
+   * Les points de vie ne peuvent pas servir de garde d'unicité, `damageMonster` les mettant à
+   * zéro avant d'appeler `killMonster`. Ce drapeau n'est pas projeté dans l'état public et
+   * ne change donc pas l'état de gameplay projeté.
+   */
   detonated: boolean;
   /** Etat public des interactions Timelands; toute transition est projetee au snapshot. */
   temporal: TowerMonsterTemporalState | undefined;
@@ -197,4 +203,6 @@ export interface MutableScrap {
   id: string;
   position: Vector2;
   amount: number;
+  /** Tick auquel le tas est retiré s'il n'a pas été ramassé. Interne à la simulation. */
+  expiresAtTick: number;
 }

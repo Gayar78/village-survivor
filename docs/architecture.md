@@ -1,314 +1,168 @@
-# Village Survivor — Architecture
+# Village Survivor — Architecture v2
 
-> Statut : approuvé
-> Version du projet : v1
+> Statut : architecture implémentée — validation LAN finale à réaliser
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 31 juillet 2026
-> Portée : le jeu « Tower », son lobby, sa coopération et sa persistance de compte
+> Dernière revue : 3 août 2026
+> Portée : jeu Tower, lobby, coopération, compte et exploitation LAN
 
-Relevé du code, et non de l'intention.
+## 1. Décision structurante
 
-Ce document décrit l'architecture réellement implémentée. Là où elle s'écarte du
-[cadrage technique initial](requirements/initial-technical-baseline.md), l'écart est signalé
-et renvoyé vers l'ADR qui le consigne.
+Toutes les parties, solo comprises, passent par un serveur de jeu autoritaire. Le navigateur
+reste responsable des entrées, du rendu et des interfaces. `TowerSimulation` demeure l'unique
+implémentation des règles, mais elle s'exécute exclusivement dans une `TowerRoom` en production.
 
-## 1. État actuel en une phrase
+Cette cible remplace le lockstep P2P d'ADR-0008. La divergence coopérative constatée a montré
+qu'un calcul répliqué sur plusieurs navigateurs est une autorité fragile. Le serveur unique
+supprime cette classe de divergence et centralise la validation, le cycle de vie et les
+récompenses. Voir [ADR-0011](decisions/ADR-0011-authoritative-game-server.md).
 
-Un client web à deux pages exécute lui-même toute la simulation ; il n'existe aucun serveur de
-jeu, et Supabase fournit l'authentification, une progression de compte persistante et le bus de
-messages de la coopération.
-
-## 2. Composants
+## 2. Vue des composants
 
 ```mermaid
-flowchart TD
-    subgraph Navigateur
-      Lobby["index.html → main.ts\nauth, menu, hub, méta-build"]
-      Jeu["play.html → play.ts\npartie Tower"]
-      Jeu --> Port["Port TowerSession"]
-      Port --> Local["TowerLocalSession\n(solo)"]
-      Port --> Coop["Session lockstep P2P\n(coopération)"]
-      Local --> Core["TowerSimulation\ngame-core"]
-      Coop --> Core
-      Jeu --> Scene["TowerScene\nrendu Phaser"]
-    end
-    Lobby -->|"session, profils, or"| Supabase[("Supabase\nauth · Postgres · Realtime")]
-    Coop -->|"entrées + empreintes"| Supabase
-    Jeu -->|"or de fin de partie"| Supabase
+flowchart LR
+    Browser["Navigateur\nLobby + TowerServerSession + Phaser"]
+    Gateway["Nginx\norigine unique"]
+    Server["apps/server\nHTTP + Colyseus"]
+    Room["TowerRoom\n50 ms"]
+    Core["TowerSimulation\ngame-core"]
+    DB[("Supabase\nAuth + PostgREST + Realtime")]
+    OTel["Collecteur OTLP"]
+
+    Browser -->|"POST /game/rooms + WebSocket /game/"| Gateway
+    Gateway --> Server
+    Server --> Room --> Core
+    Browser -->|"compte et lobby"| Gateway --> DB
+    Server -->|"JWT, bonus, récompenses"| DB
+    Browser -. "traces client" .-> Gateway
+    Server -. "traces et métriques" .-> OTel
 ```
 
-| Composant | Responsabilité | Remarque |
-|---|---|---|
-| `apps/client` | entrées, rendu Phaser, UI, lobby, réseau, accès Supabase | contient aussi le netcode |
-| `packages/game-core` | `TowerSimulation` : état et règles déterministes à pas fixe | aucune dépendance navigateur |
-| `packages/protocol` | contrats sérialisables : entrées, état public, catalogue méta | aucune règle de jeu |
-| `packages/content` | catalogue partagé : armes, boutique, modules, quêtes, offres | **sans schéma ni validation** |
-| `supabase/migrations` | schéma Postgres, RLS et RPC | appliqué manuellement |
-| `apps/client/src/observability` | télémétrie : traces, métriques, journaux corrélés | **jamais importé par `game-core`** |
+| Composant | Responsabilité |
+|---|---|
+| `apps/client` | lobby, commandes, interpolation, prédiction visuelle, rendu et UI |
+| `apps/server` | authentification, création/admission, rooms, cadence, reconnexion, récompenses |
+| `packages/game-core` | règles déterministes et état de simulation, sans I/O |
+| `packages/protocol` | contrats réseau et projections publiques sérialisables |
+| `packages/content` | catalogues de jeu partagés |
+| Supabase | comptes, lobby, bonus persistants, registre des parties et récompenses |
+| Nginx | origine unique pour web, REST, Realtime, OTLP et `/game/` |
 
-`apps/server` n'existe pas et n'est plus prévu à court terme — voir
-[ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md).
+## 3. Création et admission
 
-## 3. Les deux pages
-
-Le client est une application à **deux points d'entrée** déclarés dans
-[`apps/client/vite.config.ts`](../apps/client/vite.config.ts). Cette séparation est
-structurante, notamment parce que les deux pages n'ont pas les mêmes prérequis.
-
-**`index.html` → `src/main.ts` — le lobby.** Authentification, menu principal, profil,
-paramètres visuels, compendium, atelier de méta-build et hub multijoueur. **Cette page exige un
-projet Supabase configuré** : sans `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`, elle affiche
-un écran « Configuration requise » et rien d'autre n'est accessible.
-
-**`play.html` → `src/play.ts` — la partie.** Assemble la session, la scène de rendu, le HUD, la
-boutique de tourelle, l'écran de montée de niveau et la capture des entrées. **Cette page
-fonctionne sans Supabase** : ses appels au compte sont tardifs et enveloppés, si bien qu'une
-partie solo démarre et se termine normalement hors ligne. Le lobby lui transmet la graine par
-l'URL, et la configuration coopérative par `sessionStorage`.
-
-## 4. Frontière de session
-
-Le client dépend d'un port `TowerSession`, de même forme que le `GameSession` défini par
-[ADR-0003](decisions/ADR-0003-game-session-boundary.md) :
+`POST /game/rooms` reçoit un JWT Supabase et l'un des corps fermés suivants :
 
 ```typescript
-export interface TowerSession {
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  sendInput(input: TowerInput): void;
-  subscribe(listener: (state: TowerGameState) => void): () => void;
-}
+type CreateTowerRoomRequest =
+  | { mode: "solo" }
+  | { mode: "coop"; rosterUserIds: string[] };
+
+type CreateTowerRoomResponse = { roomId: string; expiresAt: string };
 ```
 
-Deux implémentations le satisfont, toutes deux dans
-[`apps/client/src/net/towerSession.ts`](../apps/client/src/net/towerSession.ts) :
-`TowerLocalSession` pour le solo, et une session lockstep pour la coopération. `TowerScene` ne
-connaît que le port : elle fonctionne à l'identique dans les deux modes. Le principe d'ADR-0003
-est donc respecté, et le jour où un serveur autoritaire apparaîtra, il remplacera un adaptateur.
+Le serveur vérifie le JWT, produit `runId` et seed, charge les bonus via PostgREST avec la clé
+`service_role`, puis réserve les identités. Une room solo attend une identité. Une room coop
+attend exactement le roster réservé pendant 15 secondes ; un membre absent annule le départ.
+Le chef diffuse uniquement `roomId` dans le lobby Supabase.
+La présence du hub contient identité d'affichage, rôle et ordre d'arrivée, jamais les bonus
+persistants ; le serveur recharge ceux-ci directement à la création.
 
-La session ajoute trois méthodes de rendu : `getRenderAlpha()` — la fraction de progression vers
-le prochain tick, pour interpoler l'affichage —, `getLocalRenderPosition()` — la position à
-laquelle dessiner l'avatar local, en avance sur l'état reçu — et `onConnectionIssue()`, qui
-remonte les incidents réseau sans coupler le netcode au DOM.
+Le jeton reste en mémoire le temps de créer/rejoindre la room. Il n'est écrit ni dans
+`sessionStorage`, ni dans les logs, ni dans la télémétrie.
 
-## 5. Modèle d'exécution
+## 4. Autorité et protocole
 
-### Temps
+Chaque `TowerRoom` possède une seule `TowerSimulation` et l'avance toutes les 50 ms. L'état
+Schema contient phase, tick, monde, joueurs, Cœur, tourelles, monstres, projectiles, ferraille,
+vague, boutiques et quête. Les événements éphémères empruntent un message fiable, ordonné et
+dédupliqué par l'identifiant de `TowerEvent`.
+La seed reste interne à la simulation serveur. L'adaptateur fournit au contrat de rendu une
+valeur sentinelle non exploitable, sans révéler la graine autoritaire.
 
-La simulation avance par ticks fixes de **50 ms (20 Hz)**, constante partagée entre le moteur et
-le netcode. Un accumulateur convertit le temps réel en zéro, un ou plusieurs ticks, avec un
-plafond d'avance par frame. Aucune règle ne lit l'horloge système.
+Le contrat partagé contient `players` mais pas l'alias local `player`. `TowerServerSession`
+implémente `TowerRenderableSession`, reconstruit `player` depuis l'identité locale et conserve
+la scène, le HUD et les boutiques indépendants du transport.
 
-### Déterminisme
+Deux familles de messages remontent au serveur :
 
-Le déterminisme n'est pas une commodité de test : le lockstep en dépend entièrement.
+- `control`, remplaçable, 30/s maximum : séquence, mouvement, visée et tir continu. WebSocket
+  étant fiable et Colyseus n'envoyant pas `sendUnreliable`, le client utilise `send`; le serveur
+  rejette les séquences périmées et neutralise après 250 ms ;
+- `action`, fiable, 10/s maximum : union fermée niveau/arme/boutique, `actionId` et file de 16.
 
-Trois conditions sont **tenues** : `packages/game-core/src` ne contient aucun appel à
-`Math.random`, `Date.now` ou `performance.now`, ni aucun accès au DOM. Tout l'aléatoire de
-gameplay passe par `SeededRandom`, initialisé par la graine de la partie.
+Le serveur refuse les séquences anciennes, nombres non finis, bornes dépassées, actions
+inconnues, duplications et dépassements de fréquence. Il conserve une commande continue au plus
+250 ms, puis applique une entrée neutre.
 
-Ces trois conditions ne suffisent pas, et une divergence réelle l'a montré.
+## 5. Rendu et latence
 
-> **Divergence constatée le 1er août 2026**, en partie à plusieurs postes : empreintes
-> différentes au tick 2160, soit après une minute quarante-huit de jeu.
->
-> L'empreinte est **d'une sévérité maximale** : `createTowerStateFingerprint` sérialise tous les
-> champs publics de l'état en pleine précision, sans arrondi ni tolérance. Un écart d'un seul
-> dernier bit sur la position d'un monstre suffit à la faire diverger. C'est un choix de
-> conception défendable — détecter tôt — mais il implique que l'alerte ne dit rien de la gravité
-> réelle de l'écart.
->
-> **Cause établie le 1er août 2026** par mesure directe sur trois navigateurs : les fonctions
-> mathématiques ne renvoient pas les mêmes valeurs d'un navigateur à l'autre. `Math.cos`,
-> `Math.sin` et `Math.atan2` diffèrent **y compris entre deux versions du même moteur** —
-> Chromium 148 et Edge 150 ne s'accordent pas. `Math.hypot` diffère entre moteurs. Les mesures
-> sont consignées dans [`feedback.md`](feedback.md).
->
-> Le critère n'est donc pas « même moteur » mais **« exactement le même build »**, ce qu'aucune
-> consigne d'usage ne peut garantir sur des logiciels à mise à jour automatique.
->
-> En JavaScript, seuls les opérateurs arithmétiques, `Math.sqrt` et `Math.round` sont exactement
-> spécifiés. Les fonctions trigonométriques sont explicitement « approximées par
-> l'implémentation ». La simulation en appelle à vingt-huit endroits du chemin critique, à chaque
-> tick, pour produire positions et vitesses : l'écart se réinjecte dans l'état et s'accumule.
->
-> **Conséquence immédiate : la coopération n'est fiable qu'entre postes exécutant exactement le
-> même build de navigateur.** Une mise à jour automatique chez un seul joueur suffit à rompre
-> l'accord, sans aucun signal.
->
-> Le correctif n'exige pas d'implémenter des fonctions trigonométriques déterministes. Les
-> appels se répartissent en trois motifs, tous remplaçables par des opérations exactement
-> spécifiées : aller-retour vecteur → angle → vecteur (à remplacer par une normalisation
-> directe), angles constants des quatre tourelles (table de vecteurs unitaires), et tirage d'un
-> angle aléatoire (à remplacer par le tirage d'un vecteur de direction). Détail dans
-> [`../ROADMAP.md`](../ROADMAP.md).
->
-> **Correctif appliqué le 1er août 2026.** Les vingt-huit appels ont été remplacés. Le module
-> [`packages/game-core/src/exact-math.ts`](../packages/game-core/src/exact-math.ts) n'emploie que
-> des opérations exactement spécifiées ; la plupart des cas se sont réduits à une normalisation
-> directe, sans aucune fonction trigonométrique. L'opérateur de puissance, lui aussi approximé,
-> fixait les seuils de niveau : il a été remplacé par une multiplication successive.
->
-> Une **quatrième condition de déterminisme** rejoint donc les trois précédentes : ne jamais
-> employer, dans `game-core`, une fonction que la spécification du langage laisse approximer. Une
-> garde de lint la fait respecter — c'est elle qui a trouvé le cas de l'opérateur de puissance,
-> que la recherche manuelle avait manqué.
->
-> **Accord vérifié le 2 août 2026** sur les deux postes qui jouent, plus deux moteurs de
-> contrôle : les fonctions de remplacement donnent la même empreinte partout, alors que
-> `Math.cos` et `Math.sin` en donnent quatre différentes sur quatre moteurs. Relevés dans
-> [`feedback.md`](feedback.md).
->
-> **Ce que cela ne prouve pas** : qu'une partie coopérative ne divergera plus. L'empreinte d'état
-> compare tout l'état en pleine précision ; ces mesures ne couvrent que l'arithmétique. S'il
-> existait une seconde cause, seule une partie réelle la révélera.
+Le client interpole les deux derniers états serveur. La prédiction de l'avatar local est
+purement visuelle et bornée à deux ticks ; chaque nouvel état autoritaire la réinitialise. Ni
+la prédiction ni l'alias `player` ne sont renvoyés au serveur.
 
-Les éléments qui pourraient dériver sont dérivés de valeurs pures plutôt que tirés : la rotation
-des biomes, les offres du marchand et les offres de défense globale se calculent depuis la graine
-et le numéro de vague.
+Une indisponibilité au lancement affiche une erreur lisible et ramène au lobby. Une coupure en
+partie conserve l'avatar, neutre et vulnérable, pendant une fenêtre de reconnexion de 30 secondes.
+La reconnexion récupère le même avatar et un état complet. Après le délai, l'avatar est retiré à
+la frontière de tick suivante et l'identité ne peut plus revenir. Une sortie volontaire est
+immédiate.
 
-### État
+## 6. Fin de room et récompenses
 
-`TowerGameState` est une projection immuable et sérialisable. L'avatar local y figure sous
-`player` et se retrouve toujours dans `players`. Les événements d'un tick sont distincts de
-l'état persistant. Les identifiants d'entités sont stables pendant la partie.
+Le serveur conserve l'or déjà acquis par les joueurs retirés. Une défaite normale crédite tous
+les participants via `finalize_game_run`, même absents. Une room sans joueur actif devient
+`abandoned` et ne crédite rien. L'état terminal reste consultable 60 secondes.
 
-## 6. Coopération
+`game_runs` et `game_run_rewards` constituent le journal idempotent. La RPC serveur valide les
+montants, insère seulement les récompenses absentes, crédite les portefeuilles dans la même
+transaction et marque la partie terminée. Sa répétition ou deux appels concurrents restent sans
+effet supplémentaire.
 
-Modèle : **lockstep pair-à-pair déterministe**, transporté par un canal de diffusion Supabase
-Realtime. Chaque pair exécute la même simulation et n'échange que des entrées, jamais d'état.
-Les entrées partent avec deux ticks de retard, par lots de douze. Une empreinte d'état est
-comparée tous les vingt ticks pour détecter une divergence. Les arrivées et départs sont
-ordonnés par des événements planifiés à une frontière de tick explicite. Un pair peut rejoindre
-en cours de partie en rejouant la graine puis l'historique d'entrées.
+## 7. Déploiement et secrets
 
-Toute donnée reçue du réseau est validée contre une grammaire fermée avant d'être appliquée, et
-les tailles de paquet, l'avance en ticks et les longueurs d'identifiant sont bornées.
+Le service `game-server` rejoint `deploy/lan/docker-compose.yml`, avec healthcheck et limite
+initiale de 512 Mio. Nginx relaie HTTP et WebSocket sous `/game/`. Les variables
+`JWT_SECRET`, `SERVICE_ROLE_KEY`, `POSTGREST_URL`, `APP_LOG_LEVEL` et l'export OTLP existent
+uniquement côté serveur.
 
-Ce modèle **remplace** le serveur Colyseus autoritaire décidé par ADR-0004, sans qu'aucun
-arbitrage humain n'ait eu lieu, et il n'offre aucune protection contre la triche. Le détail et
-les questions ouvertes sont dans [ADR-0008](decisions/ADR-0008-p2p-lockstep-coop.md).
+Les rooms sont volatiles : aucun mécanisme de reprise après redémarrage n'est prévu. Ce choix
+est compatible avec une ou deux rooms LAN et rend explicite qu'une panne serveur interrompt les
+sessions.
 
-## 7. Compte et persistance
+## 8. Observabilité
 
-Supabase remplit trois rôles distincts :
+Une room produit une trace racine `game.room`, avec enfants création, admission, démarrage,
+reconnexion, persistance et fin. Les ticks et commandes alimentent des métriques agrégées, jamais
+des spans. Aucune donnée d'identité ou d'authentification n'entre dans les signaux. L'export est
+hors du chemin critique et sa panne n'affecte pas la simulation.
 
-1. **authentification** — email/mot de passe, Google, GitHub, TOTP ;
-2. **persistance de compte** — or, profils de personnage, bénédictions, compétences, gemmes,
-   statistiques, amis ; cinq migrations dans `supabase/migrations`, la dernière exigeant la
-   double authentification pour toucher aux données de compte ;
-3. **transport temps réel** — présence, invitations, et le bus de messages de la coopération.
+## 9. Invariants
 
-La sécurité repose sur les politiques RLS : chaque compte ne lit et n'écrit que ses propres
-lignes, l'identité venant du JWT via `auth.uid()` et jamais d'un paramètre. Le client n'utilise
-que la clé publique `anon`.
+1. `game-core` ne dépend ni de Phaser, ni du réseau, ni de l'horloge, ni d'OpenTelemetry.
+2. Le navigateur ne peut pas déclarer un état ou une récompense.
+3. Une room possède exactement une simulation et une cadence autoritaire.
+4. L'identité vient d'un JWT vérifié et doit appartenir au roster réservé.
+5. Toute récompense persistante est idempotente au niveau de la base.
+6. Le chemin de production n'offre aucun mode local ou P2P.
 
-La limite connue : la simulation étant hébergée par le navigateur, **l'or crédité en fin de
-partie est déclaré par le client**. Voir [ADR-0009](decisions/ADR-0009-account-persistence.md).
+## 10. Décisions associées
 
-## 8. Rendu
-
-`TowerScene` dessine le monde en **mode immédiat** dans des objets `Graphics` effacés et
-redessinés à chaque frame, plus une minimap fixée à l'écran. Les positions rendues sont
-interpolées entre deux états de simulation à l'aide de `getRenderAlpha()`. Aucun asset n'est
-chargé : tout est géométrique.
-
-**L'avatar local fait exception en coopératif** : il est dessiné en avance sur le reste du monde,
-à partir des entrées que le joueur a déjà émises au réseau, afin que la commande ne se fasse plus
-attendre 150 à 200 ms. La caméra le suit, donc tout le décor obéit sans délai. Ce que cela coûte
-— l'avatar est montré ailleurs qu'où la simulation le place — est arbitré dans
-[ADR-0010](decisions/ADR-0010-local-render-prediction.md).
-
-Les couleurs sont paramétrables par le joueur (`apps/client/src/preferences`) et n'influencent
-jamais la simulation.
-
-Le HUD, la boutique de tourelle, l'écran de niveau, le menu d'échappement et l'écran de fin sont
-du DOM classique, alimentés par le même état.
-
-## 9. Contenu et équilibrage
-
-Le contenu partagé entre le moteur et l'interface vit dans `packages/content/src/tower.ts` :
-armes, boutique de tourelle, modules, super-modules, priorités de ciblage, offres de défense
-globale, quêtes et rotations.
-
-Le reste du réglage — statistiques des joueurs, des tourelles et des monstres, courbe
-d'expérience, budget de vagues, raretés — vit dans
-`packages/game-core/src/tower/tuning.ts`, **à l'intérieur du moteur**.
-
-C'est un écart assumé dans le code mais non arbitré : `REQ-CONTENT-001` demande que les
-paramètres d'équilibrage ne soient pas dispersés dans la simulation, et ADR-0005 exige un schéma
-explicite et une validation au chargement. Le catalogue Tower n'a ni schéma ni validation, alors
-que l'ancien contenu était validé par Zod.
-
-## 10. Observabilité
-
-> Conception arrêtée le 1er août 2026 dans [`observabilite.md`](observabilite.md) :
-> tracing distribué OpenTelemetry, unité tracée = une partie, export OTLP vers un collecteur de
-> la pile locale. La section ci-dessous décrit l'état **avant** cette implémentation, qui
-> appartient à la phase 4.
-
-**Il n'existe aucune API de débogage.** L'ancienne `window.__VILLAGE_SURVIVOR_DEBUG__` a disparu
-avec l'ancien jeu ; plus aucun fichier source ne la définit. Les métriques de développement
-— FPS, durée de tick, nombre d'entités, graine, tick courant — ne sont plus exposées non plus.
-
-Ce qui subsiste : les messages de console du netcode, et un bandeau d'état de synchronisation
-visible en coopération.
-
-C'est la principale régression d'observabilité du projet. Elle explique aussi pourquoi les tests
-navigateur ne sont plus exécutables : ils pilotaient le jeu par cette API.
-
-## 11. Tests
-
-| Niveau | Objet | Outil | État |
-|---|---|---|---|
-| Unitaire et simulation | règles Tower, déterminisme, roster, quêtes, atelier | Vitest | **couvert** |
-| Contrat de session | barrière de démarrage, roster lockstep | Vitest | **couvert** |
-| Services de compte | validation des profils, statistiques, temps réel | Vitest | **couvert** |
-| Interface | HUD, boutique, écran de méta-build | Vitest | **couvert** |
-| Performance | coût d'un tick sous charge, coût d'une projection | Vitest | **couvert** |
-| Smoke de production | le jeu démarre, pas d'API de débogage, pas d'injection par la graine | Playwright | **couvert** |
-| Lobby (bout en bout) | connexion, hub, lancement coopératif | Playwright | **absent** |
-
-Le smoke test vise `play.html`, qui démarre sans projet Supabase : il est donc exécutable en
-intégration continue, où aucune clé n'existe. Le lobby, lui, n'a aucun test de bout en bout ;
-il en faudrait un mode invité ou un mock de l'authentification.
-
-Le benchmark mesure le coût **par tick réellement simulé** et s'arrête à la défaite, de sorte
-que la mesure reste valable si l'équilibrage évolue. Ordre de grandeur observé : 210 µs par tick
-avec 200 monstres, 19 µs par projection d'état.
-
-## 12. Dette structurelle
-
-L'ancien jeu M1 — `GameScene`, `LocalSession`, `coopSession`, le module `render/`, les écrans
-d'inventaire et d'échange, `GameSimulation` et ses systèmes, l'ancien contenu validé par Zod et
-l'ancien protocole — **a été supprimé le 31 juillet 2026** : 38 fichiers et 7 612 lignes. Il
-reste consultable dans l'historique Git.
-
-Ce qui subsiste volontairement de l'ancien monde :
-
-- `ResourceType` dans `packages/protocol`, parce que la table `player_stats` a une colonne par
-  ressource et que l'écran de profil affiche encore ces compteurs ;
-- les tables `coffre_balances`, `unlocked_spells` et `account_items` de la migration `0001`, non
-  utilisées par le jeu actuel mais présentes dans les bases déjà déployées.
-
-## 13. Invariants encore tenus
-
-Malgré les ruptures, quatre garde-fous du cadrage initial tiennent et méritent d'être préservés :
-
-1. les règles restent hors de Phaser, dans `game-core` ;
-2. le client passe par un port de session et ignore l'implémentation ;
-3. le pas de simulation est fixe et la graine explicite ;
-4. le cœur ne dépend ni du navigateur, ni du réseau, ni du stockage.
-
-Le quatrième est aujourd'hui ce qui rend la coopération possible. Le relâcher casserait le
-lockstep avant de casser les tests.
-
-## 14. Décisions associées
-
-- [ADR-0001 — Monorepo pnpm](decisions/ADR-0001-pnpm-monorepo.md)
 - [ADR-0002 — Simulation indépendante à pas fixe](decisions/ADR-0002-headless-fixed-step-simulation.md)
 - [ADR-0003 — Frontière GameSession](decisions/ADR-0003-game-session-boundary.md)
-- [ADR-0005 — Contenu piloté par les données](decisions/ADR-0005-data-driven-content.md) — non tenu par le contenu Tower
-- [ADR-0007 — Rendu en mode immédiat](decisions/ADR-0007-immediate-mode-entity-rendering.md) — partiellement caduc
-- [ADR-0008 — Coopération en lockstep pair-à-pair](decisions/ADR-0008-p2p-lockstep-coop.md)
-- [ADR-0009 — Comptes Supabase et progression persistante](decisions/ADR-0009-account-persistence.md)
+- [ADR-0008 — Lockstep P2P](decisions/ADR-0008-p2p-lockstep-coop.md) — remplacé
+- [ADR-0009 — Comptes et progression](decisions/ADR-0009-account-persistence.md)
+- [ADR-0010 — Prédiction visuelle](decisions/ADR-0010-local-render-prediction.md)
+- [ADR-0011 — Serveur de jeu autoritaire](decisions/ADR-0011-authoritative-game-server.md)
+
+## 11. État de migration au 3 août 2026
+
+Les quatre boucles sont implémentées. Solo et coopération utilisent exclusivement
+`TowerServerSession`; le code de session locale/lockstep, l'historique de replay et les
+empreintes P2P ont été retirés. Le chef ne diffuse que `roomId`, et les scénarios deux/quatre
+clients ainsi que les coupures de 10/31 secondes sont vérifiés sur le vrai serveur.
+
+La migration `0006`, le finaliseur PostgREST, le conteneur `game-server`, le proxy `/game/`, la
+limite de 512 Mio et l'instrumentation serveur sont en place. Deux finalisations concurrentes
+ont été éprouvées sur la base LAN sans double crédit. La charge de 24 000 ticks avec quatre
+joueurs et 200 monstres respecte les budgets automatiques. La seule preuve encore attendue pour
+clore la validation produit est une partie solo et une partie coopérative sur deux postes LAN,
+avec inspection des traces distribuées.

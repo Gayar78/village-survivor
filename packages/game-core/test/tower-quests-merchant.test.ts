@@ -12,7 +12,7 @@ import type {
 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/tower/index.js';
+import { TowerSimulation } from '../src/tower/index.js';
 
 function input(overrides: Partial<TowerInput> = {}): TowerInput {
   return { sequence: 0, moveX: 0, moveY: 0, aimX: 0, aimY: 0, ...overrides };
@@ -110,11 +110,14 @@ describe('Tower shared quests and merchant', () => {
       killSpawnedMonster(simulation);
     }
     expect(simulation.createSnapshot().sharedQuest.progress).toBe(4);
+    expect(simulation.createSnapshot().scraps).toHaveLength(4);
     expect(simulation.getScrapFund()).toBe(0);
 
     const completingMonster = killSpawnedMonster(simulation);
     const afterFirstQuest = simulation.createSnapshot();
     expect(afterFirstQuest.scrapFund).toBe(18);
+    // Le cinquième tas vient du monstre ; la récompense de quête va directement au fonds.
+    expect(afterFirstQuest.scraps).toHaveLength(5);
     expect(afterFirstQuest.sharedQuest).toEqual({
       rotationId: 1,
       id: 'elite-bounty',
@@ -201,8 +204,8 @@ describe('Tower shared quests and merchant', () => {
   });
 
   it('fait tourner les offres canoniques et reste identique pour seed et inputs égaux', () => {
-    const first = new TowerSimulation('quests-merchant-lockstep');
-    const second = new TowerSimulation('quests-merchant-lockstep');
+    const first = new TowerSimulation('quests-merchant-authoritative');
+    const second = new TowerSimulation('quests-merchant-authoritative');
     first.start();
     second.start();
 
@@ -219,7 +222,7 @@ describe('Tower shared quests and merchant', () => {
         sequence: tick,
         ...(tick === 0
           ? {
-              discreteActionId: 'lockstep-super-module',
+              discreteActionId: 'authoritative-super-module',
               turretShop: { turret: 'E' as const, action: 'module:super-overdrive' },
             }
           : {}),
@@ -237,9 +240,6 @@ describe('Tower shared quests and merchant', () => {
     });
     expect(firstSnapshot.sharedQuest).toEqual(secondSnapshot.sharedQuest);
     expect(secondSnapshot).toEqual(firstSnapshot);
-    expect(createTowerStateFingerprint(secondSnapshot)).toBe(
-      createTowerStateFingerprint(firstSnapshot),
-    );
     expect(TOWER_TURRET_SUPER_MODULES.map((module) => module.id)).toEqual([
       'super-overdrive',
       'super-rail',

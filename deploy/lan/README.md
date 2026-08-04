@@ -1,23 +1,23 @@
 # Déploiement LAN auto-hébergé
 
-Fait tourner *Village Survivor* en multijoueur sur un réseau local, **sans aucune dépendance
-à internet**. Tout est conteneurisé : base de données, comptes, temps réel et jeu.
+Prépare *Village Survivor* sur un réseau local, **sans dépendance à internet**. La stack
+canonique contient la base, les comptes, le lobby temps réel, le collecteur, le client statique
+et le serveur de jeu autoritaire. Nginx publie l'ensemble sur une seule origine.
 
-## Pourquoi une stack complète pour un jeu sans serveur
+## Pourquoi une stack complète
 
-La coopération est un lockstep pair-à-pair : aucun serveur ne simule la partie. Mais les pairs
-doivent bien s'échanger leurs entrées par **quelque chose**, et ce quelque chose est un canal de
-diffusion Supabase Realtime. Par ailleurs le lobby exige un compte. Rendre le jeu jouable hors
-ligne impose donc d'héberger soi-même l'authentification et le temps réel.
+Le serveur Colyseus simule toutes les parties. Supabase reste nécessaire pour les comptes, la
+progression et le lobby : le chef y diffuse uniquement le `roomId` créé par le serveur.
 
 | Service | Rôle | Image |
 |---|---|---|
 | `db` | Postgres, avec les rôles et extensions attendus par Supabase | `supabase/postgres` |
 | `auth` | comptes, sessions, TOTP | `supabase/gotrue` |
 | `rest` | tables et RPC sous politiques RLS | `postgrest/postgrest` |
-| `realtime` | présence du hub **et** transport du lockstep | `supabase/realtime` |
+| `realtime` | présence, invitations et diffusion du `roomId` dans le hub | `supabase/realtime` |
 | `otel` | reçoit traces, métriques et journaux du navigateur, et les affiche | `grafana/otel-lgtm` |
-| `web` | sert le jeu et fait passerelle vers les quatre autres | `nginx` |
+| `game-server` | authentifie, simule les rooms Colyseus et finalise les récompenses | image locale Node 24 |
+| `web` | sert le jeu et fait passerelle vers les cinq autres services applicatifs | `nginx` |
 
 Ni Studio, ni Storage, ni Edge Functions, ni pooler : le jeu ne s'en sert pas.
 
@@ -45,11 +45,15 @@ docker compose -f deploy/lan/docker-compose.yml up -d
 # 4. Applique les migrations du jeu (après que l'authentification soit saine)
 ./deploy/lan/apply-migrations.ps1
 
-# 5. Vérifie que le transport coopératif répond
+# 5. Vérifie le lobby et la frontière transactionnelle des récompenses
 node deploy/lan/check-realtime.mjs
+./deploy/lan/check-game-rewards.ps1
 ```
 
-Puis, **dans une console PowerShell en administrateur**, autorisez le port :
+Compose construit et lance `game-server`. Son port 2567 reste interne au réseau Docker ; les
+navigateurs utilisent `/game/` via Nginx. Seul le port 8080 doit être ouvert sur le LAN.
+
+Puis, **dans une console PowerShell en administrateur**, autorisez le port du site :
 
 ```powershell
 New-NetFirewallRule -DisplayName 'Village Survivor LAN (8080)' -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private
@@ -59,7 +63,7 @@ Les autres joueurs ouvrent alors l'adresse affichée par `setup.mjs`, par exempl
 `http://192.168.1.24:8080`. Chacun crée un compte — l'inscription est auto-confirmée, aucun
 courriel n'est envoyé — puis le hub permet de former un salon et de lancer une partie.
 
-**Jouer ne demande que le port 8080.** L'interface de télémétrie écoute sur 3001 et reste
+L'interface de télémétrie écoute sur 3001 et reste
 joignable depuis la machine hôte sans rien ouvrir ; n'ajoutez une règle pour ce port que si vous
 voulez la consulter depuis un autre poste :
 
@@ -110,7 +114,7 @@ depuis internet. En LAN, utilisez la connexion par courriel et mot de passe.
 **Le nom du conteneur `realtime-dev.supabase-realtime` n'est pas cosmétique.** Realtime déduit
 l'identifiant de son locataire du sous-domaine de l'en-tête `Host`. C'est pourquoi `nginx.conf`
 force cet en-tête sur la route `/realtime/v1/`. Renommer le conteneur sans adapter nginx casse
-tout le multijoueur, en laissant le reste du jeu parfaitement fonctionnel.
+le lobby et les invitations, mais pas une room Colyseus déjà démarrée.
 
 **Les migrations ne peuvent pas être jouées à l'initialisation de Postgres.** La migration
 `0001` référence `auth.users`, table que GoTrue crée à son premier démarrage. D'où l'étape 4,
@@ -121,18 +125,18 @@ séparée. Toutes les migrations sont idempotentes : relancer le script est sans
 ```powershell
 docker compose -f deploy/lan/docker-compose.yml ps
 node deploy/lan/check-realtime.mjs
+./deploy/lan/check-game-rewards.ps1
 ```
 
 `check-realtime.mjs` ouvre deux connexions sur un même canal et vérifie qu'un message diffusé
-par l'une parvient à l'autre — exactement le mécanisme qui transporte les lots d'entrées d'une
-partie coopérative. C'est le contrôle qui compte : si le jeu se lance mais que ce script échoue,
-le multijoueur ne marchera pas.
+par l'une parvient à l'autre — le mécanisme utilisé par le lobby pour transmettre `roomId`. Il ne
+vérifie ni le serveur Colyseus ni une partie. `check-game-rewards.ps1` crée deux comptes isolés,
+lance deux finalisations concurrentes, contrôle les droits puis nettoie ses données.
 
 Deux contrôles complètent le tableau :
 
-- **arithmétique identique d'un poste à l'autre** — ouvrir `http://<adresse>:8080/diagnostics/`
-  sur chaque navigateur qui jouera. Les fonctions du moteur peuvent différer, leurs remplaçants
-  déterministes doivent concorder partout. C'est la condition du mode coopératif ;
+- **serveur joignable** — `Invoke-WebRequest http://<adresse>:8080/game/health` doit répondre
+  `200` depuis le second poste ;
 - **télémétrie reçue** — la route de la passerelle doit répondre :
 
   ```powershell
@@ -156,8 +160,8 @@ localStorage.setItem('vs.log.level', 'trace'); // puis recharger la page
 ```
 
 ```powershell
-# Journaux
-docker compose -f deploy/lan/docker-compose.yml logs -f realtime
+# Journaux du serveur de jeu
+docker compose -f deploy/lan/docker-compose.yml logs -f game-server
 
 # Arrêter sans rien perdre
 docker compose -f deploy/lan/docker-compose.yml stop
@@ -181,20 +185,19 @@ Ce déploiement est prévu pour **un réseau local de confiance**, et rien d'aut
   public ;
 - n'exposez pas ce port sur internet, et ne redirigez pas de port depuis votre box.
 
-Les limites de confiance du jeu lui-même — client autoritaire sur sa simulation et sur l'or
-crédité à son compte — sont décrites dans
-[ADR-0008](../../docs/decisions/ADR-0008-p2p-lockstep-coop.md) et
-[ADR-0009](../../docs/decisions/ADR-0009-account-persistence.md). Le déploiement LAN ne les change
-pas.
+La simulation et le crédit d'or sont autoritaires côté serveur depuis l'ADR-0011. La clé
+`service_role` n'est injectée que dans `game-server`; elle ne doit jamais être préfixée `VITE_`,
+journalisée ou copiée dans le client.
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
-| `docker-compose.yml` | les six services |
-| `nginx.conf` | passerelle : jeu, `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/otel`, `/diagnostics` |
+| `docker-compose.yml` | les sept services et leurs contrôles de santé |
+| `nginx.conf` | passerelle : jeu, `/game`, `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/otel`, `/diagnostics` |
 | `setup.mjs` | détection d'adresse, génération des secrets et des deux `.env` |
 | `apply-migrations.ps1` | applique les migrations du jeu |
-| `check-realtime.mjs` | contrôle du transport coopératif |
+| `check-realtime.mjs` | contrôle du transport du lobby |
+| `check-game-rewards.ps1` | contrôle concurrence/idempotence/droits de la RPC d'or |
 | `volumes/db/*.sql` | initialisation Postgres, dérivée de `supabase/docker` |
 | `.env` | **secrets générés, jamais committés** |

@@ -1,7 +1,7 @@
-import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
+import type { TowerInput } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { createTowerStateFingerprint, TowerSimulation } from '../src/index.js';
+import { TowerSimulation } from '../src/index.js';
 
 function input(sequence: number, overrides: Partial<TowerInput> = {}): TowerInput {
   return {
@@ -14,56 +14,11 @@ function input(sequence: number, overrides: Partial<TowerInput> = {}): TowerInpu
   };
 }
 
-/** Rebuilds every object in reverse key order without changing its values. */
-function reverseObjectKeys(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(reverseObjectKeys);
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value)
-        .reverse()
-        .map(([key, child]) => [key, reverseObjectKeys(child)]),
-    );
-  }
-  return value;
-}
-
-describe('Tower lockstep determinism', () => {
-  it('fingerprints the complete public state independently of object key order', () => {
-    const simulation = new TowerSimulation('fingerprint-seed', {
-      playerIds: ['alpha', 'bravo'],
-    });
-    simulation.start();
-    simulation.spawnMonster('runner', { x: 420, y: 80 });
-    simulation.step({
-      alpha: input(1, { aimX: 1, fire: true }),
-      bravo: input(1, { moveX: -1, aimY: -1, fire: true }),
-    });
-
-    const state = simulation.createSnapshot();
-    const reordered = reverseObjectKeys(state) as TowerGameState;
-    expect(createTowerStateFingerprint(reordered)).toBe(createTowerStateFingerprint(state));
-
-    const changed = { ...state, scrapFund: state.scrapFund + 1 };
-    expect(createTowerStateFingerprint(changed)).not.toBe(createTowerStateFingerprint(state));
-    expect(createTowerStateFingerprint(state)).toMatch(/^tower-v1:[0-9a-f]{16}$/);
-    // Vecteur de référence. Il est calculé sur un état de simulation réel : il change donc aussi
-    // bien si la canonicalisation ou le hachage évoluent — ce qui exigerait un passage en
-    // `tower-v2` — que si les valeurs produites par la simulation changent. Seul le premier cas
-    // est une régression ; le second est une mise à jour légitime, à faire en connaissance de
-    // cause.
-    //
-    // Mis à jour le 1er août 2026 : le passage à une arithmétique exactement reproductible a
-    // modifié les valeurs numériques de la simulation. Les tourelles, notamment, sont désormais
-    // à des coordonnées exactement nulles là où `Math.cos(-π/2) * 240` donnait 1,47e-14.
-    expect(createTowerStateFingerprint(state)).toBe('tower-v1:327a9b83a38acca3');
-  });
-
+describe('Tower simulation determinism', () => {
   it('keeps two same-seed simulations identical through movement, combat, weapons and upgrades', () => {
     const roster = ['alpha', 'bravo'] as const;
-    const first = new TowerSimulation('lockstep-parity-seed', { playerIds: roster });
-    const second = new TowerSimulation('lockstep-parity-seed', { playerIds: roster });
+    const first = new TowerSimulation('authoritative-parity-seed', { playerIds: roster });
+    const second = new TowerSimulation('authoritative-parity-seed', { playerIds: roster });
     first.start();
     second.start();
 
@@ -86,7 +41,7 @@ describe('Tower lockstep determinism', () => {
       const alpha = state.players.find((player) => player.id === 'alpha');
       const eastTurret = state.turrets.find((turret) => turret.dir === 'E');
       if (alpha === undefined || eastTurret === undefined) {
-        throw new Error('Expected lockstep player and east turret.');
+        throw new Error('Expected authoritative player and east turret.');
       }
 
       const targetMonster = state.monsters[0];
@@ -126,9 +81,6 @@ describe('Tower lockstep determinism', () => {
       if (checkpoints.has(tick)) {
         const firstState = first.createSnapshot();
         const secondState = second.createSnapshot();
-        expect(createTowerStateFingerprint(firstState)).toBe(
-          createTowerStateFingerprint(secondState),
-        );
         expect(secondState).toEqual(firstState);
       }
     }

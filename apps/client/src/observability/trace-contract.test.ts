@@ -40,10 +40,8 @@ describe('contrat de trace d’une partie', () => {
 
   function emitCoopSession(): ReadableSpan {
     const span = startGameSessionSpan({
-      seed: 'graine-de-test',
       mode: 'coop',
       playersCount: 3,
-      roomCode: 'TOWER7',
     });
     endGameSessionSpan(span, 'defeat', { 'vs.wave': 12 });
     const emitted = exporter.getFinishedSpans().at(-1);
@@ -54,7 +52,7 @@ describe('contrat de trace d’une partie', () => {
   it('produit un span racine identifiable et terminé', () => {
     const span = emitCoopSession();
 
-    expect(span.name).toBe('game.session');
+    expect(span.name).toBe('game.client.session');
     expect(span.spanContext().traceId).toMatch(/^[0-9a-f]{32}$/);
     expect(span.attributes['vs.mode']).toBe('coop');
     expect(span.attributes['vs.players.count']).toBe(3);
@@ -74,13 +72,14 @@ describe('contrat de trace d’une partie', () => {
     // Le code de salon ouvre le canal temps réel, où l'identité est déclarative : le publier
     // reviendrait à distribuer une clé d'entrée.
     expect(serialized).not.toContain('TOWER7');
+    expect(serialized).not.toContain('graine-de-test');
     for (const forbidden of ['@', 'password', 'token', 'secret', 'account_id', 'player.id']) {
       expect(serialized).not.toContain(forbidden);
     }
   });
 
   it('marque en erreur une partie interrompue par une exception', () => {
-    const span = startGameSessionSpan({ seed: 'graine', mode: 'solo', playersCount: 1 });
+    const span = startGameSessionSpan({ mode: 'solo', playersCount: 1 });
     endGameSessionSpan(span, 'error');
     const emitted = exporter.getFinishedSpans().at(-1);
 
@@ -92,14 +91,14 @@ describe('contrat de trace d’une partie', () => {
     // Gate de la méthode : « trace racine → spans enfants → logs corrélés ». Le 2 août 2026, les
     // spans existaient mais formaient chacun leur propre trace, faute de contexte parent : on ne
     // pouvait donc pas dérouler une partie vers ses frontières, ce qui était tout l'objet.
-    const session = startGameSessionSpan({ seed: 'graine', mode: 'coop', playersCount: 2 });
+    const session = startGameSessionSpan({ mode: 'coop', playersCount: 2 });
     const child = startGameChildSpan('coop.channel.join');
     child.end();
     endGameSessionSpan(session, 'defeat');
 
     const spans = exporter.getFinishedSpans();
     const emittedChild = spans.find((span) => span.name === 'coop.channel.join');
-    const emittedSession = spans.find((span) => span.name === 'game.session');
+    const emittedSession = spans.find((span) => span.name === 'game.client.session');
 
     expect(emittedChild?.spanContext().traceId).toBe(emittedSession?.spanContext().traceId);
     expect(emittedChild?.parentSpanContext?.spanId).toBe(emittedSession?.spanContext().spanId);
@@ -108,7 +107,7 @@ describe('contrat de trace d’une partie', () => {
   it('corrèle les journaux à la partie en cours', () => {
     // Un navigateur ne propage pas de contexte à travers minuteurs et promesses : sans point
     // d'ancrage explicite, les enregistrements partaient sans identifiant de corrélation.
-    const session = startGameSessionSpan({ seed: 'graine', mode: 'solo', playersCount: 1 });
+    const session = startGameSessionSpan({ mode: 'solo', playersCount: 1 });
 
     const pendant = activeTraceIds();
     endGameSessionSpan(session, 'left');
@@ -119,7 +118,7 @@ describe('contrat de trace d’une partie', () => {
   });
 
   it('n’émet aucun code de salon pour une partie solo', () => {
-    const span = startGameSessionSpan({ seed: 'graine', mode: 'solo', playersCount: 1 });
+    const span = startGameSessionSpan({ mode: 'solo', playersCount: 1 });
     endGameSessionSpan(span, 'left');
 
     expect(exporter.getFinishedSpans().at(-1)?.attributes['vs.room.code.hash']).toBeUndefined();
