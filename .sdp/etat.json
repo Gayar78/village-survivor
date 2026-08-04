@@ -96,7 +96,7 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "11fecda58d78be656ce594559fb0a96d4a6305e4",
+  "dernier_commit": "de59060de505932b76c65ca06c25cb1c1908a1ae",
   "maj": "2026-08-04",
   "portee_iteration_suivante": "validation_coop_deux_postes_lan_et_trace_distribuee",
   "decisions_a_rouvrir": [
