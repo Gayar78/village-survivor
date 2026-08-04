@@ -1,5 +1,5 @@
 import { TowerSimulation } from '@village-survivor/game-core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   appendUnseenTowerEvents,
@@ -7,6 +7,7 @@ import {
   towerActionsFromInput,
   towerGameStateFromWire,
 } from './TowerServerSession.js';
+import { isTowerGameServerHealthy } from './TowerSoloFallbackSession.js';
 
 describe('adaptateur de rendu du serveur autoritaire', () => {
   it('reconstruit player depuis l’identité locale sans le recevoir comme champ partagé', () => {
@@ -126,5 +127,37 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
       { id: 2, tick: 3, type: 'scrap-collected' },
     ]);
     expect(second.map(({ id }) => id)).toEqual([1, 2]);
+  });
+});
+
+describe('détection du serveur pour le solo', () => {
+  it('reconnaît uniquement le healthcheck JSON exact du serveur Tower', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await expect(isTowerGameServerHealthy('https://game.test', fetcher)).resolves.toBe(true);
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://game.test/health',
+      expect.objectContaining({ cache: 'no-store', signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it.each([
+    ['page Vercel réécrite', new Response('<html>Village Survivor</html>', { status: 200 })],
+    ['route absente', new Response(null, { status: 404 })],
+  ])('refuse une %s', async (_label, response) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response);
+    await expect(isTowerGameServerHealthy('https://static.test/game', fetcher)).resolves.toBe(
+      false,
+    );
+  });
+
+  it('retombe proprement en local lorsque le réseau échoue', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('network failed'));
+    await expect(isTowerGameServerHealthy('https://offline.test', fetcher)).resolves.toBe(false);
   });
 });

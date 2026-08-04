@@ -1,0 +1,115 @@
+import { TowerSimulation } from '@village-survivor/game-core';
+import type {
+  MetaBuildModifiers,
+  TowerGameState,
+  TowerInput,
+  Vector2,
+} from '@village-survivor/protocol';
+
+import type { TowerRenderableSession } from './TowerRenderableSession.js';
+
+const TOWER_TICK_MS = 50;
+const MAX_STEPS_PER_FRAME = 240;
+
+export const TOWER_SOLO_META_BUILD_KEY = 'vs-solo-meta-build';
+
+function idleInput(): TowerInput {
+  return { sequence: 0, moveX: 0, moveY: 0, aimX: 1, aimY: 0 };
+}
+
+/** Retire les actions ponctuelles après leur premier tick, tout en conservant le contrôle continu. */
+function persistentInput(input: TowerInput): TowerInput {
+  return {
+    sequence: input.sequence,
+    moveX: input.moveX,
+    moveY: input.moveY,
+    aimX: input.aimX,
+    aimY: input.aimY,
+    ...(input.fire === true ? { fire: true } : {}),
+    ...(input.turretWorkshopOpen === true ? { turretWorkshopOpen: true } : {}),
+  };
+}
+
+/**
+ * Simulation solo autonome utilisée quand aucun serveur de jeu n'est déployé.
+ *
+ * Elle partage exactement TowerSimulation avec le serveur autoritaire. Seule la frontière
+ * réseau disparaît : les entrées du joueur sont appliquées au prochain tick fixe de 50 ms.
+ */
+export class TowerLocalSession implements TowerRenderableSession {
+  private readonly simulation: TowerSimulation;
+  private readonly listeners = new Set<(state: TowerGameState) => void>();
+  private currentInput: TowerInput = idleInput();
+  private running = false;
+  private frameHandle: number | undefined;
+  private lastTimestamp = 0;
+  private accumulatorMs = 0;
+
+  public constructor(options: { seed: string; metaBuild?: Partial<MetaBuildModifiers> }) {
+    this.simulation = new TowerSimulation(options.seed, {
+      playerIds: ['player-1'],
+      ...(options.metaBuild === undefined
+        ? {}
+        : { metaBuildsByPlayerId: { 'player-1': options.metaBuild } }),
+    });
+  }
+
+  public async start(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    this.simulation.start();
+    this.lastTimestamp = performance.now();
+    this.frameHandle = requestAnimationFrame(this.onFrame);
+  }
+
+  public async stop(): Promise<void> {
+    this.running = false;
+    if (this.frameHandle !== undefined) {
+      cancelAnimationFrame(this.frameHandle);
+      this.frameHandle = undefined;
+    }
+    this.listeners.clear();
+  }
+
+  public sendInput(input: TowerInput): void {
+    this.currentInput = input;
+  }
+
+  public getRenderAlpha(): number {
+    return Math.max(0, Math.min(1, this.accumulatorMs / TOWER_TICK_MS));
+  }
+
+  public getLocalRenderPosition(): Vector2 | undefined {
+    return undefined;
+  }
+
+  public onConnectionIssue(listener: (message: string, terminal?: boolean) => void): () => void {
+    void listener;
+    return () => undefined;
+  }
+
+  public subscribe(listener: (state: TowerGameState) => void): () => void {
+    this.listeners.add(listener);
+    listener(this.simulation.createSnapshot());
+    return () => this.listeners.delete(listener);
+  }
+
+  private readonly onFrame = (timestamp: number): void => {
+    if (!this.running) return;
+    const deltaMs = Math.max(0, Math.min(250, timestamp - this.lastTimestamp));
+    this.lastTimestamp = timestamp;
+    this.accumulatorMs += deltaMs;
+    let processed = 0;
+    while (this.accumulatorMs >= TOWER_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
+      this.simulation.step({ 'player-1': this.currentInput });
+      this.currentInput = persistentInput(this.currentInput);
+      this.accumulatorMs -= TOWER_TICK_MS;
+      processed += 1;
+    }
+    if (processed > 0) {
+      const snapshot = this.simulation.createSnapshot();
+      for (const listener of this.listeners) listener(snapshot);
+    }
+    this.frameHandle = requestAnimationFrame(this.onFrame);
+  };
+}

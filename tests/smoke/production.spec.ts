@@ -208,6 +208,20 @@ test('revient proprement au lobby quand le serveur de jeu est injoignable', asyn
   await expect(page.locator('canvas')).toHaveCount(0);
 });
 
+test('lance le solo local lorsque Vercel ne possède aucun serveur de jeu', async ({ page }) => {
+  await page.route('**/otel/v1/**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+  await page.route(`${GAME_SERVER_URL}/health`, (route) => route.abort('failed'));
+
+  await page.goto('/play.html?seed=vercel-static-fallback');
+
+  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('#hud')).toContainText('Vitalité');
+  await expect(page.locator('#tower-sync-status')).toBeHidden();
+  await expect(page).toHaveURL(/play\.html/u);
+});
+
 test('synchronise exactement deux puis quatre clients sur la même simulation', async ({
   request,
 }) => {

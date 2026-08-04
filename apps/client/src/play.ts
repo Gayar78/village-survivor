@@ -1,13 +1,16 @@
 import { TOWER_WEAPONS } from '@village-survivor/content';
-import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
+import type { MetaBuildModifiers, TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
 import type { TowerRenderableSession } from './net/TowerRenderableSession.js';
+import { TowerLocalSession, TOWER_SOLO_META_BUILD_KEY } from './net/TowerLocalSession.js';
 import {
   TowerServerSession,
   TOWER_SERVER_ROOM_KEY,
   type TowerServerSessionOptions,
 } from './net/TowerServerSession.js';
+import { TowerSoloFallbackSession } from './net/TowerSoloFallbackSession.js';
+import { randomSeed } from './randomSeed.js';
 import { gameUrl } from './gameUrl.js';
 import { createLogger } from './observability/logger.js';
 import { describeError } from './observability/redact.js';
@@ -102,6 +105,26 @@ function restartGame(): void {
 const serverRoom = readServerRoom();
 const isCoopSession = serverRoom !== null;
 
+function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
+  const raw = sessionStorage.getItem(TOWER_SOLO_META_BUILD_KEY);
+  if (raw === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    const values = Object.values(parsed);
+    return values.every((value) => typeof value === 'number' && Number.isFinite(value))
+      ? (parsed as Partial<MetaBuildModifiers>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const requestedSeed = new URLSearchParams(location.search).get('seed');
+const soloSeed =
+  requestedSeed === null || requestedSeed.length === 0 ? randomSeed() : requestedSeed;
+const soloMetaBuild = readSoloMetaBuild();
+
 // La télémétrie démarre avant la partie et ne conditionne rien : sans collecteur configuré,
 // `initTelemetry` ne fait rien et le jeu se déroule à l'identique.
 const telemetry = initTelemetry();
@@ -129,7 +152,15 @@ log.info('partie lancée', {
   'vs.telemetry.enabled': telemetry.exportEnabled,
 });
 
-const session: TowerRenderableSession = new TowerServerSession(serverRoom ?? {});
+const session: TowerRenderableSession = isCoopSession
+  ? new TowerServerSession(serverRoom)
+  : new TowerSoloFallbackSession({
+      server: new TowerServerSession(),
+      local: new TowerLocalSession({
+        seed: soloSeed,
+        ...(soloMetaBuild === undefined ? {} : { metaBuild: soloMetaBuild }),
+      }),
+    });
 
 type CoopStatusTone = 'pending' | 'issue';
 
@@ -150,8 +181,8 @@ if (isCoopSession) {
 if (!isCoopSession) {
   showConnectionStatus(
     'pending',
-    'Connexion au serveur',
-    'Création de la partie solo autoritaire…',
+    'Préparation de la partie',
+    'Recherche du meilleur mode d’exécution disponible…',
   );
 }
 
@@ -389,7 +420,7 @@ void session.start().catch((error) => {
     'Partie indisponible',
     error instanceof Error ? error.message : 'Le serveur de jeu est indisponible.',
   );
-  log.error('échec du démarrage de la session serveur', { 'vs.error': describeError(error) });
+  log.error('échec du démarrage de la session de jeu', { 'vs.error': describeError(error) });
   endGameSession('error', { 'vs.error': describeError(error) });
   scheduleLobbyReturn();
 });

@@ -3,7 +3,12 @@ import { spentBlessingBudget } from './account/blessingBudget.js';
 import { metaProgressionService } from './account/metaProgressionService.js';
 import { isSupabaseConfigured } from './account/supabaseClient.js';
 import type { AccountSession, MetaProgressionSnapshot } from './account/types.js';
-import { META_BLESSING_BUDGET, META_CATALOG, META_PROFILE_LIMIT } from '@village-survivor/protocol';
+import {
+  META_BLESSING_BUDGET,
+  META_CATALOG,
+  META_PROFILE_LIMIT,
+  resolveMetaBuildEffects,
+} from '@village-survivor/protocol';
 import type {
   BlessingId,
   BlessingPathId,
@@ -16,7 +21,9 @@ import { friendsService } from './hub/friendsService.js';
 import { realtimeService } from './hub/realtimeService.js';
 import type { LaunchPayload } from './hub/types.js';
 import { gameUrl } from './gameUrl.js';
+import { TOWER_SOLO_META_BUILD_KEY } from './net/TowerLocalSession.js';
 import { TOWER_SERVER_ROOM_KEY } from './net/TowerServerSession.js';
+import { randomSeed } from './randomSeed.js';
 import { AuthScreen } from './ui/AuthScreen.js';
 import { Compendium } from './ui/Compendium.js';
 import { Hub } from './ui/Hub.js';
@@ -300,9 +307,26 @@ metaBuildScreen.hide();
 const compendium = new Compendium(compendiumElement, showMenu);
 compendium.hide();
 
-function beginClassic(): void {
-  // La build active et la graine sont désormais résolues par le serveur autoritaire.
-  location.assign(gameUrl());
+async function loadActiveMetaBuild(): Promise<
+  ReturnType<typeof resolveMetaBuildEffects> | undefined
+> {
+  try {
+    const profile = activeProfile(await metaProgressionService.loadMetaProgression());
+    return profile === null ? undefined : resolveMetaBuildEffects(profile);
+  } catch (error) {
+    console.warn('Build actif indisponible pour cette partie solo.', error);
+    return undefined;
+  }
+}
+
+async function beginClassic(): Promise<void> {
+  const metaBuild = await loadActiveMetaBuild();
+  if (metaBuild === undefined) {
+    sessionStorage.removeItem(TOWER_SOLO_META_BUILD_KEY);
+  } else {
+    sessionStorage.setItem(TOWER_SOLO_META_BUILD_KEY, JSON.stringify(metaBuild));
+  }
+  location.assign(gameUrl({ seed: randomSeed() }));
 }
 
 function beginLaunch(payload: LaunchPayload): void {
