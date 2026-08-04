@@ -1,9 +1,13 @@
 import { ArraySchema, MapSchema, Schema, type } from '@colyseus/schema';
 import type {
+  TowerEndgameState,
   TowerGameState,
+  TowerMonsterState,
+  TowerMonsterZoneState,
   TowerPlayerState,
   TowerProjectileState,
   TowerRoomPhase,
+  TowerTimelandsState,
   TurretState,
 } from '@village-survivor/protocol';
 
@@ -85,6 +89,21 @@ export class TurretSchema extends Schema {
   @type('boolean') public alive = false;
 }
 
+export class MonsterTemporalSchema extends Schema {
+  @type('string') public status = '';
+  @type('string') public wardenMonsterId = '';
+  @type('string') public alteration = '';
+}
+
+export class MonsterAbilitySchema extends Schema {
+  @type('string') public kind = '';
+  @type('string') public phase = '';
+  @type('number') public remainingMs = 0;
+  @type('number') public totalMs = 0;
+  @type('number') public radius = 0;
+  @type(VectorSchema) public targetPosition: VectorSchema | undefined = undefined;
+}
+
 export class MonsterSchema extends Schema {
   @type('string') public id = '';
   @type('string') public kind = '';
@@ -95,6 +114,79 @@ export class MonsterSchema extends Schema {
   @type('number') public hp = 0;
   @type('number') public maxHp = 0;
   @type('number') public radius = 0;
+  @type('number') public shieldRatio: number | undefined = undefined;
+  @type('boolean') public camouflaged: boolean | undefined = undefined;
+  @type('boolean') public empowered: boolean | undefined = undefined;
+  @type(MonsterTemporalSchema) public temporal: MonsterTemporalSchema | undefined = undefined;
+  @type(MonsterAbilitySchema) public ability: MonsterAbilitySchema | undefined = undefined;
+}
+
+export class MonsterZoneSchema extends Schema {
+  @type('string') public id = '';
+  @type('string') public kind = '';
+  @type(VectorSchema) public position = new VectorSchema();
+  @type('number') public radius = 0;
+  @type('number') public remainingMs = 0;
+  @type('number') public durationMs = 0;
+  @type(VectorSchema) public endPosition: VectorSchema | undefined = undefined;
+}
+
+export class TimelandsArrivalSchema extends Schema {
+  @type('string') public status = 'pending';
+  @type('number') public arrivedAtTick = 0;
+  @type('number') public announcementEndsAtTick = 0;
+}
+
+export class TemporalEffectSchema extends Schema {
+  @type('number') public id = 0;
+  @type('string') public kind = '';
+  @type('string') public scope = 'global';
+  @type('number') public scale = 1;
+  @type('number') public activatedAtTick = 0;
+  @type('number') public expiresAtTick = 0;
+  @type('string') public sourceMonsterId = '';
+  @type('string') public playerId = '';
+}
+
+export class TimelandsWardenSchema extends Schema {
+  @type('string') public status = 'not-spawned';
+  @type('string') public monsterId = '';
+  @type('number') public nextReleaseAtTick = 0;
+  @type(['string']) public releasedMonsterIds = new ArraySchema<string>();
+  @type('boolean') public lowHpRelocationUsed = false;
+  @type('number') public defeatedAtTick = 0;
+}
+
+export class TimelandsSchema extends Schema {
+  @type(TimelandsArrivalSchema) public arrival = new TimelandsArrivalSchema();
+  @type({ map: TemporalEffectSchema })
+  public activeEffects = new MapSchema<TemporalEffectSchema>();
+  @type(TimelandsWardenSchema) public warden = new TimelandsWardenSchema();
+}
+
+export class EndgameTierSchema extends Schema {
+  @type('number') public id = 0;
+  @type('number') public activatedAtTick = 0;
+}
+
+export class EndgameNextTierSchema extends Schema {
+  @type('number') public id = 0;
+  @type('number') public triggersAtTick = 0;
+}
+
+export class EndgameAnnouncementSchema extends Schema {
+  @type('number') public tierId = 0;
+  @type('number') public endsAtTick = 0;
+}
+
+export class EndgameSchema extends Schema {
+  @type('boolean') public hasPhaseStartedAtTick = false;
+  @type('number') public phaseStartedAtTick = 0;
+  @type({ map: EndgameTierSchema }) public activeTiers = new MapSchema<EndgameTierSchema>();
+  @type('boolean') public hasNextTier = false;
+  @type(EndgameNextTierSchema) public nextTier = new EndgameNextTierSchema();
+  @type('boolean') public hasAnnouncement = false;
+  @type(EndgameAnnouncementSchema) public announcement = new EndgameAnnouncementSchema();
 }
 
 export class ProjectileSchema extends Schema {
@@ -146,6 +238,8 @@ export class TowerStateSchema extends Schema {
   @type('string') public status = 'ready';
   @type(WorldSchema) public world = new WorldSchema();
   @type(BiomeSchema) public biome = new BiomeSchema();
+  @type(TimelandsSchema) public timelands = new TimelandsSchema();
+  @type(EndgameSchema) public endgame = new EndgameSchema();
   @type('number') public wave = 0;
   @type('number') public scrapFund = 0;
   @type({ map: GlobalDefenseUpgradeSchema })
@@ -157,6 +251,7 @@ export class TowerStateSchema extends Schema {
   @type(HeartSchema) public heart = new HeartSchema();
   @type({ map: TurretSchema }) public turrets = new MapSchema<TurretSchema>();
   @type({ map: MonsterSchema }) public monsters = new MapSchema<MonsterSchema>();
+  @type({ map: MonsterZoneSchema }) public monsterZones = new MapSchema<MonsterZoneSchema>();
   @type({ map: ProjectileSchema }) public projectiles = new MapSchema<ProjectileSchema>();
   @type({ map: ScrapSchema }) public scraps = new MapSchema<ScrapSchema>();
 }
@@ -263,6 +358,129 @@ function syncTurret(target: TurretSchema, source: TurretState): void {
   target.alive = source.alive;
 }
 
+function syncMonster(target: MonsterSchema, source: TowerMonsterState): void {
+  target.id = source.id;
+  target.kind = source.kind;
+  target.rarity = source.rarity;
+  target.affinity = source.affinity;
+  target.trait = source.trait;
+  syncVector(target.position, source.position);
+  target.hp = source.hp;
+  target.maxHp = source.maxHp;
+  target.radius = source.radius;
+  target.shieldRatio = source.shieldRatio;
+  target.camouflaged = source.camouflaged === true ? true : undefined;
+  target.empowered = source.empowered === true ? true : undefined;
+
+  if (source.temporal === undefined) {
+    target.temporal = undefined;
+  } else {
+    const temporal = target.temporal ?? new MonsterTemporalSchema();
+    temporal.status = source.temporal.status;
+    temporal.wardenMonsterId =
+      source.temporal.status === 'warden-controlled' ? source.temporal.wardenMonsterId : '';
+    temporal.alteration =
+      source.temporal.status === 'warden-controlled' ? source.temporal.alteration : '';
+    target.temporal = temporal;
+  }
+
+  if (source.ability === undefined) {
+    target.ability = undefined;
+  } else {
+    const ability = target.ability ?? new MonsterAbilitySchema();
+    ability.kind = source.ability.kind;
+    ability.phase = source.ability.phase;
+    ability.remainingMs = source.ability.remainingMs;
+    ability.totalMs = source.ability.totalMs;
+    ability.radius = source.ability.radius;
+    if (source.ability.targetPosition === undefined) {
+      ability.targetPosition = undefined;
+    } else {
+      const targetPosition = ability.targetPosition ?? new VectorSchema();
+      syncVector(targetPosition, source.ability.targetPosition);
+      ability.targetPosition = targetPosition;
+    }
+    target.ability = ability;
+  }
+}
+
+function syncMonsterZone(target: MonsterZoneSchema, source: TowerMonsterZoneState): void {
+  target.id = source.id;
+  target.kind = source.kind;
+  syncVector(target.position, source.position);
+  target.radius = source.radius;
+  target.remainingMs = source.remainingMs;
+  target.durationMs = source.durationMs;
+  if (source.endPosition === undefined) {
+    target.endPosition = undefined;
+  } else {
+    const endPosition = target.endPosition ?? new VectorSchema();
+    syncVector(endPosition, source.endPosition);
+    target.endPosition = endPosition;
+  }
+}
+
+function syncTimelands(target: TimelandsSchema, source: TowerTimelandsState): void {
+  target.arrival.status = source.arrival.status;
+  target.arrival.arrivedAtTick =
+    source.arrival.status === 'pending' ? 0 : source.arrival.arrivedAtTick;
+  target.arrival.announcementEndsAtTick =
+    source.arrival.status === 'announcing' ? source.arrival.announcementEndsAtTick : 0;
+
+  const effectKeys = new Set<string>();
+  for (const effect of source.activeEffects) {
+    const key = String(effect.id);
+    effectKeys.add(key);
+    const schema = target.activeEffects.get(key) ?? new TemporalEffectSchema();
+    schema.id = effect.id;
+    schema.kind = effect.kind;
+    schema.scope = effect.scope;
+    schema.scale = effect.scale;
+    schema.activatedAtTick = effect.activatedAtTick;
+    schema.expiresAtTick = effect.expiresAtTick;
+    schema.sourceMonsterId = effect.sourceMonsterId ?? '';
+    schema.playerId = effect.scope === 'player' ? effect.playerId : '';
+    target.activeEffects.set(key, schema);
+  }
+  deleteMissing(target.activeEffects, effectKeys);
+
+  target.warden.status = source.warden.status;
+  target.warden.monsterId = source.warden.status === 'not-spawned' ? '' : source.warden.monsterId;
+  target.warden.nextReleaseAtTick =
+    source.warden.status === 'active' ? source.warden.nextReleaseAtTick : 0;
+  replaceStrings(
+    target.warden.releasedMonsterIds,
+    source.warden.status === 'active' ? source.warden.releasedMonsterIds : [],
+  );
+  target.warden.lowHpRelocationUsed =
+    source.warden.status === 'active' ? source.warden.lowHpRelocationUsed : false;
+  target.warden.defeatedAtTick =
+    source.warden.status === 'defeated' ? source.warden.defeatedAtTick : 0;
+}
+
+function syncEndgame(target: EndgameSchema, source: TowerEndgameState): void {
+  target.hasPhaseStartedAtTick = source.phaseStartedAtTick !== null;
+  target.phaseStartedAtTick = source.phaseStartedAtTick ?? 0;
+
+  const tierKeys = new Set<string>();
+  for (const tier of source.activeTiers) {
+    const key = String(tier.id);
+    tierKeys.add(key);
+    const schema = target.activeTiers.get(key) ?? new EndgameTierSchema();
+    schema.id = tier.id;
+    schema.activatedAtTick = tier.activatedAtTick;
+    target.activeTiers.set(key, schema);
+  }
+  deleteMissing(target.activeTiers, tierKeys);
+
+  target.hasNextTier = source.nextTier !== null;
+  target.nextTier.id = source.nextTier?.id ?? 0;
+  target.nextTier.triggersAtTick = source.nextTier?.triggersAtTick ?? 0;
+  target.hasAnnouncement = source.announcement !== null;
+  target.announcement.tierId = source.announcement?.tierId ?? 0;
+  target.announcement.endsAtTick = source.announcement?.endsAtTick ?? 0;
+}
+
 function syncProjectile(target: ProjectileSchema, source: TowerProjectileState): void {
   target.id = source.id;
   syncVector(target.position, source.position);
@@ -302,6 +520,8 @@ export function syncTowerState(
   target.biome.cycle = source.biome.cycle;
   target.biome.startsAtWave = source.biome.startsAtWave;
   target.biome.durationWaves = source.biome.durationWaves;
+  syncTimelands(target.timelands, source.timelands);
+  syncEndgame(target.endgame, source.endgame);
   target.wave = source.wave;
   target.scrapFund = source.scrapFund;
 
@@ -352,18 +572,19 @@ export function syncTowerState(
   for (const monster of source.monsters) {
     monsterKeys.add(monster.id);
     const schema = target.monsters.get(monster.id) ?? new MonsterSchema();
-    schema.id = monster.id;
-    schema.kind = monster.kind;
-    schema.rarity = monster.rarity;
-    schema.affinity = monster.affinity;
-    schema.trait = monster.trait;
-    syncVector(schema.position, monster.position);
-    schema.hp = monster.hp;
-    schema.maxHp = monster.maxHp;
-    schema.radius = monster.radius;
+    syncMonster(schema, monster);
     target.monsters.set(monster.id, schema);
   }
   deleteMissing(target.monsters, monsterKeys);
+
+  const monsterZoneKeys = new Set<string>();
+  for (const zone of source.monsterZones) {
+    monsterZoneKeys.add(zone.id);
+    const schema = target.monsterZones.get(zone.id) ?? new MonsterZoneSchema();
+    syncMonsterZone(schema, zone);
+    target.monsterZones.set(zone.id, schema);
+  }
+  deleteMissing(target.monsterZones, monsterZoneKeys);
 
   const projectileKeys = new Set<string>();
   for (const projectile of source.projectiles) {

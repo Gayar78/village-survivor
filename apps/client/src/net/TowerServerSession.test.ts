@@ -28,6 +28,18 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
       players: Object.fromEntries(players.map((entry) => [entry.id, entry])),
       turrets: Object.fromEntries(turrets.map((entry) => [entry.dir, entry])),
       monsters: Object.fromEntries(monsters.map((entry) => [entry.id, entry])),
+      monsterZones: {
+        'zone-1': {
+          id: 'zone-1',
+          kind: 'ray',
+          position: { x: 10, y: 20 },
+          radius: 8,
+          remainingMs: 400,
+          durationMs: 800,
+          hasEndPosition: true,
+          endPosition: { x: 80, y: 90 },
+        },
+      },
       projectiles: Object.fromEntries(projectiles.map((entry) => [entry.id, entry])),
       scraps: Object.fromEntries(scraps.map((entry) => [entry.id, entry])),
       globalDefenseUpgrades: Object.fromEntries(
@@ -38,7 +50,35 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
     expect(state.seed).toBe('server-authoritative');
     expect(state.players).toHaveLength(2);
     expect(state.player.id).toBe('user-2');
+    expect(state.monsterZones).toEqual([
+      {
+        id: 'zone-1',
+        kind: 'ray',
+        position: { x: 10, y: 20 },
+        radius: 8,
+        remainingMs: 400,
+        durationMs: 800,
+        endPosition: { x: 80, y: 90 },
+      },
+    ]);
     expect(state.events).toEqual([]);
+  });
+
+  it('tolère un ancien état serveur sans zones de monstres', () => {
+    const simulation = new TowerSimulation('wire-legacy', { playerIds: ['user-1'] });
+    const snapshot = simulation.createSnapshot();
+    const legacyWire = {
+      ...snapshot,
+      phase: 'running',
+      players: { 'user-1': snapshot.players[0] },
+      turrets: {},
+      monsters: {},
+      projectiles: {},
+      scraps: {},
+      globalDefenseUpgrades: {},
+      monsterZones: undefined,
+    };
+    expect(towerGameStateFromWire(legacyWire, 'user-1').monsterZones).toEqual([]);
   });
 
   it('sépare les actions fiables du contrôle continu et conserve leur identifiant', () => {

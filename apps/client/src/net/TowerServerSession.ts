@@ -4,14 +4,18 @@ import type {
   CreateTowerRoomRequest,
   CreateTowerRoomResponse,
   TowerActionMessage,
+  TowerEndgameState,
   TowerEvent,
   TowerEventsMessage,
   TowerGameState,
   TowerInput,
+  TowerMonsterState,
+  TowerMonsterZoneState,
   TowerPlayerState,
   TowerProjectileState,
   TowerRoomError,
   TowerSharedGameState,
+  TowerTimelandsState,
   TowerWeaponId,
   TurretState,
   Vector2,
@@ -34,15 +38,27 @@ export type TowerServerSessionOptions = Readonly<{ roomId?: string }>;
 
 interface WireState extends Omit<
   TowerSharedGameState,
-  'seed' | 'players' | 'turrets' | 'monsters' | 'projectiles' | 'scraps' | 'globalDefenseUpgrades'
+  | 'seed'
+  | 'players'
+  | 'turrets'
+  | 'monsters'
+  | 'monsterZones'
+  | 'projectiles'
+  | 'scraps'
+  | 'globalDefenseUpgrades'
+  | 'timelands'
+  | 'endgame'
 > {
   phase: string;
   players: unknown;
   turrets: unknown;
   monsters: unknown;
+  monsterZones?: unknown;
   projectiles: unknown;
   scraps: unknown;
   globalDefenseUpgrades: unknown;
+  timelands?: unknown;
+  endgame?: unknown;
 }
 
 function collectionValues<T>(value: unknown): T[] {
@@ -83,6 +99,171 @@ function normalizeProjectile(projectile: TowerProjectileState): TowerProjectileS
   };
 }
 
+type WireMonster = TowerMonsterState &
+  Readonly<{
+    hasShieldRatio?: boolean;
+    hasTemporal?: boolean;
+    hasAbility?: boolean;
+    temporal?: Readonly<{
+      status?: string;
+      wardenMonsterId?: string;
+      alteration?: string;
+    }>;
+    ability?: TowerMonsterState['ability'] &
+      Readonly<{ hasTargetPosition?: boolean; targetPosition?: Vector2 }>;
+  }>;
+
+function normalizeMonster(monster: TowerMonsterState): TowerMonsterState {
+  const raw = monster as WireMonster;
+  const {
+    hasShieldRatio,
+    hasTemporal,
+    hasAbility,
+    shieldRatio,
+    camouflaged,
+    empowered,
+    temporal,
+    ability,
+    ...required
+  } = raw;
+  const temporalEnabled = hasTemporal ?? temporal !== undefined;
+  const normalizedTemporal =
+    temporalEnabled && temporal?.status === 'frozen'
+      ? ({ status: 'frozen' } as const)
+      : temporalEnabled && temporal?.status === 'warden-controlled'
+        ? ({
+            status: 'warden-controlled',
+            wardenMonsterId: temporal.wardenMonsterId ?? '',
+            alteration: temporal.alteration ?? 'none',
+          } as const)
+        : undefined;
+  const abilityEnabled = hasAbility ?? ability !== undefined;
+  const normalizedAbility =
+    abilityEnabled && ability !== undefined
+      ? {
+          kind: ability.kind,
+          phase: ability.phase,
+          remainingMs: ability.remainingMs,
+          totalMs: ability.totalMs,
+          radius: ability.radius,
+          ...((ability.hasTargetPosition ?? ability.targetPosition !== undefined) &&
+          ability.targetPosition !== undefined
+            ? { targetPosition: ability.targetPosition }
+            : {}),
+        }
+      : undefined;
+  return {
+    ...required,
+    ...((hasShieldRatio ?? shieldRatio !== undefined) ? { shieldRatio: shieldRatio ?? 0 } : {}),
+    ...(camouflaged === true ? { camouflaged: true } : {}),
+    ...(empowered === true ? { empowered: true } : {}),
+    ...(normalizedTemporal === undefined ? {} : { temporal: normalizedTemporal }),
+    ...(normalizedAbility === undefined ? {} : { ability: normalizedAbility }),
+  } as TowerMonsterState;
+}
+
+type WireMonsterZone = TowerMonsterZoneState & Readonly<{ hasEndPosition?: boolean }>;
+
+function normalizeMonsterZone(zone: TowerMonsterZoneState): TowerMonsterZoneState {
+  const { hasEndPosition, endPosition, ...required } = zone as WireMonsterZone;
+  return {
+    ...required,
+    ...((hasEndPosition ?? endPosition !== undefined) && endPosition !== undefined
+      ? { endPosition }
+      : {}),
+  };
+}
+
+function normalizeTimelands(value: unknown): TowerTimelandsState {
+  if (typeof value !== 'object' || value === null) {
+    return { arrival: { status: 'pending' }, activeEffects: [], warden: { status: 'not-spawned' } };
+  }
+  const raw = value as Readonly<{
+    arrival?: Readonly<{
+      status?: string;
+      arrivedAtTick?: number;
+      announcementEndsAtTick?: number;
+    }>;
+    activeEffects?: unknown;
+    warden?: Readonly<{
+      status?: string;
+      monsterId?: string;
+      nextReleaseAtTick?: number;
+      releasedMonsterIds?: unknown;
+      lowHpRelocationUsed?: boolean;
+      defeatedAtTick?: number;
+    }>;
+  }>;
+  const arrival =
+    raw.arrival?.status === 'announcing'
+      ? {
+          status: 'announcing' as const,
+          arrivedAtTick: raw.arrival.arrivedAtTick ?? 0,
+          announcementEndsAtTick: raw.arrival.announcementEndsAtTick ?? 0,
+        }
+      : raw.arrival?.status === 'active'
+        ? { status: 'active' as const, arrivedAtTick: raw.arrival.arrivedAtTick ?? 0 }
+        : ({ status: 'pending' } as const);
+  const activeEffects = collectionValues<
+    TowerTimelandsState['activeEffects'][number] & Readonly<{ playerId?: string }>
+  >(raw.activeEffects).map((effect) =>
+    effect.scope === 'player'
+      ? {
+          ...effect,
+          playerId: effect.playerId ?? '',
+          sourceMonsterId: effect.sourceMonsterId === '' ? null : effect.sourceMonsterId,
+        }
+      : {
+          id: effect.id,
+          kind: effect.kind,
+          scope: 'global' as const,
+          scale: effect.scale,
+          activatedAtTick: effect.activatedAtTick,
+          expiresAtTick: effect.expiresAtTick,
+          sourceMonsterId: effect.sourceMonsterId === '' ? null : effect.sourceMonsterId,
+        },
+  );
+  const warden =
+    raw.warden?.status === 'active'
+      ? {
+          status: 'active' as const,
+          monsterId: raw.warden.monsterId ?? '',
+          nextReleaseAtTick: raw.warden.nextReleaseAtTick ?? 0,
+          releasedMonsterIds: collectionValues<string>(raw.warden.releasedMonsterIds),
+          lowHpRelocationUsed: raw.warden.lowHpRelocationUsed ?? false,
+        }
+      : raw.warden?.status === 'defeated'
+        ? {
+            status: 'defeated' as const,
+            monsterId: raw.warden.monsterId ?? '',
+            defeatedAtTick: raw.warden.defeatedAtTick ?? 0,
+          }
+        : ({ status: 'not-spawned' } as const);
+  return { arrival, activeEffects, warden };
+}
+
+function normalizeEndgame(value: unknown): TowerEndgameState {
+  if (typeof value !== 'object' || value === null) {
+    return { phaseStartedAtTick: null, activeTiers: [], nextTier: null, announcement: null };
+  }
+  const raw = value as Readonly<{
+    hasPhaseStartedAtTick?: boolean;
+    phaseStartedAtTick?: number | null;
+    activeTiers?: unknown;
+    hasNextTier?: boolean;
+    nextTier?: TowerEndgameState['nextTier'];
+    hasAnnouncement?: boolean;
+    announcement?: TowerEndgameState['announcement'];
+  }>;
+  return {
+    phaseStartedAtTick:
+      raw.hasPhaseStartedAtTick === false ? null : (raw.phaseStartedAtTick ?? null),
+    activeTiers: collectionValues(raw.activeTiers),
+    nextTier: raw.hasNextTier === false ? null : (raw.nextTier ?? null),
+    announcement: raw.hasAnnouncement === false ? null : (raw.announcement ?? null),
+  };
+}
+
 /** Reconstruit uniquement l'alias local `player`; aucun état n'est accepté du navigateur. */
 export function towerGameStateFromWire(
   value: unknown,
@@ -94,16 +275,28 @@ export function towerGameStateFromWire(
   const players = collectionValues<TowerPlayerState>(wire.players).map(normalizePlayer);
   const player = players.find(({ id }) => id === localUserId);
   if (player === undefined) throw new Error('Avatar local absent de l’état serveur.');
-  const { turrets, monsters, projectiles, scraps, globalDefenseUpgrades } = wire;
+  const {
+    turrets,
+    monsters,
+    monsterZones,
+    projectiles,
+    scraps,
+    globalDefenseUpgrades,
+    timelands,
+    endgame,
+  } = wire;
   const shared = { ...wire } as Record<string, unknown>;
   delete shared.phase;
   delete shared.seed;
   delete shared.players;
   delete shared.turrets;
   delete shared.monsters;
+  delete shared.monsterZones;
   delete shared.projectiles;
   delete shared.scraps;
   delete shared.globalDefenseUpgrades;
+  delete shared.timelands;
+  delete shared.endgame;
   return {
     ...(shared as Omit<
       TowerSharedGameState,
@@ -111,11 +304,16 @@ export function towerGameStateFromWire(
       | 'players'
       | 'turrets'
       | 'monsters'
+      | 'monsterZones'
       | 'projectiles'
       | 'scraps'
       | 'globalDefenseUpgrades'
+      | 'timelands'
+      | 'endgame'
     >),
     seed: 'server-authoritative',
+    timelands: normalizeTimelands(timelands),
+    endgame: normalizeEndgame(endgame),
     globalDefenseUpgrades: collectionValues(globalDefenseUpgrades),
     player,
     players,
@@ -123,7 +321,8 @@ export function towerGameStateFromWire(
       ...turret,
       modules: collectionValues(turret.modules),
     })),
-    monsters: collectionValues(monsters),
+    monsters: collectionValues<TowerMonsterState>(monsters).map(normalizeMonster),
+    monsterZones: collectionValues<TowerMonsterZoneState>(monsterZones).map(normalizeMonsterZone),
     projectiles: collectionValues<TowerProjectileState>(projectiles).map(normalizeProjectile),
     scraps: collectionValues(scraps),
     events,
