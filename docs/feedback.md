@@ -1,9 +1,9 @@
 # Village Survivor — Feedback
 
 > Statut : en cours
-> Version du projet : v1
+> Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 2 août 2026
+> Dernière revue : 4 août 2026
 
 Ce document est normalement ouvert en phase 5. Il l'est ici plus tôt : une session de jeu
 réelle a eu lieu pendant la phase 4, avant l'incrément d'observabilité. Perdre ce retour aurait
@@ -429,3 +429,10 @@ finales sont consignées dans `qualite/rapport-tests.md`.
 Cette résolution technique ne remplace pas un retour joueur. Une partie solo et une partie coop
 sur deux postes LAN doivent encore confirmer le rendu, la reconnexion et la trace distribuée en
 conditions réelles.
+
+## Validation v2 — premier essai solo LAN (4 août 2026)
+
+Le propriétaire confirme que la première partie solo sur le déploiement LAN s'est déroulée
+normalement, sans anomalie observée. Le parcours solo réel est donc validé. La coopération sur
+deux postes et la lecture de la trace distribuée restent à effectuer avant de clore la phase de
+développement.

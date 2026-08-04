@@ -1,5 +1,25 @@
 # Village Survivor — Rapport de tests
 
+> Statut : en cours — validation LAN finale de la v2
+> Version du projet : v2
+> Propriétaire : Gayar
+> Dernière revue : 4 août 2026
+
+## Validation v2 — premier essai LAN solo (4 août 2026)
+
+Le propriétaire a lancé une partie solo sur le déploiement LAN de la v2 et confirme que tout
+s'est déroulé normalement. Aucune anomalie fonctionnelle ou de rendu n'a été observée pendant
+cet essai.
+
+| Gate réelle | Résultat | Source |
+|---|:---:|---|
+| Partie solo LAN | **PASS** | validation explicite du propriétaire le 4 août 2026 |
+| Partie coopérative sur deux postes | **EN ATTENTE** | prochain essai réel |
+| Trace distribuée et journaux corrélés de la v2 | **EN ATTENTE** | à inspecter pendant les essais LAN |
+
+Cette preuve valide le parcours solo du produit réel. Elle ne remplace ni le test coopératif sur
+deux postes ni la lecture de la trace distribuée exigée avant le passage en phase 5.
+
 ## Validation v2 — boucle 1 « ferraille bornée »
 
 > Statut : contrôles automatiques et revue indépendante terminés, constats arbitrés

@@ -3,7 +3,7 @@
 > Statut : en construction
 > Version du projet : v2 — candidate dans [`releases/v2.md`](releases/v2.md), v1 figée
 > Propriétaire : Gayar
-> Dernière revue : 3 août 2026
+> Dernière revue : 4 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
 
 Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,
@@ -57,7 +57,7 @@ spans aux seules frontières significatives.
 | Objectif | [`objectif.md`](objectif.md) | approuvé |
 | Spécification non-fonctionnelle | [`spec-nf.md`](spec-nf.md) | approuvée |
 | Spécification fonctionnelle | [`spec-fonctionnelle.md`](spec-fonctionnelle.md) | approuvée |
-| Feedback | [`feedback.md`](feedback.md) | à jour — trois sessions consignées |
+| Feedback | [`feedback.md`](feedback.md) | à jour — premier essai solo v2 validé |
 | Journal de développement | [`journal-dev.md`](journal-dev.md) | à jour |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
 | Décisions | [`decisions/`](decisions/README.md) — 11 ADR | approuvé |
