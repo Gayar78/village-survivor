@@ -2125,7 +2125,7 @@ export class TowerSimulation {
     return target;
   }
 
-  /** SÃ©paration souple : les silhouettes restent lisibles sans altÃ©rer leurs hitbox. */
+  /** Séparation souple : les silhouettes restent lisibles sans altérer leurs hitbox. */
   private separateMonsters(): void {
     for (let leftIndex = 0; leftIndex < this.monsters.length; leftIndex += 1) {
       const left = this.monsters[leftIndex];
@@ -2138,7 +2138,7 @@ export class TowerSimulation {
         const gap = exactLength(dx, dy);
         const desired = (left.radius + right.radius) * 0.72;
         if (gap >= desired) continue;
-        // L'id fournit un axe stable lorsque deux invocations naissent au mÃªme point.
+        // L'id fournit un axe stable lorsque deux invocations naissent au même point.
         const nx = gap > 0 ? dx / gap : left.id < right.id ? 1 : -1;
         const ny = gap > 0 ? dy / gap : 0;
         const push = Math.min(2.5, (desired - gap) * 0.18);

@@ -6,6 +6,39 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 
 ## [Non publié]
 
+### Correctifs du chantier Torri — 6 août 2026
+
+#### Ajouté
+
+- le bestiaire Torri est raccordé au protocole et à la simulation autoritaire : seize familles,
+  télégraphes, zones hostiles, invocations bornées et états de contrôle synchronisés ;
+- un secours **solo local**, strictement signalé et sans persistance, après deux échecs de santé du
+  serveur espacés de trois secondes. Une réponse HTTP réelle en erreur active ce secours ; une
+  annulation ou une erreur de transport reste une indisponibilité, sans démarrage local ;
+- des mesures serveur de charge et un scénario naturel de densité, avec garde de régression sur
+  les ticks, les patches et la population.
+
+#### Modifié
+
+- les raretés Torri, l'état des Terres du Temps et les quatre paliers de fin de partie sont
+  désormais portés par une seule simulation déterministe ;
+- le looter vise la structure vivante dont le pourcentage de vie est le plus bas ; le thug copie
+  une statistique de construction positive d'un joueur proche sans la lui retirer ;
+- la spécification du bestiaire devient une cible annotée : chaque comportement est marqué
+  `tenu`, `partiel` ou `non tenu` dans sa matrice de statut.
+
+#### Corrigé
+
+- les ralentissements de zone ennemie durent deux secondes et ne déplacent plus la vie du cœur ;
+- la fusion des slimes est bornée et déterministe, les retraites et la capacité unique du
+  Super Looter sont appliquées, et les multiplicateurs de rareté ne sont appliqués qu'à
+  l'apparition ;
+- la documentation de release ne prétend plus qu'une panne serveur n'a aucun secours local.
+
+Les rapports PV calculés des boss, les capacités partiellement rendues et les écarts de contenu
+restent volontairement visibles dans
+[`docs/gameplay/torri-monster-integration-spec.md`](docs/gameplay/torri-monster-integration-spec.md).
+
 ### Rupture de protocole — raretés Torri
 
 - `TowerMonsterRarity` n’accepte plus `uncommon` ni `elite`. Les consommateurs de snapshots et
@@ -30,8 +63,9 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 
 ### Migration v2 — boucles 2 à 4 : serveur autoritaire
 
-- ajouté `apps/server`, Colyseus et `TowerServerSession`; toutes les parties solo et coopératives
-  utilisent une unique simulation serveur à 20 Hz, sans repli local ;
+- ajouté `apps/server`, Colyseus et `TowerServerSession`; les parties connectées solo et
+  coopératives utilisent une unique simulation serveur à 20 Hz. Le correctif Torri ajoute plus
+  tard le seul repli local explicitement non persistant décrit ci-dessus ;
 - ajouté roster réservé, attente de 15 secondes, reconnexion de 30 secondes, retrait volontaire,
   abandon et conservation des gains des participants retirés ;
 - ajouté la migration `0006`, la RPC transactionnelle `finalize_game_run` réservée à

@@ -214,7 +214,7 @@ describe('Tower Torri monster behavior primitives', () => {
     expect(survivor.radius).toBeLessThanOrEqual(MONSTERS.slime.radius * 1.6);
   });
 
-  it('tÃ©lÃ©graphie une attaque Ã  distance avant de toucher le joueur', () => {
+  it('télégraphie une attaque à distance avant de toucher le joueur', () => {
     const simulation = new TowerSimulation('torri-ranged-telegraph');
     simulation.start();
     const player = internals(simulation).players[0];
@@ -236,7 +236,7 @@ describe('Tower Torri monster behavior primitives', () => {
     expect(player.hp).toBeLessThan(player.maxHp);
   });
 
-  it('invoque des unitÃ©s avec un plafond et divise les monstres Ã  leur mort', () => {
+  it('invoque des unités avec un plafond et divise les monstres à leur mort', () => {
     const summoning = new TowerSimulation('torri-summon');
     summoning.start();
     summoning.spawnMonster('summoner', { x: 500, y: 500 });
@@ -259,7 +259,7 @@ describe('Tower Torri monster behavior primitives', () => {
     ).toHaveLength(2);
   });
 
-  it('accorde une seule rÃ©surrection native Ã  la momie', () => {
+  it('accorde une seule résurrection native à la momie', () => {
     const simulation = new TowerSimulation('torri-revive');
     simulation.start();
     simulation.spawnMonster('mummy', { x: 500, y: 500 });
@@ -297,7 +297,7 @@ describe('Tower Torri monster behavior primitives', () => {
     ).toBe(true);
   });
 
-  it('reste strictement dÃ©terministe avec mouvements, invocations et tÃ©lÃ©graphes', () => {
+  it('reste strictement déterministe avec mouvements, invocations et télégraphes', () => {
     const first = new TowerSimulation('torri-abilities-determinism', {
       playerIds: ['alpha', 'bravo'],
     });

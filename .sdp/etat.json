@@ -3,7 +3,7 @@
   "version": "v2",
   "phase": 4,
   "phase_nom": "developpement",
-  "iteration": 4,
+  "iteration": 5,
   "profil": {
     "code": "non",
     "discipline_process": "moyenne",
@@ -96,11 +96,12 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "de59060de505932b76c65ca06c25cb1c1908a1ae",
-  "maj": "2026-08-04",
-  "portee_iteration_suivante": "validation_coop_deux_postes_lan_et_trace_distribuee",
+  "dernier_commit": "fa84207",
+  "maj": "2026-08-06",
+  "portee_iteration_suivante": "cloture_correctifs_torri_puis_validation_coop_deux_postes_lan_et_trace_distribuee",
   "decisions_a_rouvrir": [
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
-    "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026."
+    "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026.",
+    "Équilibrage Torri : les rapports PV de boss calculés sont volontairement conservés en attente d'un arbitrage produit documenté."
   ]
 }

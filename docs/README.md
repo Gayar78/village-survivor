@@ -1,6 +1,6 @@
 # Documentation de Village Survivor
 
-SpÃ©cification du bestiaire adaptÃ© :
+Spécification du bestiaire adapté :
 [`gameplay/torri-monster-integration-spec.md`](gameplay/torri-monster-integration-spec.md).
 
 La porte d'entrée de la documentation est **[`index.md`](index.md)**.

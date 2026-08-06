@@ -615,7 +615,7 @@ export class TowerScene extends Phaser.Scene {
     this.graphics.lineBetween(x, y - radius * 0.62, x, y + radius * 0.62);
   }
 
-  /** Marque intÃ©rieure : elle porte le pouvoir, sans dÃ©passer la zone de collision. */
+  /** Marque intérieure : elle porte le pouvoir, sans dépasser la zone de collision. */
   private drawMonsterSignatureMark(x: number, y: number, radius: number, signature: string): void {
     const graphics = this.graphics;
     const extent = radius * 0.42;

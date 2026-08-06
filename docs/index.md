@@ -3,7 +3,7 @@
 > Statut : en construction
 > Version du projet : v2 — candidate dans [`releases/v2.md`](releases/v2.md), v1 figée
 > Propriétaire : Gayar
-> Dernière revue : 4 août 2026
+> Dernière revue : 6 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
 
 Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,

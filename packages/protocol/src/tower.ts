@@ -451,7 +451,7 @@ export type TowerMonsterTemporalState =
       alteration: TowerTemporalAlteration;
     }>;
 
-/** TÃ©lÃ©graphe public d'une capacitÃ© ennemie, calculÃ© uniquement par la simulation. */
+/** Télégraphe public d'une capacité ennemie, calculé uniquement par la simulation. */
 export type TowerMonsterAbilityState = Readonly<{
   kind: 'ranged' | 'heal' | 'bolster' | 'summon' | 'control' | 'slam' | 'disable';
   phase: 'telegraph';
@@ -475,13 +475,13 @@ export type TowerMonsterState = Readonly<{
   camouflaged?: boolean;
   empowered?: boolean;
   temporal?: TowerMonsterTemporalState;
-  /** Absent entre deux capacitÃ©s afin de garder les snapshots rÃ©seau compacts. */
+  /** Absent entre deux capacités afin de garder les snapshots réseau compacts. */
   ability?: TowerMonsterAbilityState;
 }>;
 
 export type TowerMonsterZoneKind = 'poison' | 'web' | 'sand' | 'ice' | 'fire' | 'time' | 'ray';
 
-/** Zone hostile bornÃ©e et persistante. Aucun timestamp mural ne transite sur le fil. */
+/** Zone hostile bornée et persistante. Aucun timestamp mural ne transite sur le fil. */
 export type TowerMonsterZoneState = Readonly<{
   id: string;
   kind: TowerMonsterZoneKind;

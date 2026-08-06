@@ -166,8 +166,8 @@ const CONTACT_BY_SIGNATURE: Partial<Record<TowerMonsterSignature, MonsterContact
 };
 
 /**
- * Traduit les signatures Torri en un petit nombre de primitives dÃ©terministes.
- * Les diffÃ©rences de cible, silhouette, taille et statistiques restent portÃ©es par
+ * Traduit les signatures Torri en un petit nombre de primitives déterministes.
+ * Les différences de cible, silhouette, taille et statistiques restent portées par
  * le catalogue : ce profil ajoute le mouvement, l'action et les effets de contact.
  */
 export function monsterBehaviorProfile(signature: TowerMonsterSignature): MonsterBehaviorProfile {

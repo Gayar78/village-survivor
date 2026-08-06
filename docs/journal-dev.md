@@ -2,7 +2,7 @@
 
 > Version du projet : v2
 > Propriétaire : Gayar
-> Dernière mise à jour : 4 août 2026
+> Dernière mise à jour : 6 août 2026
 
 Ce journal consigne les **écarts entre ce que les spécifications prévoyaient et ce que le code a
 imposé**, ainsi que les décisions prises en chemin. Il ne raconte pas ce qui a été construit —
@@ -34,6 +34,9 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 03/08 | Propagation distribuée | Injection/extraction explicite du `traceparent` sur `POST /rooms` | Enregistrer des spans des deux côtés ne suffit pas à produire une trace distribuée | `observabilite.md`, `TowerServerSession.ts` |
 | 03/08 | Revue indépendante de la boucle 4 | Aucun P0–P2 ; quatre P3 retenus et corrigés | La charge traverse le runtime, la mesure de patch est testée, les authentifications incomplètes expirent et une perte de persistance devient explicitement observable | `qualite/rapport-tests.md`, `apps/server/README.md` |
 | 04/08 | Précision du p95 serveur | Les buckets OpenTelemetry par défaut `0–5 ms` ont produit un p95 apparent de 4,75 ms malgré 0,505 ms de moyenne | Le seuil produit de 1 ms exige une frontière dédiée ; quatorze frontières ciblées remplacent quinze frontières génériques sans alourdir la boucle | `observabilite.md`, `qualite/rapport-tests.md` |
+| 06/08 | Bestiaire Torri | La spécification fournie décrit une cible plus large que le comportement réellement présent | La matrice espèce par espèce expose désormais les écarts `partiel` et `non tenu` au lieu de les masquer par une nomenclature commune | `gameplay/torri-monster-integration-spec.md` |
+| 06/08 | Secours solo local | Un repli local est admis seulement après deux réponses de santé réellement en échec, à trois secondes d'intervalle | Une erreur de transport ou une annulation ne prouve pas l'état du serveur et doit échouer vers l'utilisateur, sans simulation locale silencieuse | `decisions/ADR-0012-solo-local-fallback.md`, `deployment.md` |
+| 06/08 | Équilibrage des boss | Les rapports PV calculés à la vague 30, 60 et 90 sont conservés malgré leur niveau élevé | Changer ces valeurs sans décision produit modifierait la difficulté historique ; le point est ouvert dans l'état de projet | `gameplay/torri-monster-integration-spec.md`, `.sdp/etat.json` |
 
 ## Difficultés et dette potentielle
 

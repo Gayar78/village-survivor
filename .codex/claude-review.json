@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "Village Survivor",
+    "language": "fr"
+  },
+  "claude": {
+    "model": "claude-opus-4-8",
+    "effort": "high",
+    "timeout_minutes": 20,
+    "max_turns": 40
+  },
+  "reports": {
+    "directory": "docs/reviews"
+  },
+  "context_files": [
+    "AGENTS.md",
+    ".sdp/etat.json",
+    "docs/index.md",
+    "docs/objectif.md",
+    "docs/spec-nf.md",
+    "docs/spec-fonctionnelle.md",
+    "docs/architecture.md",
+    "docs/observabilite.md",
+    "docs/qualite/strategie-tests.md"
+  ],
+  "snapshot": {
+    "max_files": 20000,
+    "max_bytes": 262144000,
+    "extra_excludes": []
+  },
+  "milestones": [
+    {
+      "id": "development-loop-ready",
+      "condition": "Le code de la boucle est terminé, la documentation est à jour et les tests pertinents sont verts avant clôture.",
+      "review_types": ["general"],
+      "focus_paths": [
+        "apps/**",
+        "packages/**",
+        "supabase/**",
+        "deploy/**",
+        "docs/**",
+        "*.config.ts"
+      ],
+      "git_baseline": "HEAD"
+    }
+  ]
+}
