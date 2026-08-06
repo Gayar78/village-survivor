@@ -371,7 +371,7 @@ export const MONSTER_RARITY_MODIFIERS: Readonly<Record<TowerMonsterRarity, Monst
     rare: { hp: 1.2, speed: 1.01, contactDamage: 1.1, radius: 1, reward: 1.3 },
     epic: { hp: 1.45, speed: 1.02, contactDamage: 1.2, radius: 1.05, reward: 1.75 },
     legendary: { hp: 1.8, speed: 1.03, contactDamage: 1.35, radius: 1.1, reward: 2.5 },
-    boss: { hp: 1, speed: 1, contactDamage: 1, radius: 1, reward: 1 },
+    boss: { hp: 6, speed: 0.85, contactDamage: 2.25, radius: 1.5, reward: 12 },
   };
 
 /** Poids progressifs : les raretés supérieures n'entrent qu'aux vagues indiquées. */

@@ -25,6 +25,7 @@ function createState(monsters: readonly TowerMonsterState[] = []): TowerGameStat
     pendingUpgrades: 0,
     upgradeChoices: [],
     downedRemainingMs: 0,
+    hostileSlowRemainingMs: 0,
   };
 
   return {

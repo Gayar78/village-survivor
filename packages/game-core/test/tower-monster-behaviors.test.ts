@@ -2,9 +2,10 @@ import { TOWER_ACTIVE_MONSTERS, type TowerMonsterSignature } from '@village-surv
 import type { TowerInput, TowerMonsterKind } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { TowerSimulation } from '../src/tower/index.js';
+import { HOSTILE_SLOW_DURATION_MS, TowerSimulation } from '../src/tower/index.js';
 import { monsterBehaviorProfile } from '../src/tower/monster-behaviors.js';
-import type { MutableTowerMonster, MutableTowerPlayer } from '../src/tower/state.js';
+import type { MutableTowerMonster, MutableTowerPlayer, MutableTurret } from '../src/tower/state.js';
+import { TURRET } from '../src/tower/tuning.js';
 
 const input = (sequence: number): TowerInput => ({
   sequence,
@@ -17,6 +18,7 @@ const input = (sequence: number): TowerInput => ({
 type SimulationInternals = {
   monsters: MutableTowerMonster[];
   players: MutableTowerPlayer[];
+  turrets: MutableTurret[];
   damageMonster(
     monster: MutableTowerMonster,
     amount: number,
@@ -42,6 +44,77 @@ describe('Tower Torri monster behavior primitives', () => {
       expect(profile.movement).toBeTruthy();
       expect(profile.contact).toBeTruthy();
     }
+  });
+
+  it('ne confond pas les signatures contenant « merge » avec les fusions voulues', () => {
+    expect(monsterBehaviorProfile('burrow-emerge').mergeWithOwnKind).toBeUndefined();
+    expect(monsterBehaviorProfile('emergency-heal').mergeWithOwnKind).toBeUndefined();
+  });
+
+  it('ne ralentit pas le joueur avec le rayon purement visuel du Voleur de vie', () => {
+    const simulation = new TowerSimulation('torri-life-thief-visual-ray');
+    simulation.start();
+    const player = internals(simulation).players[0];
+    if (player === undefined) throw new Error('Joueur de test absent.');
+    player.position = { x: 1_000, y: 700 };
+    player.hp = 1_000_000;
+    player.maxHp = 1_000_000;
+    simulation.spawnMonster('life-thief', { ...player.position });
+
+    for (let tick = 1; tick <= 300; tick += 1) {
+      simulation.step({ 'player-1': input(tick) });
+      expect(player.hostileSlowRemainingMs).toBe(0);
+    }
+  });
+
+  it('applique deux secondes de ralentissement sans rapprocher le joueur du Cœur', () => {
+    const simulation = new TowerSimulation('torri-contact-slow');
+    simulation.start();
+    const player = internals(simulation).players[0];
+    if (player === undefined) throw new Error('Joueur de test absent.');
+    player.position = { x: 1_000, y: 700 };
+    const before = { ...player.position };
+    simulation.spawnMonster('frosty', { ...player.position });
+
+    simulation.step({ 'player-1': input(1) });
+
+    expect(player.hostileSlowRemainingMs).toBe(HOSTILE_SLOW_DURATION_MS);
+    expect(player.position).toEqual(before);
+  });
+
+  it('borne le sabotage du Super Pilleur à moins de 30 % de 1 200 ticks', () => {
+    const simulation = new TowerSimulation('torri-super-looter-probe');
+    simulation.start();
+    const state = internals(simulation);
+    const turret = state.turrets.find((candidate) => candidate.dir === 'E');
+    if (turret === undefined) throw new Error('Tourelle Est absente.');
+    // La tourelle reste vivante mais ne tire pas d'elle-même : la sonde isole l'indisponibilité
+    // induite par le sabotage, sans compter sa cadence de tir normale.
+    turret.hp = 1_000_000;
+    turret.maxHp = 1_000_000;
+    turret.range = -100;
+    const id = simulation.spawnMonster('super-looter', { x: 300, y: 0 });
+    const superLooter = state.monsters.find((monster) => monster.id === id);
+    if (superLooter === undefined) throw new Error('Super Pilleur absent.');
+    superLooter.hp = 1_000_000;
+    superLooter.maxHp = 1_000_000;
+
+    let unavailableTicks = 0;
+    let maximumRetreatMs = 0;
+    for (let tick = 1; tick <= 1_200; tick += 1) {
+      simulation.step({ 'player-1': input(tick) });
+      if (
+        superLooter.abilityUses > 0 &&
+        (turret.fireCooldownRemaining > 0 || turret.energy < TURRET.energyPerShot)
+      ) {
+        unavailableTicks += 1;
+      }
+      maximumRetreatMs = Math.max(maximumRetreatMs, superLooter.retreatRemainingMs);
+    }
+
+    expect(superLooter.abilityUses).toBe(1);
+    expect(maximumRetreatMs).toBe(3_000);
+    expect(unavailableTicks / 1_200).toBeLessThan(0.3);
   });
 
   it('tÃ©lÃ©graphie une attaque Ã  distance avant de toucher le joueur', () => {

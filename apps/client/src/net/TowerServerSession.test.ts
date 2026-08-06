@@ -63,6 +63,7 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
       },
     ]);
     expect(state.events).toEqual([]);
+    expect(state.player.hostileSlowRemainingMs).toBe(0);
   });
 
   it('tolère un ancien état serveur sans zones de monstres', () => {
@@ -115,6 +116,15 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
         2,
       ),
     ).toEqual({ x: 984, y: 0 });
+    expect(
+      predictTowerLocalPosition(
+        { x: 0, y: 0 },
+        { width: 2_000, height: 2_000 },
+        { moveX: 1, moveY: 0 },
+        2,
+        0.55,
+      ),
+    ).toEqual({ x: 14.3, y: 0 });
   });
 
   it('accumule deux lots fiables entre deux états et déduplique leurs identifiants', () => {

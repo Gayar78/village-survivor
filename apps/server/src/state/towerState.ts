@@ -64,6 +64,7 @@ export class PlayerSchema extends Schema {
   @type('number') public pendingUpgrades = 0;
   @type([UpgradeCardSchema]) public upgradeChoices = new ArraySchema<UpgradeCardSchema>();
   @type('number') public downedRemainingMs = 0;
+  @type('number') public hostileSlowRemainingMs = 0;
   @type('string') public nearTurret = '';
   @type('boolean') public turretWorkshopProtected = false;
 }
@@ -283,6 +284,7 @@ function syncPlayer(target: PlayerSchema, source: TowerPlayerState): void {
   target.bulletDamage = source.bulletDamage;
   target.pendingUpgrades = source.pendingUpgrades;
   target.downedRemainingMs = source.downedRemainingMs;
+  target.hostileSlowRemainingMs = source.hostileSlowRemainingMs;
   target.nearTurret = source.nearTurret ?? '';
   target.turretWorkshopProtected = source.turretWorkshopProtected ?? false;
 

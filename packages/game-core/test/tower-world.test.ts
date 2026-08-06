@@ -224,6 +224,16 @@ describe('Tower deterministic living world', () => {
     expect(WAVE_BOSS_SCHEDULE.at(-1)?.kind).toBe('ancient-guardian');
   });
 
+  it('conserve les multiplicateurs de boss rétablis après le lot Torri', () => {
+    expect(MONSTER_RARITY_MODIFIERS.boss).toEqual({
+      hp: 6,
+      speed: 0.85,
+      contactDamage: 2.25,
+      radius: 1.5,
+      reward: 12,
+    });
+  });
+
   it('conserve une parité complète avec les mêmes seed et vagues', () => {
     const first = new TowerSimulation('living-authoritative-seed', {
       playerIds: ['alpha', 'bravo'],

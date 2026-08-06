@@ -141,6 +141,8 @@ const TIMELANDS_MONSTER_KINDS = TOWER_TIMELANDS_MONSTERS.filter(
 
 const MAX_ACTIVE_MONSTERS_SOLO = 70;
 const MAX_ACTIVE_MONSTERS_PER_EXTRA_PLAYER = 10;
+export const HOSTILE_SLOW_DURATION_MS = 2_000;
+const HOSTILE_SLOW_SPEED_SCALE = 0.55;
 
 type TemporalHistoryFrame = Readonly<{
   tick: number;
@@ -204,6 +206,14 @@ const UPGRADE_RARITIES: readonly UpgradeRarity[] = [
 
 function distance(a: Vector2, b: Vector2): number {
   return exactLength(a.x - b.x, a.y - b.y);
+}
+
+/**
+ * Facteur de mouvement partagé par le pas autoritaire et la prédiction locale.
+ * Le ralentissement hostile s'ajoute aux effets temporels, sans dupliquer la règle.
+ */
+export function playerMovementScale(temporalScale: number, hostileSlowRemainingMs: number): number {
+  return temporalScale * (hostileSlowRemainingMs > 0 ? HOSTILE_SLOW_SPEED_SCALE : 1);
 }
 
 /**
@@ -622,8 +632,11 @@ export class TowerSimulation {
         player.turretWorkshopOpen = false;
         continue;
       }
-      const hostileScale = player.hostileSlowRemainingMs > 0 ? 0.55 : 1;
-      this.updatePlayerMovement(player, input, deltaSeconds * temporalScale * hostileScale);
+      this.updatePlayerMovement(
+        player,
+        input,
+        deltaSeconds * playerMovementScale(temporalScale, player.hostileSlowRemainingMs),
+      );
       this.updatePlayerAim(player, input);
       this.updatePlayerFiring(player, input, deltaSeconds * temporalScale);
       this.applyPlayerAura(player, deltaSeconds * temporalScale);
@@ -805,10 +818,14 @@ export class TowerSimulation {
     return stableNumber(scale);
   }
 
-  private temporalScaleForPlayer(playerId: string): number {
+  private temporalScaleForPlayer(playerId: string, atTick = this.tick): number {
     let scale = 1;
     for (const effect of this.temporalEffects) {
-      if (effect.scope === 'player' && effect.playerId === playerId) {
+      if (
+        effect.expiresAtTick > atTick &&
+        effect.scope === 'player' &&
+        effect.playerId === playerId
+      ) {
         scale *= effect.scale;
       }
     }
@@ -1507,6 +1524,7 @@ export class TowerSimulation {
       monster.camouflageRemainingMs = Math.max(0, monster.camouflageRemainingMs - scaledMs);
       monster.supportBuffRemainingMs = Math.max(0, monster.supportBuffRemainingMs - scaledMs);
       monster.targetLockRemainingMs = Math.max(0, monster.targetLockRemainingMs - scaledMs);
+      monster.retreatRemainingMs = Math.max(0, monster.retreatRemainingMs - scaledMs);
       monster.behaviorElapsedMs += scaledMs;
       this.applyBurn(monster, scaledMs, scaledSeconds);
       if (monster.hp <= 0) {
@@ -1705,15 +1723,15 @@ export class TowerSimulation {
         this.damagePlayer(player, monster.contactDamage * ability.power);
       }
       if (signature === 'poison-projectile') {
-        this.spawnMonsterZone('poison', targetPosition, 78, 3_600, monster.contactDamage * 0.18);
+        this.spawnMonsterZone('poison', targetPosition, 78, 3_600, {
+          damagePerPulse: monster.contactDamage * 0.18,
+          control: 'none',
+        });
       } else if (signature === 'grenade-barrage') {
-        this.spawnMonsterZone(
-          'fire',
-          targetPosition,
-          ability.radius,
-          2_400,
-          monster.contactDamage * 0.2,
-        );
+        this.spawnMonsterZone('fire', targetPosition, ability.radius, 2_400, {
+          damagePerPulse: monster.contactDamage * 0.2,
+          control: 'none',
+        });
       }
       return;
     }
@@ -1779,13 +1797,10 @@ export class TowerSimulation {
         }
       }
       if (signature === 'revive-burning-aura') {
-        this.spawnMonsterZone(
-          'fire',
-          monster.position,
-          ability.radius,
-          2_200,
-          monster.contactDamage * 0.14,
-        );
+        this.spawnMonsterZone('fire', monster.position, ability.radius, 2_200, {
+          damagePerPulse: monster.contactDamage * 0.14,
+          control: 'none',
+        });
       }
       return;
     }
@@ -1797,8 +1812,12 @@ export class TowerSimulation {
       const turret = this.findNearestLivingTurret(targetPosition);
       if (turret !== undefined && distance(monster.position, turret.position) <= ability.range) {
         turret.energy = 0;
-        turret.fireCooldownRemaining = Math.max(turret.fireCooldownRemaining, 3);
+        turret.fireCooldownRemaining = Math.max(
+          turret.fireCooldownRemaining,
+          (ability.disableDurationMs ?? 0) / 1_000,
+        );
       }
+      monster.retreatRemainingMs = ability.retreatDurationMs ?? 0;
       return;
     }
 
@@ -1828,14 +1847,11 @@ export class TowerSimulation {
               : signature?.includes('time') === true || signature === 'temporal-control'
                 ? 'time'
                 : 'ray';
-      this.spawnMonsterZone(
-        kind,
-        center,
-        ability.radius,
-        kind === 'ray' ? 900 : 3_800,
-        monster.contactDamage * 0.12,
-        kind === 'ray' ? monster.position : undefined,
-      );
+      this.spawnMonsterZone(kind, center, ability.radius, kind === 'ray' ? 900 : 3_800, {
+        damagePerPulse: monster.contactDamage * 0.12,
+        control: 'slow',
+        ...(kind === 'ray' ? { endPosition: monster.position } : {}),
+      });
     }
     if (ability.kind === 'slam') {
       for (const turret of this.turrets) {
@@ -1857,8 +1873,11 @@ export class TowerSimulation {
     position: Vector2,
     radius: number,
     durationMs: number,
-    damagePerPulse: number,
-    endPosition?: Vector2,
+    options: Readonly<{
+      damagePerPulse: number;
+      control: MutableTowerMonsterZone['control'];
+      endPosition?: Vector2;
+    }>,
   ): void {
     if (this.monsterZones.length >= 48) this.monsterZones.shift();
     this.monsterZoneCounter += 1;
@@ -1870,8 +1889,9 @@ export class TowerSimulation {
       remainingMs: durationMs,
       durationMs,
       pulseCooldownRemainingMs: 0,
-      damagePerPulse,
-      endPosition: endPosition === undefined ? undefined : { ...endPosition },
+      damagePerPulse: options.damagePerPulse,
+      control: options.control,
+      endPosition: options.endPosition === undefined ? undefined : { ...options.endPosition },
     });
   }
 
@@ -1897,10 +1917,10 @@ export class TowerSimulation {
               : distanceToSegment(player.position, zone.position, zone.endPosition) <=
                 zone.radius + PLAYER.radius;
           if (!inside) continue;
-          if (zone.kind === 'poison' || zone.kind === 'fire' || zone.kind === 'ray') {
+          if (zone.damagePerPulse > 0) {
             this.damagePlayer(player, zone.damagePerPulse);
           }
-          if (zone.kind !== 'fire' && zone.kind !== 'poison') {
+          if (zone.control === 'slow') {
             player.hostileSlowRemainingMs = Math.max(player.hostileSlowRemainingMs, 700);
           }
         }
@@ -1933,7 +1953,13 @@ export class TowerSimulation {
     const profile = monsterBehaviorProfile(
       (definition?.signature ?? 'bone-strike') as TowerMonsterSignature,
     );
-    const target = this.movementTarget(monster, this.findMonsterTarget(monster), profile.movement);
+    const target = this.movementTarget(
+      monster,
+      monster.retreatRemainingMs > 0
+        ? this.retreatTarget(monster)
+        : this.findMonsterTarget(monster),
+      profile.movement,
+    );
     const dx = target.x - monster.position.x;
     const dy = target.y - monster.position.y;
     const length = exactLength(dx, dy);
@@ -1971,6 +1997,27 @@ export class TowerSimulation {
     monster.position = {
       x: monster.position.x + (dx / length) * stepDistance,
       y: monster.position.y + (dy / length) * stepDistance,
+    };
+  }
+
+  private retreatTarget(monster: MutableTowerMonster): Vector2 {
+    const threat = this.findNearestLivingTurret(monster.position)?.position ?? this.heart.position;
+    const dx = monster.position.x - threat.x;
+    const dy = monster.position.y - threat.y;
+    const length = exactLength(dx, dy);
+    const distanceFromThreat = 420;
+    const direction = length > 0 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+    return {
+      x: clamp(
+        monster.position.x + direction.x * distanceFromThreat,
+        -WORLD.bound + monster.radius,
+        WORLD.bound - monster.radius,
+      ),
+      y: clamp(
+        monster.position.y + direction.y * distanceFromThreat,
+        -WORLD.bound + monster.radius,
+        WORLD.bound - monster.radius,
+      ),
     };
   }
 
@@ -2185,9 +2232,16 @@ export class TowerSimulation {
       const drained = monster.contactDamage * 0.45;
       this.damagePlayer(player, drained);
       monster.hp = Math.min(monster.maxHp, monster.hp + drained);
-      this.spawnMonsterZone('ray', monster.position, 8, 650, 0, player.position);
+      this.spawnMonsterZone('ray', monster.position, 8, 650, {
+        damagePerPulse: 0,
+        control: 'none',
+        endPosition: player.position,
+      });
     } else if (effect === 'slow') {
-      this.displacePlayerToward(player, this.heart.position, 24);
+      player.hostileSlowRemainingMs = Math.max(
+        player.hostileSlowRemainingMs,
+        HOSTILE_SLOW_DURATION_MS,
+      );
     } else if (effect === 'drag') {
       this.displacePlayerToward(player, monster.position, 48);
     } else if (effect === 'chain') {
@@ -2201,7 +2255,11 @@ export class TowerSimulation {
       );
       if (chained !== undefined) {
         this.damagePlayer(chained, monster.contactDamage * 0.55);
-        this.spawnMonsterZone('ray', player.position, 7, 650, 0, chained.position);
+        this.spawnMonsterZone('ray', player.position, 7, 650, {
+          damagePerPulse: 0,
+          control: 'none',
+          endPosition: chained.position,
+        });
       }
     }
   }
@@ -2372,7 +2430,10 @@ export class TowerSimulation {
         this.spawnMonsterChildren(monster, death.childKind, death.count, 0.48);
       }
       if (definition.signature === 'freeze-death-zone') {
-        this.spawnMonsterZone('ice', monster.position, 145, 4_200, 0);
+        this.spawnMonsterZone('ice', monster.position, 145, 4_200, {
+          damagePerPulse: 0,
+          control: 'slow',
+        });
       }
     }
     const reward = monster.reward;
@@ -3401,6 +3462,7 @@ export class TowerSimulation {
       supportBuffRemainingMs: 0,
       targetPlayerId: undefined,
       targetLockRemainingMs: 0,
+      retreatRemainingMs: 0,
     });
     return id;
   }
@@ -3475,13 +3537,21 @@ export class TowerSimulation {
       return position;
     }
     const deltaSeconds = TICK_MS / 1_000;
+    let hostileSlowRemainingMs = player.hostileSlowRemainingMs;
     for (let frame = 0; frame < inputs.length; frame += 1) {
       const input = inputs[frame];
       if (input === undefined) {
         break;
       }
       const fraction = frame === inputs.length - 1 ? clamp(lastFraction, 0, 1) : 1;
-      position = movedPlayerPosition(position, input, player.speed, deltaSeconds * fraction);
+      const temporalScale = this.temporalScaleForPlayer(player.id, this.tick + frame + 1);
+      hostileSlowRemainingMs = Math.max(0, hostileSlowRemainingMs - TICK_MS * fraction);
+      position = movedPlayerPosition(
+        position,
+        input,
+        player.speed,
+        deltaSeconds * fraction * playerMovementScale(temporalScale, hostileSlowRemainingMs),
+      );
     }
     return position;
   }
@@ -3608,6 +3678,7 @@ export class TowerSimulation {
       pendingUpgrades: player.pendingUpgrades,
       upgradeChoices: player.upgradeChoices.map((card) => ({ ...card })),
       downedRemainingMs: player.downedRemainingMs,
+      hostileSlowRemainingMs: player.hostileSlowRemainingMs,
       ...(nearTurret === undefined ? {} : { nearTurret }),
       ...(turretWorkshopProtected ? { turretWorkshopProtected: true } : {}),
     };

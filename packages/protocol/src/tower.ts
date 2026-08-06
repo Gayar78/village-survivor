@@ -267,6 +267,8 @@ export type TowerPlayerState = Readonly<{
   upgradeChoices: readonly TowerUpgradeCard[];
   /** > 0 ⇒ à terre (K.O.), en attente de réapparition (ms restantes). */
   downedRemainingMs: number;
+  /** Ralentissement hostile restant, synchronisé afin que la prédiction locale reste exacte. */
+  hostileSlowRemainingMs: number;
   /** Le joueur est-il à portée d'une tourelle (ouverture possible de la boutique) ? */
   nearTurret?: TurretDir;
   /** true lorsque l'intention atelier est validée par la simulation pour ce tick. */

@@ -35,6 +35,8 @@ export type MonsterBehaviorProfile = Readonly<{
     childKind?: TowerMonsterKind;
     childCount?: number;
     maxUses?: number;
+    disableDurationMs?: number;
+    retreatDurationMs?: number;
   }>;
   contact: MonsterContactEffect;
   regenerationPerSecond?: number;
@@ -116,6 +118,14 @@ const SLAM = new Set<TowerMonsterSignature>([
   'sand-slam',
   'structure-ram',
   'guardian-arena-slam',
+]);
+
+const MERGING = new Set<TowerMonsterSignature>([
+  'slime-merge',
+  'growing-merge',
+  'resistant-merge',
+  'split-merge',
+  'explosive-merge',
 ]);
 
 const SUMMON_BY_SIGNATURE: Partial<
@@ -228,6 +238,9 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       range: 300,
       radius: 0,
       power: 1,
+      maxUses: 1,
+      disableDurationMs: 650,
+      retreatDurationMs: 3_000,
     };
   }
 
@@ -242,7 +255,7 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
     ...(signature === 'resistant-merge' || signature === 'frontal-guard'
       ? { incomingDamageMultiplier: signature === 'frontal-guard' ? 0.72 : 0.8 }
       : {}),
-    ...(signature.includes('merge') ? { mergeWithOwnKind: true } : {}),
+    ...(MERGING.has(signature) ? { mergeWithOwnKind: true } : {}),
     ...(signature === 'volatile-lifetime' ? { volatileLifetimeMs: 7_500 } : {}),
     ...(signature === 'revive-bandages' || signature === 'revive-burning-aura'
       ? { reviveFraction: 0.42 }

@@ -17,7 +17,18 @@ describe('prédiction de position pour le rendu', () => {
   const STEP_DISTANCE = PLAYER.speed * 0.05;
 
   type Internals = {
-    players: { position: { x: number; y: number }; downedRemainingMs: number }[];
+    players: {
+      position: { x: number; y: number };
+      downedRemainingMs: number;
+      hostileSlowRemainingMs: number;
+    }[];
+    addTemporalEffect(
+      kind: 'slow' | 'haste' | 'freeze',
+      scale: number,
+      durationTicks: number,
+      sourceMonsterId: string | null,
+      playerId?: string,
+    ): void;
   };
 
   function internals(simulation: TowerSimulation): Internals {
@@ -44,6 +55,45 @@ describe('prédiction de position pour le rendu', () => {
 
     // Égalité stricte, pas approchée : c'est ce qui garantit qu'aucun recalage ne sera visible
     // quand la simulation rattrapera la prédiction.
+    expect(predicted).toEqual(played.createSnapshot().player.position);
+  });
+
+  it('rejoue exactement plusieurs ticks sous ralentissement hostile et temporel', () => {
+    const inputs = [MOVE_RIGHT, MOVE_DIAGONAL, MOVE_RIGHT, MOVE_DIAGONAL];
+    const predictedSimulation = started('prediction-hostile-slow');
+    const predictedPlayer = internals(predictedSimulation).players[0];
+    if (predictedPlayer === undefined) throw new Error('Joueur de test absent.');
+    predictedPlayer.hostileSlowRemainingMs = 2_000;
+    internals(predictedSimulation).addTemporalEffect('slow', 0.5, 100, null, 'player-1');
+
+    const predicted = predictedSimulation.predictPlayerPosition('player-1', inputs);
+
+    const played = started('prediction-hostile-slow');
+    const playedPlayer = internals(played).players[0];
+    if (playedPlayer === undefined) throw new Error('Joueur de test absent.');
+    playedPlayer.hostileSlowRemainingMs = 2_000;
+    internals(played).addTemporalEffect('slow', 0.5, 100, null, 'player-1');
+    for (const input of inputs) {
+      played.step({ 'player-1': input });
+    }
+
+    // La suppression du facteur de ralentissement dans la prédiction rendrait cette égalité
+    // strictement fausse dès le premier tick.
+    expect(predicted).toEqual(played.createSnapshot().player.position);
+  });
+
+  it('retire un effet temporel expiré à la même frontière que le pas autoritaire', () => {
+    const inputs = [MOVE_RIGHT, MOVE_RIGHT];
+    const predictedSimulation = started('prediction-temporal-expiry');
+    internals(predictedSimulation).addTemporalEffect('slow', 0.5, 2, null, 'player-1');
+    const predicted = predictedSimulation.predictPlayerPosition('player-1', inputs);
+
+    const played = started('prediction-temporal-expiry');
+    internals(played).addTemporalEffect('slow', 0.5, 2, null, 'player-1');
+    for (const input of inputs) {
+      played.step({ 'player-1': input });
+    }
+
     expect(predicted).toEqual(played.createSnapshot().player.position);
   });
 
