@@ -26,6 +26,24 @@ déclenche le mode local non persistant et son alerte durable. Un abort de trans
 Les ratios PV des boss ne sont pas retouchés pendant ce chantier : ils restent une décision produit
 ouverte, explicitement signalée dans l'état de projet et dans la spécification Torri.
 
+### Robustesse au décalage de version (6 août 2026)
+
+Trois défauts découverts en observant une partie réelle, et non par les tests : le client était à
+jour, le serveur antérieur au bestiaire Torri.
+
+| Contrôle | Résultat | Preuve observée |
+|---|:---:|---|
+| `pnpm check` | **PASS** | format, lint, types, **43 fichiers / 240 tests** et tous les builds |
+| Rareté hors contrat | **PASS** | un monstre reçu en `elite` ressort en `common`. Test falsifié : sans le repli, `expected 'elite' to be 'common'` |
+| Causes d'indisponibilité | **PASS** | `transport-error` et `timeout` distingués ; seule une réponse HTTP reçue autorise le repli local |
+| Charge autoritaire | **PASS** | 24 000 ticks ; p95 **1,850** puis **2,069 ms** sur deux répétitions, sous le seuil de 3 ms |
+
+**Ce que ces contrôles n'établissent pas.** Le réglage `Encoder.BUFFER_SIZE = 96 Kio` n'est pas
+prouvé par le test de charge, qui n'importe pas `apps/server/src/index.ts` et mesure une
+projection JSON, pas le patch binaire. Le smoke exécute bien ce fichier — donc la ligne s'applique
+sans rien casser — mais l'absence de l'avertissement `buffer overflow` sous charge réelle ne se
+vérifiera que sur le serveur LAN déployé, journaux du conteneur à l'appui.
+
 ## Validation v2 — premier essai LAN solo (4 août 2026)
 
 Le propriétaire a lancé une partie solo sur le déploiement LAN de la v2 et confirme que tout

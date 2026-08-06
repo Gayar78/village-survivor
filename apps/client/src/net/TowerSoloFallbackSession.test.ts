@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { TowerRenderableSession } from './TowerRenderableSession.js';
 import {
+  isTowerServerUnreachable,
   TowerSoloFallbackSession,
   towerGameServerHealth,
   type TowerServerHealth,
@@ -97,14 +98,17 @@ describe('sélection solo serveur ou locale', () => {
     expect(local.startCalls).toBe(expectedSession === 'local' ? 1 : 0);
   });
 
-  it('ne bascule pas en local lorsque le transport ne confirme aucune réponse HTTP', async () => {
-    const { fallback, server, local } = fallbackWith('unreachable');
+  it.each(['timeout', 'transport-error'] as const)(
+    'ne bascule pas en local lorsque le sondage échoue en %s',
+    async (health) => {
+      const { fallback, server, local } = fallbackWith(health);
 
-    await expect(fallback.start()).rejects.toThrow("n'a pas pu être établie");
-
-    expect(server.startCalls).toBe(0);
-    expect(local.startCalls).toBe(0);
-  });
+      // La cause voyage jusqu'à l'appelant : c'est elle qui rend l'incident diagnosticable.
+      await expect(fallback.start()).rejects.toMatchObject({ health });
+      expect(server.startCalls).toBe(0);
+      expect(local.startCalls).toBe(0);
+    },
+  );
 
   it('rebranche un abonnement antérieur et rejoue la dernière entrée avant le démarrage', async () => {
     const { fallback, server } = fallbackWith('healthy');
@@ -191,7 +195,11 @@ describe('healthcheck solo', () => {
     const aborted = Object.assign(new Error('aborted'), { name: 'AbortError' });
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(aborted);
 
-    await expect(towerGameServerHealth('https://game.test', fetcher)).resolves.toBe('unreachable');
+    // Un abandon qui ne vient pas de notre propre délai reste un échec de transport : le nom de
+    // l'erreur ne prouve rien, seul le déclenchement de notre minuterie établit une expiration.
+    const health = await towerGameServerHealth('https://game.test', fetcher);
+    expect(health).toBe('transport-error');
+    expect(isTowerServerUnreachable(health)).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

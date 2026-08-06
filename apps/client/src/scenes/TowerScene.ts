@@ -119,6 +119,15 @@ const RARITY_MARKER_RADIUS: Readonly<Record<TowerMonsterRarity, number>> = {
   boss: 11,
 };
 
+/**
+ * Lecture totale de la table : une rareté absente vaudrait `undefined`, et le rayon du cercle
+ * deviendrait `NaN` sans qu'aucune erreur ne soit levée. `TowerServerSession` ramène déjà toute
+ * rareté inconnue sur `common`; cette garde protège les appelants qui ne passent pas par lui.
+ */
+function rarityMarkerRadius(rarity: TowerMonsterRarity): number {
+  return RARITY_MARKER_RADIUS[rarity] ?? 0;
+}
+
 const WEAPON_COLORS: Readonly<Record<TowerWeaponId, number>> = {
   rifle: 0xd9d1b5,
   shotgun: 0xf6b866,
@@ -564,7 +573,7 @@ export class TowerScene extends Phaser.Scene {
       graphics.lineStyle(1, 0x15130d, 0.8);
       graphics.strokeCircle(x, y, monster.radius);
       const barWidth = monster.radius * 2 * (monster.rarity === 'boss' ? 1.45 : 1);
-      const markerRadius = RARITY_MARKER_RADIUS[monster.rarity];
+      const markerRadius = rarityMarkerRadius(monster.rarity);
       this.drawBar(
         x - barWidth / 2,
         y - monster.radius - markerRadius - 8,
@@ -769,6 +778,10 @@ export class TowerScene extends Phaser.Scene {
         return secondary;
       case 'common':
         return 0;
+      // Une rareté hors contrat ne doit pas produire une couleur `undefined` : le `switch`
+      // était exhaustif pour le type, jamais pour ce qui arrive réellement du réseau.
+      default:
+        return 0;
     }
   }
 
@@ -778,7 +791,7 @@ export class TowerScene extends Phaser.Scene {
     const color = this.rarityMarkerColor(monster.rarity);
     const alpha = monster.rarity === 'rare' ? 0.06 : monster.rarity === 'epic' ? 0.1 : 0.13;
     graphics.fillStyle(color, alpha);
-    graphics.fillCircle(x, y, monster.radius + RARITY_MARKER_RADIUS[monster.rarity] + 7);
+    graphics.fillCircle(x, y, monster.radius + rarityMarkerRadius(monster.rarity) + 7);
   }
 
   private drawDiamond(x: number, y: number, radius: number, color: number, alpha: number): void {
@@ -796,7 +809,7 @@ export class TowerScene extends Phaser.Scene {
     }
     const graphics = this.graphics;
     const color = this.rarityMarkerColor(monster.rarity);
-    const radius = monster.radius + RARITY_MARKER_RADIUS[monster.rarity];
+    const radius = monster.radius + rarityMarkerRadius(monster.rarity);
 
     if (monster.rarity === 'rare') {
       graphics.lineStyle(1.5, color, 0.9);

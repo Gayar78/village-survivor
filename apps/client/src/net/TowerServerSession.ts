@@ -1,6 +1,7 @@
 import { Client, type Room } from '@colyseus/sdk';
 import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
 import { playerMovementScale } from '@village-survivor/game-core';
+import { normalizeTowerMonsterRarity } from '@village-survivor/protocol';
 import type {
   CreateTowerRoomRequest,
   CreateTowerRoomResponse,
@@ -159,6 +160,10 @@ function normalizeMonster(monster: TowerMonsterState): TowerMonsterState {
       : undefined;
   return {
     ...required,
+    // Un serveur d'une version antérieure émet encore `uncommon` et `elite`. Sans ce repli,
+    // le rendu cherchait un rayon et une couleur inexistants pour ces raretés et produisait
+    // un cercle de rayon NaN avec une couleur indéfinie.
+    rarity: normalizeTowerMonsterRarity(required.rarity),
     ...((hasShieldRatio ?? shieldRatio !== undefined) ? { shieldRatio: shieldRatio ?? 0 } : {}),
     ...(camouflaged === true ? { camouflaged: true } : {}),
     ...(empowered === true ? { empowered: true } : {}),

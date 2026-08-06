@@ -44,10 +44,33 @@ Les rapports PV calculés des boss, les capacités partiellement rendues et les 
 restent volontairement visibles dans
 [`docs/gameplay/torri-monster-integration-spec.md`](docs/gameplay/torri-monster-integration-spec.md).
 
+### Robustesse au décalage de version — 6 août 2026
+
+Découvert en observant une vraie partie : un client à jour parlait à un serveur antérieur au
+bestiaire Torri. Le jeu fonctionnait, mais le rendu produisait des cercles de rayon `NaN` et des
+couleurs indéfinies, sans lever aucune erreur.
+
+#### Ajouté
+
+- `TOWER_MONSTER_RARITIES` et `normalizeTowerMonsterRarity` dans le protocole : la liste des
+  raretés existe désormais à l'exécution, parce qu'elle traverse le réseau ;
+- l'attribut de trace `vs.server.health` (`unhealthy`, `timeout`, `transport-error`), qui rend un
+  échec de lancement diagnosticable au lieu de le résumer à « indisponible ».
+
+#### Corrigé
+
+- toute rareté hors contrat reçue du serveur est ramenée sur `common` à la frontière réseau ; le
+  rayon de marqueur et la couleur de rareté sont devenus des lectures totales ;
+- le tampon d'encodage de Colyseus passe de 8 Kio (défaut) à 96 Kio : le serveur LAN a émis
+  `@colyseus/schema buffer overflow` le 4 août 2026, l'encodeur agrandissant alors son tampon
+  puis ré-encodant l'état entier ;
+- l'expiration de délai et l'échec de transport ne sont plus confondus dans le sondage du serveur.
+
 ### Rupture de protocole — raretés Torri
 
 - `TowerMonsterRarity` n’accepte plus `uncommon` ni `elite`. Les consommateurs de snapshots et
-  de contenu doivent accepter `common`, `rare`, `epic`, `legendary` ou `boss` ;
+  de contenu doivent accepter `common`, `rare`, `epic`, `legendary` ou `boss`. **Un client à jour
+  tolère néanmoins un serveur antérieur** : la valeur inconnue est ramenée sur `common` ;
 - `rare` ne conserve pas son ancienne signification : son multiplicateur de PV est désormais
   ×1,20 (au lieu de ×1,80). Les paliers suivants sont `epic` ×1,45 et `legendary` ×1,80 ;
 - cette rupture accompagne le bestiaire Torri. Les multiplicateurs sont appliqués une fois à

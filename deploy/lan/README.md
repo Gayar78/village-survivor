@@ -97,6 +97,32 @@ personnes hors du LAN sans que ce soit voulu.
 ne traverse pas le pare-feu comme une requête venue de l'extérieur. La seule preuve qu'un joueur
 peut se connecter, c'est un second poste qui se connecte.
 
+**Le client et le serveur ne se mettent pas à jour de la même façon, et c'est un piège.** `web`
+monte `apps/client/dist` en volume : un `pnpm build` change **immédiatement** ce que les
+navigateurs téléchargent, sans qu'aucun conteneur soit recréé. Le serveur de jeu, lui, vit dans
+une image : `docker compose up -d` seul **ne le reconstruit pas**. Après un changement de code,
+la séquence complète est donc :
+
+```powershell
+pnpm build
+docker compose -f deploy/lan/docker-compose.yml build game-server
+docker compose -f deploy/lan/docker-compose.yml up -d --force-recreate game-server
+```
+
+Sauter la deuxième et la troisième ligne laisse tourner un client neuf devant un serveur ancien.
+Le 6 août 2026, une partie entière a été jouée dans cet état : le serveur ne connaissait aucun
+monstre du bestiaire Torri, mais le rendu était celui de la version courante. Le jeu paraissait
+fonctionner et la télémétrie était verte — elle mesurait simplement une autre version. Vérifiez
+ce que le conteneur exécute réellement plutôt que ce que le dépôt contient :
+
+```powershell
+docker inspect vs-game-server --format '{{.Created}}'
+docker compose -f deploy/lan/docker-compose.yml logs game-server --tail 5
+```
+
+**Ne reconstruisez pas le client pendant que quelqu'un joue.** L'écriture dans `apps/client/dist`
+est visible du serveur web à l'instant même.
+
 **L'adresse est figée à la compilation.** `VITE_SUPABASE_URL` est intégrée au paquet par Vite.
 Si l'adresse de la machine change, il faut relancer `setup.mjs --host <nouvelle IP>` **puis**
 `pnpm build`, sinon les clients continueront de parler à l'ancienne adresse.

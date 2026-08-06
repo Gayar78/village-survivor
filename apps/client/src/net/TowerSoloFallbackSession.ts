@@ -6,16 +6,50 @@ import { gameServerEndpoint } from './TowerServerSession.js';
 const HEALTH_TIMEOUT_MS = 3_000;
 const HEALTH_ATTEMPTS = 2;
 
-export type TowerServerHealth = 'healthy' | 'unhealthy' | 'unreachable';
+/**
+ * Résultat du sondage du serveur de jeu.
+ *
+ * `timeout` et `transport-error` conduisent tous deux au même refus de démarrer, mais ils ne se
+ * diagnostiquent pas de la même façon : le premier dit que le serveur est joignable et trop lent,
+ * le second que la requête n'a jamais abouti. Les confondre a déjà coûté un diagnostic.
+ */
+export type TowerServerHealth = 'healthy' | 'unhealthy' | 'timeout' | 'transport-error';
 export type TowerSoloExecutionMode = 'authoritative-server' | 'local-fallback';
+
+/** Les deux issues qui interdisent de démarrer une partie, faute de preuve sur le serveur. */
+export function isTowerServerUnreachable(health: TowerServerHealth): boolean {
+  return health === 'timeout' || health === 'transport-error';
+}
+
+const HEALTH_REASON_LABELS: Readonly<Record<TowerServerHealth, string>> = {
+  healthy: 'serveur sain',
+  unhealthy: 'le serveur a répondu, mais pas comme un serveur de jeu',
+  timeout: `le serveur n'a pas répondu en moins de ${HEALTH_TIMEOUT_MS / 1_000} secondes`,
+  'transport-error': "la requête n'a jamais abouti (réseau, adresse ou origine)",
+};
+
+/** Erreur de démarrage portant la cause exacte, pour la télémétrie comme pour le joueur. */
+export class TowerServerUnavailableError extends Error {
+  public constructor(public readonly health: TowerServerHealth) {
+    super(
+      `La disponibilité du serveur de jeu n'a pas pu être établie : ${HEALTH_REASON_LABELS[health]}. ` +
+        "La partie locale n'est pas lancée pour éviter une progression non enregistrée.",
+    );
+    this.name = 'TowerServerUnavailableError';
+  }
+}
 
 async function inspectTowerGameServerHealth(
   endpoint: string,
   fetcher: typeof fetch,
   timeoutMs: number,
-): Promise<Exclude<TowerServerHealth, 'unreachable'> | 'unreachable'> {
+): Promise<TowerServerHealth> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     const response = await fetcher(`${endpoint}/health`, {
       method: 'GET',
@@ -32,9 +66,10 @@ async function inspectTowerGameServerHealth(
       ? 'healthy'
       : 'unhealthy';
   } catch {
-    // Un abort ou une panne réseau ne prouve pas l'absence du serveur : démarrer alors
-    // une partie non persistée ferait perdre silencieusement la voie autoritaire.
-    return 'unreachable';
+    // Ni un abandon ni une panne réseau ne prouvent l'absence du serveur : démarrer alors
+    // une partie non persistée ferait perdre silencieusement la voie autoritaire. Seule la
+    // cause diffère, et c'est elle qui rend l'incident diagnosticable après coup.
+    return timedOut ? 'timeout' : 'transport-error';
   } finally {
     clearTimeout(timeout);
   }
@@ -50,12 +85,14 @@ export async function towerGameServerHealth(
   timeoutMs = HEALTH_TIMEOUT_MS,
 ): Promise<TowerServerHealth> {
   let receivedUnhealthyResponse = false;
+  let lastUnreachable: TowerServerHealth = 'transport-error';
   for (let attempt = 0; attempt < HEALTH_ATTEMPTS; attempt += 1) {
     const result = await inspectTowerGameServerHealth(endpoint, fetcher, timeoutMs);
     if (result === 'healthy') return result;
     if (result === 'unhealthy') receivedUnhealthyResponse = true;
+    else lastUnreachable = result;
   }
-  return receivedUnhealthyResponse ? 'unhealthy' : 'unreachable';
+  return receivedUnhealthyResponse ? 'unhealthy' : lastUnreachable;
 }
 
 /** Une page HTML Vercel répondant 200 ne doit jamais être prise pour un serveur de jeu. */
@@ -174,10 +211,8 @@ export class TowerSoloFallbackSession implements TowerRenderableSession {
   private async selectAndStart(): Promise<void> {
     const health = await this.serverHealthResult();
     if (this.stopped) return;
-    if (health === 'unreachable') {
-      throw new Error(
-        "La disponibilité du serveur de jeu n'a pas pu être établie. La partie locale n'est pas lancée pour éviter une progression non enregistrée.",
-      );
+    if (isTowerServerUnreachable(health)) {
+      throw new TowerServerUnavailableError(health);
     }
     const executionMode: TowerSoloExecutionMode =
       health === 'healthy' ? 'authoritative-server' : 'local-fallback';

@@ -15,6 +15,7 @@ import {
   type TowerServerSessionOptions,
 } from './net/TowerServerSession.js';
 import {
+  TowerServerUnavailableError,
   TowerSoloFallbackSession,
   type TowerSoloExecutionMode,
 } from './net/TowerSoloFallbackSession.js';
@@ -459,8 +460,14 @@ void session.start().catch((error) => {
     'Partie indisponible',
     error instanceof Error ? error.message : 'Le serveur de jeu est indisponible.',
   );
-  log.error('échec du démarrage de la session de jeu', { 'vs.error': describeError(error) });
-  endGameSession('error', { 'vs.error': describeError(error) });
+  // La cause du refus est portée à part : `vs.error` est un texte libre, celle-ci est un code
+  // fermé sur lequel on peut filtrer une trace sans relire une phrase.
+  const attributes = {
+    'vs.error': describeError(error),
+    ...(error instanceof TowerServerUnavailableError ? { 'vs.server.health': error.health } : {}),
+  };
+  log.error('échec du démarrage de la session de jeu', attributes);
+  endGameSession('error', attributes);
   scheduleLobbyReturn();
 });
 requestAnimationFrame(inputLoop);

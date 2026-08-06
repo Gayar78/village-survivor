@@ -139,8 +139,23 @@ export type TowerBiomeId = 'grove' | 'badlands' | 'tundra' | 'tempest' | 'timela
 /** Affinité élémentaire visible d'un monstre et couleur dominante de son biome. */
 export type TowerMonsterAffinity = 'nature' | 'fire' | 'frost' | 'storm' | 'time';
 
-/** Rareté de combat ; `boss` est réservée au monstre périodique unique d'une vague. */
-export type TowerMonsterRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'boss';
+/**
+ * Rareté de combat ; `boss` est réservée au monstre périodique unique d'une vague.
+ *
+ * La liste est exposée à l'exécution parce qu'elle traverse le réseau : un client ne peut pas
+ * supposer que le serveur parle exactement la même version du contrat. Les valeurs `uncommon` et
+ * `elite` ont par exemple disparu du contrat, et un serveur antérieur les émet encore.
+ */
+export const TOWER_MONSTER_RARITIES = ['common', 'rare', 'epic', 'legendary', 'boss'] as const;
+
+export type TowerMonsterRarity = (typeof TOWER_MONSTER_RARITIES)[number];
+
+/** Ramène une rareté venue du réseau dans le contrat courant ; `common` est le repli neutre. */
+export function normalizeTowerMonsterRarity(value: unknown): TowerMonsterRarity {
+  return TOWER_MONSTER_RARITIES.includes(value as TowerMonsterRarity)
+    ? (value as TowerMonsterRarity)
+    : 'common';
+}
 
 /** Trait synthétique exposé au rendu. Les traits ordinaires découlent de l'affinité. */
 export type TowerMonsterTrait =

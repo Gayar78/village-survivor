@@ -34,6 +34,19 @@ Après la sélection effective d'une partie solo, le span navigateur reçoit
 distinguent les chemins sans augmenter la cardinalité. Le repli local ne possède pas de room ni de
 trace distribuée côté serveur ; son absence de persistance reste signalée dans l'interface.
 
+Quand une partie ne démarre pas faute de serveur, le span porte en plus `vs.server.health`, un
+code fermé parmi `unhealthy`, `timeout` et `transport-error` :
+
+| Valeur | Ce qu'elle établit |
+|---|---|
+| `unhealthy` | Le serveur a répondu, mais pas comme un serveur de jeu — c'est le seul cas qui autorise le repli local |
+| `timeout` | La requête est partie et n'a pas abouti dans le délai : serveur joignable et trop lent, ou démarrage à froid |
+| `transport-error` | La requête n'a jamais abouti : réseau, adresse ou origine |
+
+`vs.error` reste un texte libre destiné à la lecture ; `vs.server.health` est ce sur quoi une
+trace se filtre. Un échec de lancement observé le 6 août 2026 n'a pas pu être diagnostiqué faute
+de cette distinction : la trace disait « indisponible » sans dire pourquoi.
+
 **Interdiction absolue :** aucun span par tick, commande, image, projectile ou entité. Un tick
 est une mesure agrégée, pas une unité de trace.
 
@@ -92,7 +105,7 @@ uniquement au démarrage ; les secrets ne sont pas des attributs de ressource.
 | `vs.game.tick.duration` | p95 < 3 ms sous 200 monstres. Référence CI : 0,138 ms avant Torri, 1,505 ms après ; répétitions locales post-Torri : 1,863 à 2,779 ms. Les profils de mouvement, capacités, zones et contrôles du roster Torri expliquent ce coût supplémentaire. |
 | `vs.game.tick.lag` | aucune boucle au-delà du budget de 50 ms |
 | commande→état client | p95 < 150 ms sur LAN |
-| `vs.game.patch.size` | p95 < 64 Kio par client |
+| `vs.game.patch.size` | p95 < 64 Kio par client. Le tampon d'encodage de Colyseus est fixé à 96 Kio dans `apps/server/src/index.ts` : son défaut de 8 Kio a été dépassé en exploitation le 4 août 2026 (`@colyseus/schema buffer overflow` dans les journaux du conteneur), ce qui déclenche un **ré-encodage complet** de l'état. Attention : le « patch p95 » du test de charge est une projection JSON, borne supérieure de l'état, et non la taille du patch binaire — les deux ne se comparent pas. |
 | commandes refusées | hausse anormale = client incompatible ou abus |
 | reconnexions tardives | résultat `expired` attendu après 30 secondes |
 | ferraille active | croissance continue sans retour = fuite de cycle de vie |
