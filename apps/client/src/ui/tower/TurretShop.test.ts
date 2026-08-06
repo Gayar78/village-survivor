@@ -25,6 +25,7 @@ function createState(): TowerGameState {
     pendingUpgrades: 0,
     upgradeChoices: [],
     downedRemainingMs: 0,
+    hostileSlowRemainingMs: 0,
     nearTurret: 'N',
   };
 

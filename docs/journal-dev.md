@@ -2,7 +2,7 @@
 
 > Version du projet : v2
 > Propriétaire : Gayar
-> Dernière mise à jour : 4 août 2026
+> Dernière mise à jour : 6 août 2026
 
 Ce journal consigne les **écarts entre ce que les spécifications prévoyaient et ce que le code a
 imposé**, ainsi que les décisions prises en chemin. Il ne raconte pas ce qui a été construit —
@@ -34,6 +34,14 @@ Git et le journal des changements s'en chargent — mais ce qui a surpris, et po
 | 03/08 | Propagation distribuée | Injection/extraction explicite du `traceparent` sur `POST /rooms` | Enregistrer des spans des deux côtés ne suffit pas à produire une trace distribuée | `observabilite.md`, `TowerServerSession.ts` |
 | 03/08 | Revue indépendante de la boucle 4 | Aucun P0–P2 ; quatre P3 retenus et corrigés | La charge traverse le runtime, la mesure de patch est testée, les authentifications incomplètes expirent et une perte de persistance devient explicitement observable | `qualite/rapport-tests.md`, `apps/server/README.md` |
 | 04/08 | Précision du p95 serveur | Les buckets OpenTelemetry par défaut `0–5 ms` ont produit un p95 apparent de 4,75 ms malgré 0,505 ms de moyenne | Le seuil produit de 1 ms exige une frontière dédiée ; quatorze frontières ciblées remplacent quinze frontières génériques sans alourdir la boucle | `observabilite.md`, `qualite/rapport-tests.md` |
+| 06/08 | Bestiaire Torri | La spécification fournie décrit une cible plus large que le comportement réellement présent | La matrice espèce par espèce expose désormais les écarts `partiel` et `non tenu` au lieu de les masquer par une nomenclature commune | `gameplay/torri-monster-integration-spec.md` |
+| 06/08 | Secours solo local | Un repli local est admis seulement après deux réponses de santé réellement en échec, à trois secondes d'intervalle | Une erreur de transport ou une annulation ne prouve pas l'état du serveur et doit échouer vers l'utilisateur, sans simulation locale silencieuse | `decisions/ADR-0012-solo-local-fallback.md`, `deployment.md` |
+| 06/08 | Équilibrage des boss | Les rapports PV calculés à la vague 30, 60 et 90 sont conservés malgré leur niveau élevé | Changer ces valeurs sans décision produit modifierait la difficulté historique ; le point est ouvert dans l'état de projet | `gameplay/torri-monster-integration-spec.md`, `.sdp/etat.json` |
+| 06/08 | Dette technique Torri | Signatures dérivées du catalogue, profils mémorisés, boucle de vague sans filtre répété et abonnements de fallback indépendants | Ces corrections réduisent les allocations et les ambiguïtés de typage sans scinder les longues transitions de simulation, dont le déterminisme reste prioritaire | `tower-monsters.ts`, `monster-behaviors.ts`, `simulation.ts`, `TowerSoloFallbackSession.ts` |
+| 06/08 | Cerf du Temps | Retrait complet du roster et du protocole, conservation de la seule entrée `excluded` documentaire | La cible produit exclut cette créature passive ; la laisser accessible à la simulation contredisait cette décision | `gameplay/torri-monster-integration-spec.md`, `content/tower.ts` |
+| 06/08 | Décalage de version client/serveur | **Une rupture de contrat annoncée dans le journal des changements ne protège rien** : le client doit tolérer une valeur hors contrat | Une partie réelle a tourné avec un client à jour et un serveur antérieur au bestiaire. Le jeu semblait fonctionner ; le rendu produisait en réalité des rayons `NaN` et des couleurs indéfinies, sans erreur ni trace | `protocol/tower.ts`, `TowerServerSession.ts`, `TowerScene.ts` |
+| 06/08 | Tampon d'encodage Colyseus | Le défaut de 8 Kio a été dépassé en exploitation, sans que rien ne le signale hors des journaux du conteneur | L'avertissement `buffer overflow` du 4 août est la seule preuve : le « patch p95 » du test de charge est une projection JSON, borne supérieure de l'état, et ne se compare pas à un tampon binaire. Le test comme la télémétrie étaient aveugles à ce dépassement | `apps/server/src/index.ts`, `observabilite.md` |
+| 06/08 | Diagnostic d'indisponibilité | Un échec de lancement observé n'a pas pu être expliqué : la trace disait « indisponible » sans distinguer expiration de délai et échec de transport | Le message d'erreur était un texte libre. Un code fermé (`vs.server.health`) était nécessaire pour filtrer une trace | `TowerSoloFallbackSession.ts`, `observabilite.md` |
 
 ## Difficultés et dette potentielle
 

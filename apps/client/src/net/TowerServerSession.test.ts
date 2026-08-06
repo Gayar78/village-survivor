@@ -7,7 +7,12 @@ import {
   towerActionsFromInput,
   towerGameStateFromWire,
 } from './TowerServerSession.js';
-import { isTowerGameServerHealthy } from './TowerSoloFallbackSession.js';
+import {
+  isTowerGameServerHealthy,
+  isTowerServerUnreachable,
+  towerGameServerHealth,
+  TowerServerUnavailableError,
+} from './TowerSoloFallbackSession.js';
 
 describe('adaptateur de rendu du serveur autoritaire', () => {
   it('reconstruit player depuis l’identité locale sans le recevoir comme champ partagé', () => {
@@ -63,6 +68,7 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
       },
     ]);
     expect(state.events).toEqual([]);
+    expect(state.player.hostileSlowRemainingMs).toBe(0);
   });
 
   it('tolère un ancien état serveur sans zones de monstres', () => {
@@ -80,6 +86,31 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
       monsterZones: undefined,
     };
     expect(towerGameStateFromWire(legacyWire, 'user-1').monsterZones).toEqual([]);
+  });
+
+  it('ramène sur common une rareté disparue du contrat', () => {
+    const simulation = new TowerSimulation('wire-rarity', { playerIds: ['user-1'] });
+    simulation.start();
+    simulation.spawnMonster('slime', { x: 400, y: 0 });
+    const snapshot = simulation.createSnapshot();
+    const monster = snapshot.monsters[0];
+    if (monster === undefined) throw new Error('Monstre de test absent.');
+
+    // `uncommon` et `elite` ont été retirées du contrat ; un serveur antérieur les émet encore.
+    const wire = {
+      ...snapshot,
+      phase: 'running',
+      players: { 'user-1': snapshot.players[0] },
+      turrets: {},
+      monsters: { [monster.id]: { ...monster, rarity: 'elite' } },
+      projectiles: {},
+      scraps: {},
+      globalDefenseUpgrades: {},
+      monsterZones: {},
+    };
+
+    // Sans ce repli, le rendu lisait un rayon `undefined` puis dessinait un cercle de rayon NaN.
+    expect(towerGameStateFromWire(wire, 'user-1').monsters[0]?.rarity).toBe('common');
   });
 
   it('sépare les actions fiables du contrôle continu et conserve leur identifiant', () => {
@@ -115,6 +146,15 @@ describe('adaptateur de rendu du serveur autoritaire', () => {
         2,
       ),
     ).toEqual({ x: 984, y: 0 });
+    expect(
+      predictTowerLocalPosition(
+        { x: 0, y: 0 },
+        { width: 2_000, height: 2_000 },
+        { moveX: 1, moveY: 0 },
+        2,
+        0.55,
+      ),
+    ).toEqual({ x: 14.3, y: 0 });
   });
 
   it('accumule deux lots fiables entre deux états et déduplique leurs identifiants', () => {
@@ -159,5 +199,39 @@ describe('détection du serveur pour le solo', () => {
   it('retombe proprement en local lorsque le réseau échoue', async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('network failed'));
     await expect(isTowerGameServerHealthy('https://offline.test', fetcher)).resolves.toBe(false);
+  });
+
+  it('distingue une panne de transport d’une expiration de délai', async () => {
+    const transport = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('network failed'));
+    await expect(towerGameServerHealth('https://offline.test', transport)).resolves.toBe(
+      'transport-error',
+    );
+
+    // Un serveur joignable mais trop lent : la requête n'aboutit qu'après l'abandon.
+    const slow = vi.fn<typeof fetch>().mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    );
+    await expect(towerGameServerHealth('https://slow.test', slow, 5)).resolves.toBe('timeout');
+  });
+
+  it('n’autorise le repli local que sur une réponse HTTP réellement reçue', async () => {
+    const refused = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
+    const health = await towerGameServerHealth('https://static.test/game', refused);
+
+    expect(health).toBe('unhealthy');
+    expect(isTowerServerUnreachable(health)).toBe(false);
+    expect(isTowerServerUnreachable('timeout')).toBe(true);
+    expect(isTowerServerUnreachable('transport-error')).toBe(true);
+  });
+
+  it('porte la cause exacte dans l’erreur de démarrage', () => {
+    expect(new TowerServerUnavailableError('timeout').health).toBe('timeout');
+    expect(new TowerServerUnavailableError('timeout').message).toContain('secondes');
+    expect(new TowerServerUnavailableError('transport-error').message).toContain('jamais abouti');
   });
 });

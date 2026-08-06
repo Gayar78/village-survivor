@@ -6,8 +6,7 @@
 // moteur (game-core, Lot A).
 
 /** Identifiants canoniques du roster du biome final. */
-export type TowerTimelandsMonsterId =
-  'time-deer' | 'time-controller' | 'time-watch' | 'time-warden';
+export type TowerTimelandsMonsterId = 'time-controller' | 'time-watch' | 'time-warden';
 
 export type TowerTimelandsMechanic =
   | Readonly<{
@@ -18,12 +17,6 @@ export type TowerTimelandsMechanic =
       resurrectionHpFraction: number;
       alterations: readonly ['slow', 'haste', 'blink'];
       lowHpRelocationThreshold: number;
-    }>
-  | Readonly<{
-      kind: 'deer-escape';
-      teleportCooldownTicks: number;
-      minimumTeleportDistance: number;
-      guaranteedUpgradeDrop: true;
     }>
   | Readonly<{
       kind: 'controller-strike';
@@ -70,30 +63,11 @@ export const TOWER_TIMELANDS_BIOME = Object.freeze({
   arrivalAnnouncementTicks: 80,
   historySampleIntervalTicks: 5,
   historyDepthTicks: 120,
-  rosterIds: Object.freeze(['time-deer', 'time-controller', 'time-watch', 'time-warden'] as const),
+  rosterIds: Object.freeze(['time-controller', 'time-watch', 'time-warden'] as const),
 });
 
 /** Roster minimal Timelands. Le Warden est exclu du tirage (`spawnWeight: 0`). */
 export const TOWER_TIMELANDS_MONSTERS: readonly TowerTimelandsMonsterDefinition[] = Object.freeze([
-  Object.freeze({
-    id: 'time-deer',
-    label: 'Cerf du Temps',
-    unique: false,
-    hp: 4_600,
-    speed: 80,
-    radius: 32,
-    contactDamage: 0,
-    reward: 45,
-    spawnWeight: 50,
-    minimumWaveInBiome: 2,
-    maxAlive: 3,
-    mechanic: Object.freeze({
-      kind: 'deer-escape',
-      teleportCooldownTicks: 30,
-      minimumTeleportDistance: 500,
-      guaranteedUpgradeDrop: true,
-    }),
-  }),
   Object.freeze({
     id: 'time-controller',
     label: 'Contrôleur',
@@ -161,7 +135,7 @@ export const TOWER_TIMELANDS_MONSTERS: readonly TowerTimelandsMonsterDefinition[
 ]);
 
 export type TowerEndgameTierDefinition = Readonly<{
-  id: 1 | 2 | 3 | 4 | 5;
+  id: 1 | 2 | 3 | 4;
   label: string;
   description: string;
   /** Décalage depuis l'arrivée des Timelands ; le palier 1 est immédiat. */
@@ -169,12 +143,7 @@ export type TowerEndgameTierDefinition = Readonly<{
   effect:
     | Readonly<{
         kind: 'spawn-pressure';
-        excludedMonsterKinds: readonly ['chaser', 'runner'];
         waveBudgetCap: number;
-      }>
-    | Readonly<{
-        kind: 'event-polarity';
-        allowedPolarities: readonly ['neutral', 'negative'];
       }>
     | Readonly<{ kind: 'minimum-rarity'; rarity: 'rare' }>
     | Readonly<{
@@ -190,41 +159,29 @@ export type TowerEndgameTierDefinition = Readonly<{
       }>;
 }>;
 
-export const TOWER_ENDGAME_TIER_INTERVAL_TICKS = 3_000;
 export const TOWER_ENDGAME_ANNOUNCEMENT_TICKS = 80;
 
-/** Cinq paliers cumulatifs, triés par id et déclenchés sans horloge murale. */
+/** Quatre paliers cumulatifs effectifs, triés par id et déclenchés sans horloge murale. */
 export const TOWER_ENDGAME_TIERS: readonly TowerEndgameTierDefinition[] = Object.freeze([
   Object.freeze({
     id: 1,
-    label: 'Monstres plus puissants',
-    description: 'Les petits monstres disparaissent des vagues et leur budget augmente.',
+    label: 'Pression accrue',
+    description: 'Le plafond de budget de vague passe à 160.',
     triggerOffsetTicks: 0,
     effect: Object.freeze({
       kind: 'spawn-pressure',
-      excludedMonsterKinds: Object.freeze(['chaser', 'runner'] as const),
       waveBudgetCap: 160,
     }),
   }),
   Object.freeze({
     id: 2,
-    label: 'Événements hostiles',
-    description: 'Seuls les événements neutres ou négatifs peuvent survenir.',
-    triggerOffsetTicks: 3_000,
-    effect: Object.freeze({
-      kind: 'event-polarity',
-      allowedPolarities: Object.freeze(['neutral', 'negative'] as const),
-    }),
-  }),
-  Object.freeze({
-    id: 3,
     label: 'Rareté forcée',
     description: 'Tout nouveau monstre est au minimum rare.',
     triggerOffsetTicks: 6_000,
     effect: Object.freeze({ kind: 'minimum-rarity', rarity: 'rare' }),
   }),
   Object.freeze({
-    id: 4,
+    id: 3,
     label: 'Fuite énergétique',
     description: "L'énergie des tourelles décroît continuellement et de plus en plus vite.",
     triggerOffsetTicks: 9_000,
@@ -235,7 +192,7 @@ export const TOWER_ENDGAME_TIERS: readonly TowerEndgameTierDefinition[] = Object
     }),
   }),
   Object.freeze({
-    id: 5,
+    id: 4,
     label: 'Adaptation des monstres',
     description: 'Les monstres gagnent sans limite en robustesse, puissance et vitesse.',
     triggerOffsetTicks: 12_000,

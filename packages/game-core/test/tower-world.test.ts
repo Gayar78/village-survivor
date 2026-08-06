@@ -47,11 +47,9 @@ describe('Tower deterministic living world', () => {
 
     expect(monsters.length).toBeGreaterThan(0);
     expect(new Set(monsters.map((monster) => monster.kind)).size).toBeGreaterThanOrEqual(2);
-    expect(
-      monsters.every(
-        (monster) => !['chaser', 'runner', 'brute', 'time-deer'].includes(monster.kind),
-      ),
-    ).toBe(true);
+    expect(monsters.every((monster) => !['chaser', 'runner', 'brute'].includes(monster.kind))).toBe(
+      true,
+    );
     expect(monsters.every((monster) => WAVE_MONSTER_COST[monster.kind] <= 3)).toBe(true);
   });
 
@@ -222,6 +220,16 @@ describe('Tower deterministic living world', () => {
       10, 20, 30, 40, 50, 60, 70, 80, 90, 100,
     ]);
     expect(WAVE_BOSS_SCHEDULE.at(-1)?.kind).toBe('ancient-guardian');
+  });
+
+  it('conserve les multiplicateurs de boss rétablis après le lot Torri', () => {
+    expect(MONSTER_RARITY_MODIFIERS.boss).toEqual({
+      hp: 6,
+      speed: 0.85,
+      contactDamage: 2.25,
+      radius: 1.5,
+      reward: 12,
+    });
   });
 
   it('conserve une parité complète avec les mêmes seed et vagues', () => {

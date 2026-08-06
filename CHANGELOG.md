@@ -6,6 +6,76 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 
 ## [Non publié]
 
+### Correctifs du chantier Torri — 6 août 2026
+
+#### Ajouté
+
+- le bestiaire Torri est raccordé au protocole et à la simulation autoritaire : seize familles,
+  télégraphes, zones hostiles, invocations bornées et états de contrôle synchronisés ;
+- un secours **solo local**, strictement signalé et sans persistance, après deux échecs de santé du
+  serveur espacés de trois secondes. Une réponse HTTP réelle en erreur active ce secours ; une
+  annulation ou une erreur de transport reste une indisponibilité, sans démarrage local ;
+- des mesures serveur de charge et un scénario naturel de densité, avec garde de régression sur
+  les ticks, les patches et la population.
+
+#### Modifié
+
+- les raretés Torri, l'état des Terres du Temps et les quatre paliers de fin de partie sont
+  désormais portés par une seule simulation déterministe ;
+- le looter vise la structure vivante dont le pourcentage de vie est le plus bas ; le thug copie
+  une statistique de construction positive d'un joueur proche sans la lui retirer ;
+- la spécification du bestiaire devient une cible annotée : chaque comportement est marqué
+  `tenu`, `partiel` ou `non tenu` dans sa matrice de statut.
+
+#### Corrigé
+
+- les ralentissements de zone ennemie durent deux secondes et ne déplacent plus la vie du cœur ;
+- la fusion des slimes est bornée et déterministe, les retraites et la capacité unique du
+  Super Looter sont appliquées, et les multiplicateurs de rareté ne sont appliqués qu'à
+  l'apparition ;
+- les profils de comportement sont mémorisés, le compteur vivant de vague évite un filtrage
+  répété, les capacités exigent une cible utile et les doublons d'abonnement du secours solo ne
+  s'écrasent plus ;
+- le Cerf du Temps ne subsiste plus que comme exclusion documentaire : il quitte le protocole, le
+  roster Timelands et la simulation ;
+- la documentation de release ne prétend plus qu'une panne serveur n'a aucun secours local.
+
+Les rapports PV calculés des boss, les capacités partiellement rendues et les écarts de contenu
+restent volontairement visibles dans
+[`docs/gameplay/torri-monster-integration-spec.md`](docs/gameplay/torri-monster-integration-spec.md).
+
+### Robustesse au décalage de version — 6 août 2026
+
+Découvert en observant une vraie partie : un client à jour parlait à un serveur antérieur au
+bestiaire Torri. Le jeu fonctionnait, mais le rendu produisait des cercles de rayon `NaN` et des
+couleurs indéfinies, sans lever aucune erreur.
+
+#### Ajouté
+
+- `TOWER_MONSTER_RARITIES` et `normalizeTowerMonsterRarity` dans le protocole : la liste des
+  raretés existe désormais à l'exécution, parce qu'elle traverse le réseau ;
+- l'attribut de trace `vs.server.health` (`unhealthy`, `timeout`, `transport-error`), qui rend un
+  échec de lancement diagnosticable au lieu de le résumer à « indisponible ».
+
+#### Corrigé
+
+- toute rareté hors contrat reçue du serveur est ramenée sur `common` à la frontière réseau ; le
+  rayon de marqueur et la couleur de rareté sont devenus des lectures totales ;
+- le tampon d'encodage de Colyseus passe de 8 Kio (défaut) à 96 Kio : le serveur LAN a émis
+  `@colyseus/schema buffer overflow` le 4 août 2026, l'encodeur agrandissant alors son tampon
+  puis ré-encodant l'état entier ;
+- l'expiration de délai et l'échec de transport ne sont plus confondus dans le sondage du serveur.
+
+### Rupture de protocole — raretés Torri
+
+- `TowerMonsterRarity` n’accepte plus `uncommon` ni `elite`. Les consommateurs de snapshots et
+  de contenu doivent accepter `common`, `rare`, `epic`, `legendary` ou `boss`. **Un client à jour
+  tolère néanmoins un serveur antérieur** : la valeur inconnue est ramenée sur `common` ;
+- `rare` ne conserve pas son ancienne signification : son multiplicateur de PV est désormais
+  ×1,20 (au lieu de ×1,80). Les paliers suivants sont `epic` ×1,45 et `legendary` ×1,80 ;
+- cette rupture accompagne le bestiaire Torri. Les multiplicateurs sont appliqués une fois à
+  l’apparition, et les boss restent hors du tirage de rareté ordinaire.
+
 Le dépôt contient deux jeux successifs. Le MVP « M1 » (exploration diurne, défense nocturne) a
 été livré du 20 au 26 juillet 2026, puis **remplacé** par le jeu « Tower » du 28 au 30 juillet.
 Les deux sont consignés ci-dessous, dans cet ordre.
@@ -21,8 +91,9 @@ Les deux sont consignés ci-dessous, dans cet ordre.
 
 ### Migration v2 — boucles 2 à 4 : serveur autoritaire
 
-- ajouté `apps/server`, Colyseus et `TowerServerSession`; toutes les parties solo et coopératives
-  utilisent une unique simulation serveur à 20 Hz, sans repli local ;
+- ajouté `apps/server`, Colyseus et `TowerServerSession`; les parties connectées solo et
+  coopératives utilisent une unique simulation serveur à 20 Hz. Le correctif Torri ajoute plus
+  tard le seul repli local explicitement non persistant décrit ci-dessus ;
 - ajouté roster réservé, attente de 15 secondes, reconnexion de 30 secondes, retrait volontaire,
   abandon et conservation des gains des participants retirés ;
 - ajouté la migration `0006`, la RPC transactionnelle `finalize_game_run` réservée à

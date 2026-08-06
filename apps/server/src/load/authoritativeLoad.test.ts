@@ -7,9 +7,10 @@ import { syncTowerState, TowerStateSchema } from '../state/towerState.js';
 const TICKS_IN_TWENTY_MINUTES = 20 * 60 * 20;
 const TARGET_MONSTERS = 200;
 const STATE_SAMPLE_INTERVAL_TICKS = 20;
-// Le serveur dispose de 50 ms par tick. Garder le p95 sous 20 % de ce budget
-// laisse une marge importante au transport, au GC et aux autres rooms actives.
-const P95_TICK_BUDGET_MS = 10;
+// Les répétitions locales après Torri vont de p95 1,863 à 2,779 ms (CI : 1,505 ms).
+// Le seuil de 3 ms laisse 7,9 % au-dessus du maximum observé tout en redevenant un
+// détecteur de régression, au lieu de l'ancienne borne à 10 ms sur un tick de 50 ms.
+const P95_TICK_BUDGET_MS = 3;
 const P99_TICK_BUDGET_MS = 20;
 // Une pause ponctuelle de l'OS ou du GC ne décrit pas le débit du serveur. Cette
 // borne détecte néanmoins un blocage anormal sans rendre le test dépendant du CI.

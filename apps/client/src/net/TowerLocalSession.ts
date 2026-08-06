@@ -1,6 +1,7 @@
 import { TowerSimulation } from '@village-survivor/game-core';
 import type {
   MetaBuildModifiers,
+  MetaModifierKey,
   TowerGameState,
   TowerInput,
   Vector2,
@@ -9,9 +10,29 @@ import type {
 import type { TowerRenderableSession } from './TowerRenderableSession.js';
 
 const TOWER_TICK_MS = 50;
-const MAX_STEPS_PER_FRAME = 240;
+// La frame est déjà bornée à 250 ms : au plus cinq ticks de 50 ms peuvent être rattrapés.
+const MAX_STEPS_PER_FRAME = 5;
+const MAX_PENDING_ACTIONS = 16;
+const MAX_REMEMBERED_ACTION_IDS = 256;
 
 export const TOWER_SOLO_META_BUILD_KEY = 'vs-solo-meta-build';
+export const TOWER_LOCAL_MODE_NOTICE = 'Mode local — progression non enregistrée';
+
+const SOLO_META_BUILD_MIN = 0.5;
+const SOLO_META_BUILD_MAX = 2;
+const SOLO_META_BUILD_KEYS: readonly MetaModifierKey[] = [
+  'damageMultiplier',
+  'fireRateMultiplier',
+  'moveSpeedMultiplier',
+  'maxHealthMultiplier',
+  'heartMaxHealthMultiplier',
+  'pickupRadiusMultiplier',
+];
+
+type PendingTowerAction = Readonly<
+  Pick<TowerInput, 'discreteActionId' | 'selectUpgradeId' | 'turretShop'>
+>;
+type MutableMetaBuild = { -readonly [Key in MetaModifierKey]?: number };
 
 function idleInput(): TowerInput {
   return { sequence: 0, moveX: 0, moveY: 0, aimX: 1, aimY: 0 };
@@ -30,6 +51,23 @@ function persistentInput(input: TowerInput): TowerInput {
   };
 }
 
+function isMetaModifierKey(key: string): key is MetaModifierKey {
+  return SOLO_META_BUILD_KEYS.includes(key as MetaModifierKey);
+}
+
+/** Ferme les clés et applique les mêmes bornes que la simulation autoritaire. */
+export function sanitizeSoloMetaBuild(value: unknown): Partial<MetaBuildModifiers> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const result: MutableMetaBuild = {};
+  for (const [key, modifier] of Object.entries(value)) {
+    if (!isMetaModifierKey(key) || typeof modifier !== 'number' || !Number.isFinite(modifier)) {
+      return undefined;
+    }
+    result[key] = Math.max(SOLO_META_BUILD_MIN, Math.min(SOLO_META_BUILD_MAX, modifier));
+  }
+  return result;
+}
+
 /**
  * Simulation solo autonome utilisée quand aucun serveur de jeu n'est déployé.
  *
@@ -39,7 +77,12 @@ function persistentInput(input: TowerInput): TowerInput {
 export class TowerLocalSession implements TowerRenderableSession {
   private readonly simulation: TowerSimulation;
   private readonly listeners = new Set<(state: TowerGameState) => void>();
+  private readonly connectionListeners = new Set<(message: string, terminal?: boolean) => void>();
+  private readonly pendingActions: PendingTowerAction[] = [];
+  private readonly rememberedActionIds = new Set<string>();
+  private readonly rememberedActionOrder: string[] = [];
   private currentInput: TowerInput = idleInput();
+  private nextActionId = 0;
   private running = false;
   private frameHandle: number | undefined;
   private lastTimestamp = 0;
@@ -59,6 +102,7 @@ export class TowerLocalSession implements TowerRenderableSession {
     this.running = true;
     this.simulation.start();
     this.lastTimestamp = performance.now();
+    this.emitConnectionIssue(TOWER_LOCAL_MODE_NOTICE);
     this.frameHandle = requestAnimationFrame(this.onFrame);
   }
 
@@ -69,10 +113,13 @@ export class TowerLocalSession implements TowerRenderableSession {
       this.frameHandle = undefined;
     }
     this.listeners.clear();
+    this.connectionListeners.clear();
+    this.pendingActions.length = 0;
   }
 
   public sendInput(input: TowerInput): void {
-    this.currentInput = input;
+    this.currentInput = persistentInput(input);
+    this.queueDiscreteAction(input);
   }
 
   public getRenderAlpha(): number {
@@ -84,8 +131,9 @@ export class TowerLocalSession implements TowerRenderableSession {
   }
 
   public onConnectionIssue(listener: (message: string, terminal?: boolean) => void): () => void {
-    void listener;
-    return () => undefined;
+    this.connectionListeners.add(listener);
+    if (this.running) listener(TOWER_LOCAL_MODE_NOTICE);
+    return () => this.connectionListeners.delete(listener);
   }
 
   public subscribe(listener: (state: TowerGameState) => void): () => void {
@@ -101,8 +149,10 @@ export class TowerLocalSession implements TowerRenderableSession {
     this.accumulatorMs += deltaMs;
     let processed = 0;
     while (this.accumulatorMs >= TOWER_TICK_MS && processed < MAX_STEPS_PER_FRAME) {
-      this.simulation.step({ 'player-1': this.currentInput });
-      this.currentInput = persistentInput(this.currentInput);
+      const action = this.pendingActions.shift();
+      this.simulation.step({
+        'player-1': action === undefined ? this.currentInput : { ...this.currentInput, ...action },
+      });
       this.accumulatorMs -= TOWER_TICK_MS;
       processed += 1;
     }
@@ -112,4 +162,40 @@ export class TowerLocalSession implements TowerRenderableSession {
     }
     this.frameHandle = requestAnimationFrame(this.onFrame);
   };
+
+  private queueDiscreteAction(input: TowerInput): void {
+    if (input.selectUpgradeId === undefined && input.turretShop === undefined) return;
+    const actionId = input.discreteActionId ?? this.createActionId();
+    if (
+      this.rememberedActionIds.has(actionId) ||
+      this.pendingActions.length >= MAX_PENDING_ACTIONS
+    ) {
+      return;
+    }
+    this.rememberActionId(actionId);
+    this.pendingActions.push({
+      discreteActionId: actionId,
+      ...(input.selectUpgradeId === undefined ? {} : { selectUpgradeId: input.selectUpgradeId }),
+      ...(input.turretShop === undefined ? {} : { turretShop: input.turretShop }),
+    });
+  }
+
+  private createActionId(): string {
+    this.nextActionId += 1;
+    return `local-action-${this.nextActionId}`;
+  }
+
+  private rememberActionId(actionId: string): void {
+    this.rememberedActionIds.add(actionId);
+    this.rememberedActionOrder.push(actionId);
+    const forgotten =
+      this.rememberedActionOrder.length > MAX_REMEMBERED_ACTION_IDS
+        ? this.rememberedActionOrder.shift()
+        : undefined;
+    if (forgotten !== undefined) this.rememberedActionIds.delete(forgotten);
+  }
+
+  private emitConnectionIssue(message: string): void {
+    for (const listener of this.connectionListeners) listener(message);
+  }
 }

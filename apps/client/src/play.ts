@@ -1,15 +1,24 @@
 import { TOWER_WEAPONS } from '@village-survivor/content';
-import type { MetaBuildModifiers, TowerGameState, TowerInput } from '@village-survivor/protocol';
+import type { TowerGameState, TowerInput } from '@village-survivor/protocol';
 import Phaser from 'phaser';
 
 import type { TowerRenderableSession } from './net/TowerRenderableSession.js';
-import { TowerLocalSession, TOWER_SOLO_META_BUILD_KEY } from './net/TowerLocalSession.js';
+import {
+  sanitizeSoloMetaBuild,
+  TowerLocalSession,
+  TOWER_LOCAL_MODE_NOTICE,
+  TOWER_SOLO_META_BUILD_KEY,
+} from './net/TowerLocalSession.js';
 import {
   TowerServerSession,
   TOWER_SERVER_ROOM_KEY,
   type TowerServerSessionOptions,
 } from './net/TowerServerSession.js';
-import { TowerSoloFallbackSession } from './net/TowerSoloFallbackSession.js';
+import {
+  TowerServerUnavailableError,
+  TowerSoloFallbackSession,
+  type TowerSoloExecutionMode,
+} from './net/TowerSoloFallbackSession.js';
 import { randomSeed } from './randomSeed.js';
 import { gameUrl } from './gameUrl.js';
 import { createLogger } from './observability/logger.js';
@@ -17,6 +26,7 @@ import { describeError } from './observability/redact.js';
 import { flushTelemetry, initTelemetry } from './observability/telemetry.js';
 import {
   endGameSessionSpan,
+  setGameSessionExecutionMode,
   startGameSessionSpan,
   type GameMode,
 } from './observability/gameTelemetry.js';
@@ -105,16 +115,11 @@ function restartGame(): void {
 const serverRoom = readServerRoom();
 const isCoopSession = serverRoom !== null;
 
-function readSoloMetaBuild(): Partial<MetaBuildModifiers> | undefined {
+function readSoloMetaBuild() {
   const raw = sessionStorage.getItem(TOWER_SOLO_META_BUILD_KEY);
   if (raw === null) return undefined;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
-    const values = Object.values(parsed);
-    return values.every((value) => typeof value === 'number' && Number.isFinite(value))
-      ? (parsed as Partial<MetaBuildModifiers>)
-      : undefined;
+    return sanitizeSoloMetaBuild(JSON.parse(raw) as unknown);
   } catch {
     return undefined;
   }
@@ -152,23 +157,50 @@ log.info('partie lancée', {
   'vs.telemetry.enabled': telemetry.exportEnabled,
 });
 
-const session: TowerRenderableSession = isCoopSession
-  ? new TowerServerSession(serverRoom)
-  : new TowerSoloFallbackSession({
-      server: new TowerServerSession(),
-      local: new TowerLocalSession({
-        seed: soloSeed,
-        ...(soloMetaBuild === undefined ? {} : { metaBuild: soloMetaBuild }),
-      }),
-    });
+let soloFallbackSession: TowerSoloFallbackSession | undefined;
+let session: TowerRenderableSession;
+if (isCoopSession) {
+  session = new TowerServerSession(serverRoom);
+} else {
+  soloFallbackSession = new TowerSoloFallbackSession({
+    server: new TowerServerSession(),
+    local: new TowerLocalSession({
+      seed: soloSeed,
+      ...(soloMetaBuild === undefined ? {} : { metaBuild: soloMetaBuild }),
+    }),
+  });
+  session = soloFallbackSession;
+}
 
-type CoopStatusTone = 'pending' | 'issue';
+type SessionStatusTone = 'pending' | 'issue' | 'local';
 
-function showConnectionStatus(tone: CoopStatusTone, title: string, detail: string): void {
+function showConnectionStatus(tone: SessionStatusTone, title: string, detail: string): void {
   syncStatus.element.dataset.tone = tone;
   syncStatus.title.textContent = title;
   syncStatus.detail.textContent = detail;
   syncStatus.element.hidden = false;
+}
+
+let executionMode: TowerSoloExecutionMode | undefined;
+function applyExecutionMode(mode: TowerSoloExecutionMode): void {
+  executionMode = mode;
+  // Deux valeurs fermées, posées une seule fois après le choix effectif de session : aucune
+  // identité, room ou seed ne rejoint la trace.
+  setGameSessionExecutionMode(gameSessionSpan, mode);
+  log.info('mode d’exécution sélectionné', { 'vs.execution.mode': mode });
+  if (mode === 'local-fallback') {
+    showConnectionStatus(
+      'local',
+      TOWER_LOCAL_MODE_NOTICE,
+      'Aucune récompense, statistique ni trace serveur n’est enregistrée.',
+    );
+  }
+}
+
+if (isCoopSession) {
+  applyExecutionMode('authoritative-server');
+} else {
+  soloFallbackSession?.onExecutionMode(applyExecutionMode);
 }
 
 if (isCoopSession) {
@@ -187,6 +219,14 @@ if (!isCoopSession) {
 }
 
 const unsubscribeConnectionIssue = session.onConnectionIssue((message, terminal) => {
+  if (message === TOWER_LOCAL_MODE_NOTICE) {
+    showConnectionStatus(
+      'local',
+      TOWER_LOCAL_MODE_NOTICE,
+      'Aucune récompense, statistique ni trace serveur n’est enregistrée.',
+    );
+    return;
+  }
   showConnectionStatus(
     'issue',
     message.startsWith('En attente')
@@ -247,7 +287,7 @@ const gameOver = new GameOverScreen(gameOverElement, {
 let latestState: TowerGameState | undefined;
 
 session.subscribe((state) => {
-  syncStatus.element.hidden = true;
+  if (executionMode !== 'local-fallback') syncStatus.element.hidden = true;
   gameSessionSpan.setAttribute('vs.players.count', state.players.length);
   latestState = state;
   if (
@@ -420,8 +460,14 @@ void session.start().catch((error) => {
     'Partie indisponible',
     error instanceof Error ? error.message : 'Le serveur de jeu est indisponible.',
   );
-  log.error('échec du démarrage de la session de jeu', { 'vs.error': describeError(error) });
-  endGameSession('error', { 'vs.error': describeError(error) });
+  // La cause du refus est portée à part : `vs.error` est un texte libre, celle-ci est un code
+  // fermé sur lequel on peut filtrer une trace sans relire une phrase.
+  const attributes = {
+    'vs.error': describeError(error),
+    ...(error instanceof TowerServerUnavailableError ? { 'vs.server.health': error.health } : {}),
+  };
+  log.error('échec du démarrage de la session de jeu', attributes);
+  endGameSession('error', attributes);
   scheduleLobbyReturn();
 });
 requestAnimationFrame(inputLoop);

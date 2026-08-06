@@ -21,4 +21,4 @@ overrides:
   # minimatch, tiré par ESLint : elle ne touche donc que l'outillage de développement et
   # l'intégration continue, jamais le paquet livré au navigateur. Corrigée en 5.0.8.
   # L'override peut disparaître dès qu'ESLint aura relevé sa propre contrainte.
-  brace-expansion: 5.0.8
+  brace-expansion: '>=5.0.8'

@@ -212,13 +212,20 @@ test('lance le solo local lorsque Vercel ne possède aucun serveur de jeu', asyn
   await page.route('**/otel/v1/**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
-  await page.route(`${GAME_SERVER_URL}/health`, (route) => route.abort('failed'));
+  // Une réponse HTTP 404 prouve que l'hébergement statique n'expose pas de serveur de jeu.
+  // Un abort est volontairement traité comme une indisponibilité incertaine et ne doit pas
+  // ouvrir de partie locale non persistée.
+  await page.route(`${GAME_SERVER_URL}/health`, (route) =>
+    route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not found' }),
+  );
 
   await page.goto('/play.html?seed=vercel-static-fallback');
 
   await expect(page.locator('canvas')).toBeVisible();
   await expect(page.locator('#hud')).toContainText('Vitalité');
-  await expect(page.locator('#tower-sync-status')).toBeHidden();
+  await expect(page.locator('#tower-sync-status')).toContainText(
+    'Mode local — progression non enregistrée',
+  );
   await expect(page).toHaveURL(/play\.html/u);
 });
 

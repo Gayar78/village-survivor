@@ -125,7 +125,11 @@ export interface MutableTowerMonster {
   supportBuffRemainingMs: number;
   targetPlayerId: string | undefined;
   targetLockRemainingMs: number;
+  /** Après un sabotage réussi, le monstre s'éloigne avant de reprendre son comportement normal. */
+  retreatRemainingMs: number;
 }
+
+export type MonsterZoneControl = 'none' | 'slow';
 
 export interface MutableTowerMonsterZone {
   id: string;
@@ -136,6 +140,8 @@ export interface MutableTowerMonsterZone {
   durationMs: number;
   pulseCooldownRemainingMs: number;
   damagePerPulse: number;
+  /** Effet de contrôle explicite : les rayons décoratifs restent sans contrôle. */
+  control: MonsterZoneControl;
   endPosition: Vector2 | undefined;
 }
 

@@ -29,6 +29,24 @@ Le client injecte un `traceparent` W3C dans `POST /rooms`. Le serveur n'accepte 
 fermée et utilise ce contexte comme parent de `game.room`; la valeur n'est jamais un attribut.
 Les traces ne contiennent ni JWT, ni identité, ni `runId`, ni `roomId`, ni seed.
 
+Après la sélection effective d'une partie solo, le span navigateur reçoit
+`vs.execution.mode` : `authoritative-server` ou `local-fallback`. Ces deux valeurs fermées
+distinguent les chemins sans augmenter la cardinalité. Le repli local ne possède pas de room ni de
+trace distribuée côté serveur ; son absence de persistance reste signalée dans l'interface.
+
+Quand une partie ne démarre pas faute de serveur, le span porte en plus `vs.server.health`, un
+code fermé parmi `unhealthy`, `timeout` et `transport-error` :
+
+| Valeur | Ce qu'elle établit |
+|---|---|
+| `unhealthy` | Le serveur a répondu, mais pas comme un serveur de jeu — c'est le seul cas qui autorise le repli local |
+| `timeout` | La requête est partie et n'a pas abouti dans le délai : serveur joignable et trop lent, ou démarrage à froid |
+| `transport-error` | La requête n'a jamais abouti : réseau, adresse ou origine |
+
+`vs.error` reste un texte libre destiné à la lecture ; `vs.server.health` est ce sur quoi une
+trace se filtre. Un échec de lancement observé le 6 août 2026 n'a pas pu être diagnostiqué faute
+de cette distinction : la trace disait « indisponible » sans dire pourquoi.
+
 **Interdiction absolue :** aucun span par tick, commande, image, projectile ou entité. Un tick
 est une mesure agrégée, pas une unité de trace.
 
@@ -52,12 +70,12 @@ La taille est celle du buffer différentiel réellement encodé par Colyseus, me
 commande→état est vérifié par le test LAN multi-client. Aucun identifiant de
 compte, pseudonyme, courriel, adresse IP ou room brute ne devient un attribut de métrique.
 
-L'histogramme `vs.game.tick.duration` emploie les frontières `0,1`, `0,25`, `0,5`, `0,75`, `0,9`,
-`1`, `1,25`, `1,5`, `2`, `3`, `5`, `10`, `25` et `50` ms. Le bucket `le="1"` permet de vérifier
-directement qu'au moins 95 % des ticks respectent le budget, et `histogram_quantile` fournit une
-estimation utile autour du seuil. Ces quatorze frontières remplacent les quinze frontières par
-défaut et le calcul min/max est désactivé ; la précision n'augmente donc ni le nombre de buckets
-ni le travail synchrone de la boucle.
+L'histogramme `vs.game.tick.duration` emploie les frontières `0,25`, `0,5`, `0,75`, `1`, `1,25`,
+`1,5`, `1,75`, `2`, `2,25`, `2,5`, `3`, `5`, `10` et `50` ms. Le bucket `le="3"` permet de
+vérifier directement qu'au moins 95 % des ticks respectent le budget, et `histogram_quantile`
+fournit une estimation utile autour du seuil. Ces quatorze frontières remplacent les quinze
+frontières par défaut et le calcul min/max est désactivé ; la précision n'augmente donc ni le
+nombre de buckets ni le travail synchrone de la boucle.
 
 ## Logs
 
@@ -84,10 +102,10 @@ uniquement au démarrage ; les secrets ne sont pas des attributs de ressource.
 
 | Signal | Budget ou symptôme |
 |---|---|
-| `vs.game.tick.duration` | p95 < 1 ms sous 200 monstres |
+| `vs.game.tick.duration` | p95 < 3 ms sous 200 monstres. Référence CI : 0,138 ms avant Torri, 1,505 ms après ; répétitions locales post-Torri : 1,863 à 2,779 ms. Les profils de mouvement, capacités, zones et contrôles du roster Torri expliquent ce coût supplémentaire. |
 | `vs.game.tick.lag` | aucune boucle au-delà du budget de 50 ms |
 | commande→état client | p95 < 150 ms sur LAN |
-| `vs.game.patch.size` | p95 < 64 Kio par client |
+| `vs.game.patch.size` | p95 < 64 Kio par client. Le tampon d'encodage de Colyseus est fixé à 96 Kio dans `apps/server/src/index.ts` : son défaut de 8 Kio a été dépassé en exploitation le 4 août 2026 (`@colyseus/schema buffer overflow` dans les journaux du conteneur), ce qui déclenche un **ré-encodage complet** de l'état. Attention : le « patch p95 » du test de charge est une projection JSON, borne supérieure de l'état, et non la taille du patch binaire — les deux ne se comparent pas. |
 | commandes refusées | hausse anormale = client incompatible ou abus |
 | reconnexions tardives | résultat `expired` attendu après 30 secondes |
 | ferraille active | croissance continue sans retour = fuite de cycle de vie |
@@ -106,6 +124,11 @@ moins nombreuses que celles par défaut. Un garde de coût enregistre 200 000 me
 mêmes attributs de faible cardinalité que la production et impose moins de 20 µs par
 enregistrement, soit au plus 0,04 % d'une seconde CPU à 20 Hz. Cette limite volontairement large
 évite un faux échec sur un runner chargé ; la valeur réellement mesurée reste consignée à part.
+
+Les garde-fous qui mesurent un temps de tick ou de projection s'exécutent avec les fichiers Vitest
+séquentiels. Ils ne doivent pas transformer la concurrence avec le test de charge serveur en une
+fausse régression du moteur ; cela ne change pas le budget mesuré, seulement la validité de la
+mesure murale.
 
 La validation finale exige une partie solo et une partie coopérative sur deux postes, chacune
 avec une trace distribuée complète consultable dans le backend LAN.

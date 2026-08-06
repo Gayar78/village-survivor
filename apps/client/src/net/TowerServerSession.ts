@@ -1,5 +1,7 @@
 import { Client, type Room } from '@colyseus/sdk';
 import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
+import { playerMovementScale } from '@village-survivor/game-core';
+import { normalizeTowerMonsterRarity } from '@village-survivor/protocol';
 import type {
   CreateTowerRoomRequest,
   CreateTowerRoomResponse,
@@ -68,9 +70,13 @@ function collectionValues<T>(value: unknown): T[] {
 }
 
 function normalizePlayer(player: TowerPlayerState): TowerPlayerState {
-  const { nearTurret, turretWorkshopProtected, ...required } = player;
+  const { nearTurret, turretWorkshopProtected, hostileSlowRemainingMs, ...required } = player;
   return {
     ...required,
+    hostileSlowRemainingMs:
+      typeof hostileSlowRemainingMs === 'number' && Number.isFinite(hostileSlowRemainingMs)
+        ? Math.max(0, hostileSlowRemainingMs)
+        : 0,
     weapons: collectionValues(player.weapons),
     upgradeChoices: collectionValues(player.upgradeChoices).map((choice) => {
       const card = choice as TowerPlayerState['upgradeChoices'][number];
@@ -154,6 +160,10 @@ function normalizeMonster(monster: TowerMonsterState): TowerMonsterState {
       : undefined;
   return {
     ...required,
+    // Un serveur d'une version antérieure émet encore `uncommon` et `elite`. Sans ce repli,
+    // le rendu cherchait un rayon et une couleur inexistants pour ces raretés et produisait
+    // un cercle de rayon NaN avec une couleur indéfinie.
+    rarity: normalizeTowerMonsterRarity(required.rarity),
     ...((hasShieldRatio ?? shieldRatio !== undefined) ? { shieldRatio: shieldRatio ?? 0 } : {}),
     ...(camouflaged === true ? { camouflaged: true } : {}),
     ...(empowered === true ? { empowered: true } : {}),
@@ -426,11 +436,13 @@ export function predictTowerLocalPosition(
   world: Readonly<{ width: number; height: number }>,
   input: Pick<TowerInput, 'moveX' | 'moveY'>,
   requestedLeadTicks: number,
+  movementScale = 1,
 ): Vector2 {
   const length = Math.hypot(input.moveX, input.moveY);
   if (length === 0) return playerPosition;
   const leadTicks = Math.min(MAX_PREDICTION_TICKS, Math.max(0, requestedLeadTicks));
-  const distance = VISUAL_PLAYER_SPEED_PER_SECOND * (SERVER_TICK_MS / 1_000) * leadTicks;
+  const distance =
+    VISUAL_PLAYER_SPEED_PER_SECOND * (SERVER_TICK_MS / 1_000) * leadTicks * movementScale;
   const halfWidth = world.width / 2 - 16;
   const halfHeight = world.height / 2 - 16;
   return {
@@ -613,7 +625,20 @@ export class TowerServerSession implements TowerRenderableSession {
       MAX_PREDICTION_TICKS,
       Math.max(0, (performance.now() - this.latestStateAtMs) / SERVER_TICK_MS),
     );
-    return predictTowerLocalPosition(state.player.position, state.world, input, leadTicks);
+    const temporalScale = state.timelands.activeEffects.reduce(
+      (scale, effect) =>
+        effect.scope === 'player' && effect.playerId === state.player.id
+          ? scale * effect.scale
+          : scale,
+      1,
+    );
+    return predictTowerLocalPosition(
+      state.player.position,
+      state.world,
+      input,
+      leadTicks,
+      playerMovementScale(temporalScale, state.player.hostileSlowRemainingMs),
+    );
   }
 
   public onConnectionIssue(listener: (message: string, terminal?: boolean) => void): () => void {

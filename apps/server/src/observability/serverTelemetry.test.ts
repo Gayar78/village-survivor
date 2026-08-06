@@ -43,13 +43,13 @@ describe('observabilité serveur hors chemin critique', () => {
     warn.mockRestore();
   });
 
-  it('expose des buckets capables de vérifier précisément le budget p95 de 1 ms', async () => {
+  it('expose des buckets capables de vérifier précisément le budget p95 de 3 ms', async () => {
     const { exporter, provider } = createTestMeterProvider();
     try {
       const histogram = provider
         .getMeter('village-survivor-server')
         .createHistogram('vs.game.tick.duration', { unit: 'ms' });
-      for (const durationMs of [0.08, 0.2, 0.4, 0.7, 0.82, 0.95, 1.1, 4, 12, 42]) {
+      for (const durationMs of [0.08, 0.2, 0.4, 0.7, 0.95, 1.1, 1.8, 2.2, 2.4, 12, 42]) {
         histogram.record(durationMs, { 'game.mode': 'solo', 'game.monsters': '0-50' });
       }
 
@@ -63,7 +63,7 @@ describe('observabilité serveur hors chemin critique', () => {
         { value: { buckets: { boundaries: readonly number[] } } } | undefined;
 
       expect(point?.value.buckets.boundaries).toEqual(TICK_DURATION_BUCKETS_MS);
-      expect(TICK_DURATION_BUCKETS_MS).toContain(1);
+      expect(TICK_DURATION_BUCKETS_MS).toContain(3);
       expect(TICK_DURATION_BUCKETS_MS.length).toBeLessThan(15);
     } finally {
       await provider.shutdown();

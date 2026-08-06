@@ -3,7 +3,7 @@
 > Statut : en construction
 > Version du projet : v2 — candidate dans [`releases/v2.md`](releases/v2.md), v1 figée
 > Propriétaire : Gayar
-> Dernière revue : 4 août 2026
+> Dernière revue : 6 août 2026
 > Niveau de garantie requis : **`renforce`**, confirmé le 1er août 2026
 
 Porte d'entrée de la documentation. Le projet a été placé sous méthode le 31 juillet 2026,
@@ -60,7 +60,7 @@ spans aux seules frontières significatives.
 | Feedback | [`feedback.md`](feedback.md) | à jour — premier essai solo v2 validé |
 | Journal de développement | [`journal-dev.md`](journal-dev.md) | à jour |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
-| Décisions | [`decisions/`](decisions/README.md) — 11 ADR | approuvé |
+| Décisions | [`decisions/`](decisions/README.md) — 12 ADR | approuvé |
 | Observabilité | [`observabilite.md`](observabilite.md) | approuvée |
 | Stratégie de tests | [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | approuvée |
 | Rapport de tests | [`qualite/rapport-tests.md`](qualite/rapport-tests.md) | à jour |
@@ -83,6 +83,7 @@ documents cœur, ni des artefacts que la méthode prescrirait.
 | Document | Rôle |
 |---|---|
 | [`gameplay/current-rules.md`](gameplay/current-rules.md) | photographie des règles réellement codées |
+| [`gameplay/torri-monster-integration-spec.md`](gameplay/torri-monster-integration-spec.md) | cible Torri annotée : état vérifié fiche par fiche le 6 août 2026 |
 | [`deployment.md`](deployment.md) | intégration continue, environnements, prérequis |
 | [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md) | procédure de configuration du service externe |
 | [`../deploy/lan/README.md`](../deploy/lan/README.md) | déploiement LAN auto-hébergé |

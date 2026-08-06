@@ -35,6 +35,8 @@ export type MonsterBehaviorProfile = Readonly<{
     childKind?: TowerMonsterKind;
     childCount?: number;
     maxUses?: number;
+    disableDurationMs?: number;
+    retreatDurationMs?: number;
   }>;
   contact: MonsterContactEffect;
   regenerationPerSecond?: number;
@@ -69,7 +71,11 @@ const MOVEMENT_BY_SIGNATURE: Partial<Record<TowerMonsterSignature, MonsterMoveme
   'burrow-turret': 'burrow',
   'landing-rush': 'dash',
   'tiny-hop': 'pounce',
+  'bone-strike': 'pounce',
   'portal-summon': 'orbit-ally',
+  'turret-explosion': 'dash',
+  'player-explosion': 'dash',
+  'time-effect-death': 'zigzag',
 };
 
 const RANGED = new Set<TowerMonsterSignature>([
@@ -118,6 +124,14 @@ const SLAM = new Set<TowerMonsterSignature>([
   'guardian-arena-slam',
 ]);
 
+const MERGING = new Set<TowerMonsterSignature>([
+  'slime-merge',
+  'growing-merge',
+  'resistant-merge',
+  'split-merge',
+  'explosive-merge',
+]);
+
 const SUMMON_BY_SIGNATURE: Partial<
   Record<TowerMonsterSignature, readonly [TowerMonsterKind, number]>
 > = {
@@ -151,12 +165,19 @@ const CONTACT_BY_SIGNATURE: Partial<Record<TowerMonsterSignature, MonsterContact
   'latch-bite': 'drain',
 };
 
+/** Les profils sont des données immuables : les reconstruire à chaque tick allouait inutilement. */
+const PROFILE_BY_SIGNATURE = new Map<TowerMonsterSignature, MonsterBehaviorProfile>();
+
 /**
- * Traduit les signatures Torri en un petit nombre de primitives dÃ©terministes.
- * Les diffÃ©rences de cible, silhouette, taille et statistiques restent portÃ©es par
+ * Traduit les signatures Torri en un petit nombre de primitives déterministes.
+ * Les différences de cible, silhouette, taille et statistiques restent portées par
  * le catalogue : ce profil ajoute le mouvement, l'action et les effets de contact.
  */
 export function monsterBehaviorProfile(signature: TowerMonsterSignature): MonsterBehaviorProfile {
+  const cached = PROFILE_BY_SIGNATURE.get(signature);
+  if (cached !== undefined) {
+    return cached;
+  }
   const movement = MOVEMENT_BY_SIGNATURE[signature] ?? 'direct';
   const contact = CONTACT_BY_SIGNATURE[signature] ?? 'none';
   const death = DEATH_BY_SIGNATURE[signature];
@@ -168,7 +189,7 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       kind: 'summon',
       cooldownMs: 8_000,
       telegraphMs: 650,
-      range: 0,
+      range: 420,
       radius: 110,
       power: 0,
       childKind: summon[0],
@@ -185,12 +206,13 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       power: signature === 'telegraphed-snipe' ? 1.8 : 0.75,
     };
   } else if (HEAL.has(signature)) {
+    const radius = signature === 'area-heal' ? 230 : 150;
     ability = {
       kind: 'heal',
       cooldownMs: signature === 'emergency-heal' ? 4_500 : 5_800,
       telegraphMs: 600,
-      range: 0,
-      radius: signature === 'area-heal' ? 230 : 150,
+      range: radius,
+      radius,
       power: signature === 'repair-heavy' ? 0.18 : 0.12,
     };
   } else if (BOLSTER.has(signature)) {
@@ -198,7 +220,9 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       kind: 'bolster',
       cooldownMs: 6_200,
       telegraphMs: 450,
-      range: 0,
+      // Le Truand est le seul soutien qui cible un joueur : il doit être à courte portée
+      // avant de copier une amélioration active, au lieu de consulter un allié monstre.
+      range: signature === 'copy-buff' ? 240 : 210,
       radius: 210,
       power: 0.08,
     };
@@ -212,12 +236,13 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       power: 0.45,
     };
   } else if (SLAM.has(signature)) {
+    const radius = signature === 'guardian-arena-slam' ? 280 : 135;
     ability = {
       kind: 'slam',
       cooldownMs: signature === 'guardian-arena-slam' ? 4_000 : 5_400,
       telegraphMs: signature === 'guardian-arena-slam' ? 1_200 : 850,
-      range: 0,
-      radius: signature === 'guardian-arena-slam' ? 280 : 135,
+      range: radius,
+      radius,
       power: signature === 'guardian-arena-slam' ? 1.5 : 1.05,
     };
   } else if (signature === 'turret-disable') {
@@ -228,10 +253,13 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       range: 300,
       radius: 0,
       power: 1,
+      maxUses: 1,
+      disableDurationMs: 650,
+      retreatDurationMs: 3_000,
     };
   }
 
-  return {
+  const profile: MonsterBehaviorProfile = Object.freeze({
     movement,
     ...(ability === undefined ? {} : { ability }),
     contact,
@@ -242,11 +270,13 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
     ...(signature === 'resistant-merge' || signature === 'frontal-guard'
       ? { incomingDamageMultiplier: signature === 'frontal-guard' ? 0.72 : 0.8 }
       : {}),
-    ...(signature.includes('merge') ? { mergeWithOwnKind: true } : {}),
+    ...(MERGING.has(signature) ? { mergeWithOwnKind: true } : {}),
     ...(signature === 'volatile-lifetime' ? { volatileLifetimeMs: 7_500 } : {}),
     ...(signature === 'revive-bandages' || signature === 'revive-burning-aura'
       ? { reviveFraction: 0.42 }
       : {}),
     ...(death === undefined ? {} : { death }),
-  };
+  });
+  PROFILE_BY_SIGNATURE.set(signature, profile);
+  return profile;
 }

@@ -18,6 +18,7 @@ import {
  */
 
 export type GameMode = 'solo' | 'coop';
+export type GameExecutionMode = 'authoritative-server' | 'local-fallback';
 
 /**
  * Seaux de population.
@@ -95,6 +96,11 @@ export function startGameSessionSpan(descriptor: GameSessionDescriptor): Span {
   // aucun identifiant de corrélation.
   setSessionSpan(span);
   return span;
+}
+
+/** Marque la voie effectivement choisie une fois le fallback solo résolu. */
+export function setGameSessionExecutionMode(span: Span, mode: GameExecutionMode): void {
+  span.setAttribute('vs.execution.mode', mode);
 }
 
 /**

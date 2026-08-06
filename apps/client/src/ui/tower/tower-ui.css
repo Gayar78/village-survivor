@@ -272,6 +272,34 @@
   letter-spacing: 0.04em;
 }
 
+#hud .tower-hud-temporal {
+  display: grid;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, #af7cff 58%, transparent);
+  border-left: 3px solid #af7cff;
+  background: color-mix(in srgb, var(--visual-surface-color) 80%, #513081);
+}
+
+#hud .tower-hud-temporal > span,
+#hud .tower-hud-temporal small {
+  color: var(--visual-muted-text-color);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#hud .tower-hud-temporal > strong {
+  color: #e1cfff;
+  font-size: 11px;
+}
+
+#hud .tower-hud-temporal__tier {
+  padding-top: 2px;
+  border-top: 1px solid color-mix(in srgb, #af7cff 35%, transparent);
+}
+
 #hud .tower-hud-objective {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
@@ -722,6 +750,16 @@
   box-shadow: 0 0 0 3px rgb(229 182 100 / 14%);
 }
 
+.tower-sync-status[data-tone='local'] {
+  border-color: rgb(104 188 219 / 50%);
+  color: #d5edf5;
+}
+
+.tower-sync-status[data-tone='local'] .tower-sync-status__indicator {
+  background: #68bcdb;
+  box-shadow: 0 0 0 3px rgb(104 188 219 / 14%);
+}
+
 .tower-sync-status p {
   margin: 0;
 }
@@ -745,6 +783,10 @@
 
 .tower-sync-status[data-tone='issue'] .tower-sync-status__detail {
   color: #e3cfa9;
+}
+
+.tower-sync-status[data-tone='local'] .tower-sync-status__detail {
+  color: #b9deeb;
 }
 
 /* Les surfaces Tower reprennent les réglages du joueur ; les PV et les raretés
@@ -941,12 +983,26 @@
   box-shadow: 0 0 0 3px rgb(232 93 117 / 14%);
 }
 
+.tower-sync-status[data-tone='local'] {
+  border-color: color-mix(in srgb, #68bcdb 58%, transparent);
+  color: #d5edf5;
+}
+
+.tower-sync-status[data-tone='local'] .tower-sync-status__indicator {
+  background: #68bcdb;
+  box-shadow: 0 0 0 3px rgb(104 188 219 / 14%);
+}
+
 .tower-sync-status__title {
   color: var(--visual-text-color);
 }
 
 .tower-sync-status__detail {
   color: var(--visual-muted-text-color);
+}
+
+.tower-sync-status[data-tone='local'] .tower-sync-status__detail {
+  color: #b9deeb;
 }
 
 @media (width <= 640px) {

@@ -33,21 +33,6 @@ export type TowerMonsterSpawnMode =
 
 export type TowerMonsterIntroductionTier = 'early' | 'mid' | 'late' | 'boss';
 
-export type TowerMonsterCatalogEntry = Readonly<{
-  id: string;
-  sourceId: string;
-  label: string;
-  faction: TowerMonsterFaction;
-  roleShape: TowerMonsterRoleShape;
-  sizeClass: TowerMonsterSizeClass;
-  targeting: TowerMonsterTargeting;
-  spawnMode: TowerMonsterSpawnMode;
-  introduction: TowerMonsterIntroductionTier;
-  threatCost: number;
-  /** Identifiant stable de la mécanique distinctive interprétée par le moteur. */
-  signature: string;
-}>;
-
 type MonsterTuple = readonly [
   id: string,
   sourceId: string,
@@ -1139,6 +1124,25 @@ const CATALOG_ROWS = [
   ],
 ] as const satisfies readonly MonsterTuple[];
 
+export type TowerCatalogMonsterId = (typeof CATALOG_ROWS)[number][0];
+/** Union dérivée des signatures réellement publiées par le catalogue. */
+export type TowerMonsterSignature = (typeof CATALOG_ROWS)[number][10];
+
+export type TowerMonsterCatalogEntry = Readonly<{
+  id: string;
+  sourceId: string;
+  label: string;
+  faction: TowerMonsterFaction;
+  roleShape: TowerMonsterRoleShape;
+  sizeClass: TowerMonsterSizeClass;
+  targeting: TowerMonsterTargeting;
+  spawnMode: TowerMonsterSpawnMode;
+  introduction: TowerMonsterIntroductionTier;
+  threatCost: number;
+  /** Identifiant stable de la mécanique distinctive interprétée par le moteur. */
+  signature: TowerMonsterSignature;
+}>;
+
 export const TOWER_MONSTER_CATALOG: readonly TowerMonsterCatalogEntry[] = Object.freeze(
   CATALOG_ROWS.map(
     ([
@@ -1169,9 +1173,6 @@ export const TOWER_MONSTER_CATALOG: readonly TowerMonsterCatalogEntry[] = Object
       }),
   ),
 );
-
-export type TowerCatalogMonsterId = (typeof CATALOG_ROWS)[number][0];
-export type TowerMonsterSignature = (typeof CATALOG_ROWS)[number][10];
 
 export const TOWER_ACTIVE_MONSTERS = Object.freeze(
   TOWER_MONSTER_CATALOG.filter(

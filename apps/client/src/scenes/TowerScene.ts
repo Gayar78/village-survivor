@@ -6,6 +6,7 @@ import {
   type TowerMonsterCatalogEntry,
   type TowerMonsterFaction,
   type TowerMonsterRoleShape,
+  type TowerMonsterSignature,
 } from '@village-survivor/content';
 
 import {
@@ -79,7 +80,6 @@ const LEGACY_MONSTER_COLORS: Readonly<Partial<Record<TowerMonsterKind, number>>>
   chaser: 0x8f6254,
   runner: 0xd0a749,
   brute: 0x765a82,
-  'time-deer': 0x9b59b6,
 };
 
 const MONSTER_FACTION_COLORS: Readonly<Record<TowerMonsterFaction, number>> = {
@@ -118,6 +118,15 @@ const RARITY_MARKER_RADIUS: Readonly<Record<TowerMonsterRarity, number>> = {
   legendary: 7,
   boss: 11,
 };
+
+/**
+ * Lecture totale de la table : une rareté absente vaudrait `undefined`, et le rayon du cercle
+ * deviendrait `NaN` sans qu'aucune erreur ne soit levée. `TowerServerSession` ramène déjà toute
+ * rareté inconnue sur `common`; cette garde protège les appelants qui ne passent pas par lui.
+ */
+function rarityMarkerRadius(rarity: TowerMonsterRarity): number {
+  return RARITY_MARKER_RADIUS[rarity] ?? 0;
+}
 
 const WEAPON_COLORS: Readonly<Record<TowerWeaponId, number>> = {
   rifle: 0xd9d1b5,
@@ -543,6 +552,7 @@ export class TowerScene extends Phaser.Scene {
       const color = monsterColor(monster.kind);
       const catalog = monsterCatalogEntry(monster.kind);
       this.drawMonsterAbilityTelegraph(monster);
+      this.drawMonsterTemporalState(x, y, monster);
       this.drawMonsterRarityAura(x, y, monster);
       graphics.fillStyle(color, monster.camouflaged === true ? 0.34 : 1);
       this.drawMonsterSilhouette(x, y, monster.radius, catalog?.roleShape ?? 'circle');
@@ -550,7 +560,7 @@ export class TowerScene extends Phaser.Scene {
         graphics.lineStyle(3, COLORS.root, 0.7);
         graphics.strokeCircle(x, y, monster.radius * 0.65);
       }
-      this.drawMonsterSignatureMark(x, y, monster.radius, catalog?.signature ?? '');
+      this.drawMonsterSignatureMark(x, y, monster.radius, catalog?.signature);
       if (monster.shieldRatio !== undefined) {
         graphics.lineStyle(2.5, 0x66d9ff, 0.35 + monster.shieldRatio * 0.6);
         graphics.strokeCircle(x, y, monster.radius + 4);
@@ -563,7 +573,7 @@ export class TowerScene extends Phaser.Scene {
       graphics.lineStyle(1, 0x15130d, 0.8);
       graphics.strokeCircle(x, y, monster.radius);
       const barWidth = monster.radius * 2 * (monster.rarity === 'boss' ? 1.45 : 1);
-      const markerRadius = RARITY_MARKER_RADIUS[monster.rarity];
+      const markerRadius = rarityMarkerRadius(monster.rarity);
       this.drawBar(
         x - barWidth / 2,
         y - monster.radius - markerRadius - 8,
@@ -604,11 +614,30 @@ export class TowerScene extends Phaser.Scene {
     }
   }
 
-  /** Marque intÃ©rieure : elle porte le pouvoir, sans dÃ©passer la zone de collision. */
-  private drawMonsterSignatureMark(x: number, y: number, radius: number, signature: string): void {
+  /** Les monstres figés ne doivent pas ressembler à un défaut de rendu ou de réseau. */
+  private drawMonsterTemporalState(x: number, y: number, monster: TowerMonsterState): void {
+    if (monster.temporal?.status !== 'frozen') return;
+    const radius = monster.radius + 6;
+    this.graphics.lineStyle(2, 0x9be7ff, 0.9);
+    this.graphics.strokeCircle(x, y, radius);
+    this.graphics.lineBetween(x - radius * 0.62, y, x + radius * 0.62, y);
+    this.graphics.lineBetween(x, y - radius * 0.62, x, y + radius * 0.62);
+  }
+
+  /** Marque intérieure : elle porte le pouvoir, sans dépasser la zone de collision. */
+  private drawMonsterSignatureMark(
+    x: number,
+    y: number,
+    radius: number,
+    signature: TowerMonsterSignature | undefined,
+  ): void {
     const graphics = this.graphics;
     const extent = radius * 0.42;
     graphics.lineStyle(Math.max(1.5, radius * 0.1), 0x08101d, 0.82);
+    if (signature === undefined) {
+      graphics.strokeCircle(x, y, Math.max(2, extent * 0.48));
+      return;
+    }
     if (
       signature.includes('heal') ||
       signature.includes('repair') ||
@@ -732,20 +761,26 @@ export class TowerScene extends Phaser.Scene {
   }
 
   /**
-   * Les formes de rareté s'ajoutent à la silhouette native, sans la remplacer :
-   * le type reste lisible même si les couleurs de préférence sont proches.
+   * Les couleurs suivent les préférences visuelles ; les formes conservent la lecture de rareté
+   * même lorsque les deux accents choisis sont proches.
    */
   private rarityMarkerColor(rarity: TowerMonsterRarity): number {
+    const accent = hexToPhaserColor(this.visualPreferences.accentColor, 0x3498db);
+    const secondary = hexToPhaserColor(this.visualPreferences.accentSecondaryColor, 0x9b59b6);
     switch (rarity) {
       case 'rare':
-        return 0x3498db;
+        return accent;
       case 'epic':
-        return 0x9b59b6;
+        return secondary;
       case 'legendary':
-        return 0xf1c40f;
+        return accent;
       case 'boss':
-        return 0xd252e1;
+        return secondary;
       case 'common':
+        return 0;
+      // Une rareté hors contrat ne doit pas produire une couleur `undefined` : le `switch`
+      // était exhaustif pour le type, jamais pour ce qui arrive réellement du réseau.
+      default:
         return 0;
     }
   }
@@ -756,7 +791,7 @@ export class TowerScene extends Phaser.Scene {
     const color = this.rarityMarkerColor(monster.rarity);
     const alpha = monster.rarity === 'rare' ? 0.06 : monster.rarity === 'epic' ? 0.1 : 0.13;
     graphics.fillStyle(color, alpha);
-    graphics.fillCircle(x, y, monster.radius + RARITY_MARKER_RADIUS[monster.rarity] + 7);
+    graphics.fillCircle(x, y, monster.radius + rarityMarkerRadius(monster.rarity) + 7);
   }
 
   private drawDiamond(x: number, y: number, radius: number, color: number, alpha: number): void {
@@ -774,7 +809,7 @@ export class TowerScene extends Phaser.Scene {
     }
     const graphics = this.graphics;
     const color = this.rarityMarkerColor(monster.rarity);
-    const radius = monster.radius + RARITY_MARKER_RADIUS[monster.rarity];
+    const radius = monster.radius + rarityMarkerRadius(monster.rarity);
 
     if (monster.rarity === 'rare') {
       graphics.lineStyle(1.5, color, 0.9);

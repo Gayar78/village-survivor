@@ -46,11 +46,14 @@ describe('Tower Timelands authoritative simulation', () => {
     expect(second.createSnapshot()).toEqual(first.createSnapshot());
   });
 
-  it('active les cinq frontieres et garde le scaling du palier 5 sans plafond', () => {
+  it('active les quatre paliers effectifs et garde le scaling du dernier sans plafond', () => {
     const simulation = new TowerSimulation('timelands-tiers');
     simulation.start();
     simulation.enterTimelands();
     const mutableClock = simulation as unknown as { tick: number };
+
+    expect(TOWER_ENDGAME_TIERS.map((tier) => tier.id)).toEqual([1, 2, 3, 4]);
+    expect(TOWER_ENDGAME_TIERS[0]?.description).toContain('plafond de budget');
 
     for (const tier of TOWER_ENDGAME_TIERS.slice(1)) {
       mutableClock.tick = tier.triggerOffsetTicks - 1;

@@ -38,6 +38,7 @@ courants.
 | [0009](ADR-0009-account-persistence.md) | Constaté | Comptes Supabase et progression persistante |
 | [0010](ADR-0010-local-render-prediction.md) | Accepté | Dessiner l'avatar local en avance sur la simulation |
 | [0011](ADR-0011-authoritative-game-server.md) | Accepté | Faire exécuter toutes les parties par un serveur autoritaire |
+| [0012](ADR-0012-mode-solo-local-degrade.md) | Accepté | Conserver un solo local dégradé après indisponibilité HTTP confirmée |
 
 ### Notes sur les statuts particuliers
 

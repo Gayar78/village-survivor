@@ -23,7 +23,6 @@ import {
   TOWER_WEAPONS,
   type TowerWeaponDefinition,
   type TowerMonsterCatalogEntry,
-  type TowerMonsterSignature,
 } from '@village-survivor/content';
 import { TOWER_MAX_ACTIVE_PLAYERS } from '@village-survivor/protocol';
 import type {
@@ -136,11 +135,16 @@ const ORDINARY_MONSTER_KINDS: readonly TowerMonsterKind[] = TOWER_NATURAL_MONSTE
   (monster) => monster.faction !== 'timelands',
 ).map((monster) => monster.id as TowerMonsterKind);
 const TIMELANDS_MONSTER_KINDS = TOWER_TIMELANDS_MONSTERS.filter(
-  (monster) => monster.spawnWeight > 0 && monster.id !== 'time-deer',
+  (monster) => monster.spawnWeight > 0,
 ).map((monster) => monster.id);
 
 const MAX_ACTIVE_MONSTERS_SOLO = 70;
 const MAX_ACTIVE_MONSTERS_PER_EXTRA_PLAYER = 10;
+export const HOSTILE_SLOW_DURATION_MS = 2_000;
+const HOSTILE_SLOW_SPEED_SCALE = 0.55;
+/** Les trois statistiques d'une fusion suivent la même limite relative. */
+const MERGE_STAT_CAP_MULTIPLIER = 1.6;
+const COPIED_PLAYER_BUFF_DURATION_MS = 3_200;
 
 type TemporalHistoryFrame = Readonly<{
   tick: number;
@@ -204,6 +208,14 @@ const UPGRADE_RARITIES: readonly UpgradeRarity[] = [
 
 function distance(a: Vector2, b: Vector2): number {
   return exactLength(a.x - b.x, a.y - b.y);
+}
+
+/**
+ * Facteur de mouvement partagé par le pas autoritaire et la prédiction locale.
+ * Le ralentissement hostile s'ajoute aux effets temporels, sans dupliquer la règle.
+ */
+export function playerMovementScale(temporalScale: number, hostileSlowRemainingMs: number): number {
+  return temporalScale * (hostileSlowRemainingMs > 0 ? HOSTILE_SLOW_SPEED_SCALE : 1);
 }
 
 /**
@@ -622,8 +634,11 @@ export class TowerSimulation {
         player.turretWorkshopOpen = false;
         continue;
       }
-      const hostileScale = player.hostileSlowRemainingMs > 0 ? 0.55 : 1;
-      this.updatePlayerMovement(player, input, deltaSeconds * temporalScale * hostileScale);
+      this.updatePlayerMovement(
+        player,
+        input,
+        deltaSeconds * playerMovementScale(temporalScale, player.hostileSlowRemainingMs),
+      );
       this.updatePlayerAim(player, input);
       this.updatePlayerFiring(player, input, deltaSeconds * temporalScale);
       this.applyPlayerAura(player, deltaSeconds * temporalScale);
@@ -805,10 +820,14 @@ export class TowerSimulation {
     return stableNumber(scale);
   }
 
-  private temporalScaleForPlayer(playerId: string): number {
+  private temporalScaleForPlayer(playerId: string, atTick = this.tick): number {
     let scale = 1;
     for (const effect of this.temporalEffects) {
-      if (effect.scope === 'player' && effect.playerId === playerId) {
+      if (
+        effect.expiresAtTick > atTick &&
+        effect.scope === 'player' &&
+        effect.playerId === playerId
+      ) {
         scale *= effect.scale;
       }
     }
@@ -836,24 +855,6 @@ export class TowerSimulation {
         ? { ...common, scope: 'global' }
         : { ...common, scope: 'player', playerId },
     );
-  }
-
-  private updateTimelandsMonsterBehavior(monster: MutableTowerMonster): void {
-    const definition = timelandsMonsterDefinition(monster.kind);
-    if (definition?.mechanic.kind !== 'deer-escape') {
-      return;
-    }
-    const ordinal = Number(monster.id.split('-').at(-1)) || 0;
-    if ((this.tick + ordinal) % definition.mechanic.teleportCooldownTicks !== 0) {
-      return;
-    }
-    const danger = this.findNearestLivingPlayer(
-      monster.position,
-      definition.mechanic.minimumTeleportDistance,
-    );
-    if (danger !== undefined) {
-      monster.position = this.deterministicEscapePosition(monster.id, this.tick);
-    }
   }
 
   private deterministicEscapePosition(monsterId: string, tick: number): Vector2 {
@@ -1198,8 +1199,8 @@ export class TowerSimulation {
   }
 
   private currentTurretEnergyDrainPerSecond(): number {
-    const active = this.endgameActiveTiers.find((tier) => tier.id === 4);
-    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 4);
+    const active = this.endgameActiveTiers.find((tier) => tier.id === 3);
+    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 3);
     if (active === undefined || definition?.effect.kind !== 'turret-energy-drain') {
       return 0;
     }
@@ -1214,8 +1215,8 @@ export class TowerSimulation {
     damage: number;
     speed: number;
   }> {
-    const active = this.endgameActiveTiers.find((tier) => tier.id === 5);
-    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 5);
+    const active = this.endgameActiveTiers.find((tier) => tier.id === 4);
+    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 4);
     if (active === undefined || definition?.effect.kind !== 'monster-adaptation') {
       return { hp: 1, damage: 1, speed: 1 };
     }
@@ -1507,6 +1508,7 @@ export class TowerSimulation {
       monster.camouflageRemainingMs = Math.max(0, monster.camouflageRemainingMs - scaledMs);
       monster.supportBuffRemainingMs = Math.max(0, monster.supportBuffRemainingMs - scaledMs);
       monster.targetLockRemainingMs = Math.max(0, monster.targetLockRemainingMs - scaledMs);
+      monster.retreatRemainingMs = Math.max(0, monster.retreatRemainingMs - scaledMs);
       monster.behaviorElapsedMs += scaledMs;
       this.applyBurn(monster, scaledMs, scaledSeconds);
       if (monster.hp <= 0) {
@@ -1516,7 +1518,6 @@ export class TowerSimulation {
       this.updateMonsterRegeneration(monster, scaledSeconds);
       if (monster.hp <= 0) continue;
       this.updateMonsterAbility(monster, scaledMs);
-      this.updateTimelandsMonsterBehavior(monster);
       this.moveMonster(monster, scaledSeconds);
       this.resolveMonsterContacts(monster);
     }
@@ -1563,7 +1564,7 @@ export class TowerSimulation {
   private updateMonsterRegeneration(monster: MutableTowerMonster, deltaSeconds: number): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const profile = monsterBehaviorProfile(definition.signature as TowerMonsterSignature);
+    const profile = monsterBehaviorProfile(definition.signature);
     if (profile.growthPerSecond !== undefined) {
       const baseRadius = MONSTERS[monster.kind].radius;
       monster.radius = Math.min(
@@ -1597,8 +1598,7 @@ export class TowerSimulation {
       const definition = this.monsterCatalog(left.kind);
       if (
         definition === undefined ||
-        monsterBehaviorProfile(definition.signature as TowerMonsterSignature).mergeWithOwnKind !==
-          true
+        monsterBehaviorProfile(definition.signature).mergeWithOwnKind !== true
       ) {
         continue;
       }
@@ -1613,10 +1613,20 @@ export class TowerSimulation {
         ) {
           continue;
         }
-        left.maxHp += Math.round(right.maxHp * 0.42);
+        const baseStats = MONSTERS[left.kind];
+        left.maxHp = Math.min(
+          Math.round(baseStats.hp * MERGE_STAT_CAP_MULTIPLIER),
+          left.maxHp + Math.round(right.maxHp * 0.42),
+        );
         left.hp = Math.min(left.maxHp, left.hp + right.hp * 0.55);
-        left.radius = Math.min(MONSTERS[left.kind].radius * 1.6, left.radius + right.radius * 0.16);
-        left.contactDamage = Math.round(left.contactDamage * 1.12);
+        left.radius = Math.min(
+          baseStats.radius * MERGE_STAT_CAP_MULTIPLIER,
+          left.radius + right.radius * 0.16,
+        );
+        left.contactDamage = Math.min(
+          Math.round(baseStats.contactDamage * MERGE_STAT_CAP_MULTIPLIER),
+          Math.round(left.contactDamage * 1.12),
+        );
         left.reward += right.reward;
         right.hp = 0;
         break;
@@ -1627,7 +1637,8 @@ export class TowerSimulation {
   private updateMonsterAbility(monster: MutableTowerMonster, deltaMs: number): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const ability = monsterBehaviorProfile(definition.signature as TowerMonsterSignature).ability;
+    const signature = definition.signature;
+    const ability = monsterBehaviorProfile(signature).ability;
     if (ability === undefined) return;
 
     if (monster.abilityTelegraphRemainingMs > 0) {
@@ -1656,18 +1667,12 @@ export class TowerSimulation {
     ) {
       return;
     }
-    const target = this.monsterAbilityTarget(monster, ability.kind);
+    const target = this.monsterAbilityTarget(monster, ability);
     if (target === undefined) {
       monster.abilityCooldownRemainingMs = 500;
       return;
     }
-    if (
-      ability.kind !== 'heal' &&
-      ability.kind !== 'bolster' &&
-      ability.kind !== 'summon' &&
-      ability.kind !== 'slam' &&
-      distance(monster.position, target) > ability.range
-    ) {
+    if (distance(monster.position, target) > ability.range) {
       monster.abilityCooldownRemainingMs = 250;
       return;
     }
@@ -1678,12 +1683,27 @@ export class TowerSimulation {
 
   private monsterAbilityTarget(
     monster: MutableTowerMonster,
-    kind: NonNullable<ReturnType<typeof monsterBehaviorProfile>['ability']>['kind'],
+    ability: NonNullable<ReturnType<typeof monsterBehaviorProfile>['ability']>,
   ): Vector2 | undefined {
-    if (kind === 'heal' || kind === 'bolster' || kind === 'summon' || kind === 'slam') {
-      return monster.position;
+    if (
+      ability.kind === 'bolster' &&
+      this.monsterCatalog(monster.kind)?.signature === 'copy-buff'
+    ) {
+      return this.findNearestLivingPlayer(monster.position, ability.range, true)?.position;
     }
-    if (kind === 'disable') {
+    if (ability.kind === 'heal') {
+      return this.findNearestWoundedLivingMonster(monster, ability.range)?.position;
+    }
+    if (ability.kind === 'bolster') {
+      const ally = this.findNearestSupportAnchor(monster);
+      return ally !== undefined && distance(monster.position, ally.position) <= ability.range
+        ? ally.position
+        : undefined;
+    }
+    if (ability.kind === 'summon' || ability.kind === 'slam') {
+      return this.findNearestLivingPlayer(monster.position, ability.range, true)?.position;
+    }
+    if (ability.kind === 'disable') {
       return this.findNearestLivingTurret(monster.position)?.position;
     }
     return this.findNearestLivingPlayer(monster.position, Infinity, true)?.position;
@@ -1705,14 +1725,27 @@ export class TowerSimulation {
         this.damagePlayer(player, monster.contactDamage * ability.power);
       }
       if (signature === 'poison-projectile') {
-        this.spawnMonsterZone('poison', targetPosition, 78, 3_600, monster.contactDamage * 0.18);
+        this.spawnMonsterZone('poison', targetPosition, 78, 3_600, {
+          damagePerPulse: monster.contactDamage * 0.18,
+          control: 'none',
+        });
       } else if (signature === 'grenade-barrage') {
-        this.spawnMonsterZone(
-          'fire',
-          targetPosition,
-          ability.radius,
-          2_400,
-          monster.contactDamage * 0.2,
+        this.spawnMonsterZone('fire', targetPosition, ability.radius, 2_400, {
+          damagePerPulse: monster.contactDamage * 0.2,
+          control: 'none',
+        });
+      }
+      return;
+    }
+    if (signature === 'copy-buff') {
+      const player = this.findNearestLivingPlayer(targetPosition, ability.range, true);
+      if (player !== undefined && this.playerHasPositiveEffect(player)) {
+        // Le Truand observe le joueur ciblé : il n'examine jamais les bonus d'un allié monstre.
+        // Le moteur n'expose pas encore de jetons de buff temporaires côté joueur ; sa copie
+        // temporaire se traduit donc par le même état d'empowerment visible que les soutiens.
+        monster.supportBuffRemainingMs = Math.max(
+          monster.supportBuffRemainingMs,
+          COPIED_PLAYER_BUFF_DURATION_MS,
         );
       }
       return;
@@ -1757,35 +1790,11 @@ export class TowerSimulation {
           }
         }
       }
-      if (signature === 'copy-buff') {
-        const copied = this.monsters.find(
-          (ally) =>
-            ally !== monster &&
-            ally.hp > 0 &&
-            (ally.shieldHp > 0 ||
-              ally.camouflageRemainingMs > 0 ||
-              ally.supportBuffRemainingMs > 0),
-        );
-        if (copied !== undefined) {
-          monster.shieldHp = Math.max(monster.shieldHp, copied.shieldHp);
-          monster.camouflageRemainingMs = Math.max(
-            monster.camouflageRemainingMs,
-            copied.camouflageRemainingMs,
-          );
-          monster.supportBuffRemainingMs = Math.max(
-            monster.supportBuffRemainingMs,
-            copied.supportBuffRemainingMs,
-          );
-        }
-      }
       if (signature === 'revive-burning-aura') {
-        this.spawnMonsterZone(
-          'fire',
-          monster.position,
-          ability.radius,
-          2_200,
-          monster.contactDamage * 0.14,
-        );
+        this.spawnMonsterZone('fire', monster.position, ability.radius, 2_200, {
+          damagePerPulse: monster.contactDamage * 0.14,
+          control: 'none',
+        });
       }
       return;
     }
@@ -1797,8 +1806,12 @@ export class TowerSimulation {
       const turret = this.findNearestLivingTurret(targetPosition);
       if (turret !== undefined && distance(monster.position, turret.position) <= ability.range) {
         turret.energy = 0;
-        turret.fireCooldownRemaining = Math.max(turret.fireCooldownRemaining, 3);
+        turret.fireCooldownRemaining = Math.max(
+          turret.fireCooldownRemaining,
+          (ability.disableDurationMs ?? 0) / 1_000,
+        );
       }
+      monster.retreatRemainingMs = ability.retreatDurationMs ?? 0;
       return;
     }
 
@@ -1828,14 +1841,11 @@ export class TowerSimulation {
               : signature?.includes('time') === true || signature === 'temporal-control'
                 ? 'time'
                 : 'ray';
-      this.spawnMonsterZone(
-        kind,
-        center,
-        ability.radius,
-        kind === 'ray' ? 900 : 3_800,
-        monster.contactDamage * 0.12,
-        kind === 'ray' ? monster.position : undefined,
-      );
+      this.spawnMonsterZone(kind, center, ability.radius, kind === 'ray' ? 900 : 3_800, {
+        damagePerPulse: monster.contactDamage * 0.12,
+        control: 'slow',
+        ...(kind === 'ray' ? { endPosition: monster.position } : {}),
+      });
     }
     if (ability.kind === 'slam') {
       for (const turret of this.turrets) {
@@ -1852,13 +1862,54 @@ export class TowerSimulation {
     }
   }
 
+  /**
+   * Les améliorations de joueur sont des effets positifs permanents du build courant. Le protocole
+   * ne porte pas encore de jeton de buff temporaire : le Truand ne peut donc copier qu'un effet
+   * réellement constaté dans ces statistiques, jamais l'état d'un allié monstre.
+   */
+  private playerHasPositiveEffect(player: MutableTowerPlayer): boolean {
+    return (
+      player.maxHp > PLAYER.maxHp ||
+      player.speed > PLAYER.speed ||
+      player.pickupRadius > PLAYER.pickupRadius ||
+      player.fireRate < PLAYER.fireRate ||
+      player.bulletDamage > PLAYER.bulletDamage ||
+      player.bulletSpeed > PLAYER.bulletSpeed ||
+      player.bulletRange > PLAYER.bulletRange ||
+      player.bulletRadius > PLAYER.bulletRadius ||
+      player.critChance > PLAYER.critChance ||
+      player.critMult > PLAYER.critMult ||
+      player.pierce > 0 ||
+      player.bounce > 0 ||
+      player.multishotChance > 0 ||
+      player.burnStacks > 0 ||
+      player.auraDps > 0 ||
+      player.lifestealPct > 0 ||
+      player.bulletSpeedBonusApplied ||
+      player.explodeOnKill ||
+      player.growingBullet > 0 ||
+      player.critSlowStacks > 0 ||
+      player.weapons.some(
+        (weapon) =>
+          weapon.level > 1 ||
+          weapon.damageMultiplier > 1 ||
+          weapon.fireRateMultiplier < 1 ||
+          weapon.spreadMultiplier < 1 ||
+          weapon.pierceBonus > 0,
+      )
+    );
+  }
+
   private spawnMonsterZone(
     kind: MutableTowerMonsterZone['kind'],
     position: Vector2,
     radius: number,
     durationMs: number,
-    damagePerPulse: number,
-    endPosition?: Vector2,
+    options: Readonly<{
+      damagePerPulse: number;
+      control: MutableTowerMonsterZone['control'];
+      endPosition?: Vector2;
+    }>,
   ): void {
     if (this.monsterZones.length >= 48) this.monsterZones.shift();
     this.monsterZoneCounter += 1;
@@ -1870,8 +1921,9 @@ export class TowerSimulation {
       remainingMs: durationMs,
       durationMs,
       pulseCooldownRemainingMs: 0,
-      damagePerPulse,
-      endPosition: endPosition === undefined ? undefined : { ...endPosition },
+      damagePerPulse: options.damagePerPulse,
+      control: options.control,
+      endPosition: options.endPosition === undefined ? undefined : { ...options.endPosition },
     });
   }
 
@@ -1897,10 +1949,10 @@ export class TowerSimulation {
               : distanceToSegment(player.position, zone.position, zone.endPosition) <=
                 zone.radius + PLAYER.radius;
           if (!inside) continue;
-          if (zone.kind === 'poison' || zone.kind === 'fire' || zone.kind === 'ray') {
+          if (zone.damagePerPulse > 0) {
             this.damagePlayer(player, zone.damagePerPulse);
           }
-          if (zone.kind !== 'fire' && zone.kind !== 'poison') {
+          if (zone.control === 'slow') {
             player.hostileSlowRemainingMs = Math.max(player.hostileSlowRemainingMs, 700);
           }
         }
@@ -1930,10 +1982,14 @@ export class TowerSimulation {
 
   private moveMonster(monster: MutableTowerMonster, deltaSeconds: number): void {
     const definition = this.monsterCatalog(monster.kind);
-    const profile = monsterBehaviorProfile(
-      (definition?.signature ?? 'bone-strike') as TowerMonsterSignature,
+    const profile = monsterBehaviorProfile(definition?.signature ?? 'bone-strike');
+    const target = this.movementTarget(
+      monster,
+      monster.retreatRemainingMs > 0
+        ? this.retreatTarget(monster)
+        : this.findMonsterTarget(monster),
+      profile.movement,
     );
-    const target = this.movementTarget(monster, this.findMonsterTarget(monster), profile.movement);
     const dx = target.x - monster.position.x;
     const dy = target.y - monster.position.y;
     const length = exactLength(dx, dy);
@@ -1971,6 +2027,27 @@ export class TowerSimulation {
     monster.position = {
       x: monster.position.x + (dx / length) * stepDistance,
       y: monster.position.y + (dy / length) * stepDistance,
+    };
+  }
+
+  private retreatTarget(monster: MutableTowerMonster): Vector2 {
+    const threat = this.findNearestLivingTurret(monster.position)?.position ?? this.heart.position;
+    const dx = monster.position.x - threat.x;
+    const dy = monster.position.y - threat.y;
+    const length = exactLength(dx, dy);
+    const distanceFromThreat = 420;
+    const direction = length > 0 ? { x: dx / length, y: dy / length } : { x: 1, y: 0 };
+    return {
+      x: clamp(
+        monster.position.x + direction.x * distanceFromThreat,
+        -WORLD.bound + monster.radius,
+        WORLD.bound - monster.radius,
+      ),
+      y: clamp(
+        monster.position.y + direction.y * distanceFromThreat,
+        -WORLD.bound + monster.radius,
+        WORLD.bound - monster.radius,
+      ),
     };
   }
 
@@ -2031,7 +2108,7 @@ export class TowerSimulation {
     return target;
   }
 
-  /** SÃ©paration souple : les silhouettes restent lisibles sans altÃ©rer leurs hitbox. */
+  /** Séparation souple : les silhouettes restent lisibles sans altérer leurs hitbox. */
   private separateMonsters(): void {
     for (let leftIndex = 0; leftIndex < this.monsters.length; leftIndex += 1) {
       const left = this.monsters[leftIndex];
@@ -2044,7 +2121,7 @@ export class TowerSimulation {
         const gap = exactLength(dx, dy);
         const desired = (left.radius + right.radius) * 0.72;
         if (gap >= desired) continue;
-        // L'id fournit un axe stable lorsque deux invocations naissent au mÃªme point.
+        // L'id fournit un axe stable lorsque deux invocations naissent au même point.
         const nx = gap > 0 ? dx / gap : left.id < right.id ? 1 : -1;
         const ny = gap > 0 ? dy / gap : 0;
         const push = Math.min(2.5, (desired - gap) * 0.18);
@@ -2078,6 +2155,9 @@ export class TowerSimulation {
 
   private findMonsterTarget(monster: MutableTowerMonster): Vector2 {
     const definition = this.monsterCatalog(monster.kind);
+    if (definition?.signature === 'wounded-structure-raid') {
+      return this.findMostWoundedLivingStructure()?.position ?? this.heart.position;
+    }
     if (definition?.targeting === 'heart') {
       return this.heart.position;
     }
@@ -2122,13 +2202,6 @@ export class TowerSimulation {
   }
 
   private resolveMonsterContacts(monster: MutableTowerMonster): void {
-    /* Remote legacy-kamikaze branch retained below for history; Torri signatures supersede it.
-    if (monster.kind === 'kamikaze') {
-      if (this.kamikazeTouchesTarget(monster)) {
-        // La détonation appartient désormais à `killMonster` : le kamikaze explose de la même
-        // façon qu'il meure au contact ou sous les tirs.
-        this.killMonster(monster, this.findNearestLivingPlayer(monster.position, Infinity));
-*/
     const definition = this.monsterCatalog(monster.kind);
     if (
       definition?.signature === 'turret-explosion' ||
@@ -2178,16 +2251,23 @@ export class TowerSimulation {
   ): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const effect = monsterBehaviorProfile(definition.signature as TowerMonsterSignature).contact;
+    const effect = monsterBehaviorProfile(definition.signature).contact;
     if (effect === 'poison') {
       this.damagePlayer(player, monster.contactDamage * 0.28);
     } else if (effect === 'drain') {
       const drained = monster.contactDamage * 0.45;
       this.damagePlayer(player, drained);
       monster.hp = Math.min(monster.maxHp, monster.hp + drained);
-      this.spawnMonsterZone('ray', monster.position, 8, 650, 0, player.position);
+      this.spawnMonsterZone('ray', monster.position, 8, 650, {
+        damagePerPulse: 0,
+        control: 'none',
+        endPosition: player.position,
+      });
     } else if (effect === 'slow') {
-      this.displacePlayerToward(player, this.heart.position, 24);
+      player.hostileSlowRemainingMs = Math.max(
+        player.hostileSlowRemainingMs,
+        HOSTILE_SLOW_DURATION_MS,
+      );
     } else if (effect === 'drag') {
       this.displacePlayerToward(player, monster.position, 48);
     } else if (effect === 'chain') {
@@ -2201,7 +2281,11 @@ export class TowerSimulation {
       );
       if (chained !== undefined) {
         this.damagePlayer(chained, monster.contactDamage * 0.55);
-        this.spawnMonsterZone('ray', player.position, 7, 650, 0, chained.position);
+        this.spawnMonsterZone('ray', player.position, 7, 650, {
+          damagePerPulse: 0,
+          control: 'none',
+          endPosition: chained.position,
+        });
       }
     }
   }
@@ -2307,8 +2391,7 @@ export class TowerSimulation {
     const receivedMultiplier =
       definition === undefined
         ? 1
-        : (monsterBehaviorProfile(definition.signature as TowerMonsterSignature)
-            .incomingDamageMultiplier ?? 1);
+        : (monsterBehaviorProfile(definition.signature).incomingDamageMultiplier ?? 1);
     let receivedAmount = amount * receivedMultiplier;
     if (monster.shieldHp > 0) {
       const absorbed = Math.min(monster.shieldHp, receivedAmount);
@@ -2366,13 +2449,16 @@ export class TowerSimulation {
     }
     const definition = this.monsterCatalog(monster.kind);
     if (definition !== undefined) {
-      const profile = monsterBehaviorProfile(definition.signature as TowerMonsterSignature);
+      const profile = monsterBehaviorProfile(definition.signature);
       const death = profile.death;
       if (death !== undefined) {
         this.spawnMonsterChildren(monster, death.childKind, death.count, 0.48);
       }
       if (definition.signature === 'freeze-death-zone') {
-        this.spawnMonsterZone('ice', monster.position, 145, 4_200, 0);
+        this.spawnMonsterZone('ice', monster.position, 145, 4_200, {
+          damagePerPulse: 0,
+          control: 'slow',
+        });
       }
     }
     const reward = monster.reward;
@@ -2382,11 +2468,6 @@ export class TowerSimulation {
     if (beneficiary !== undefined) {
       beneficiary.gold += GOLD_PER_KILL_FACTOR * reward;
       this.addExperience(beneficiary, XP_PER_KILL_FACTOR * reward);
-      const deer = timelandsMonsterDefinition(monster.kind);
-      if (deer?.mechanic.kind === 'deer-escape' && deer.mechanic.guaranteedUpgradeDrop) {
-        beneficiary.pendingUpgrades += 1;
-        this.refreshUpgradeOffer(beneficiary);
-      }
     }
     this.addEvent('monster-killed', { position: monster.position, amount: reward });
     this.advanceSharedQuest(monster.rarity, monster.position);
@@ -2395,9 +2476,7 @@ export class TowerSimulation {
   private tryMonsterNativeRevive(monster: MutableTowerMonster): boolean {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined || monster.reviveCount > 0) return false;
-    const reviveFraction = monsterBehaviorProfile(
-      definition.signature as TowerMonsterSignature,
-    ).reviveFraction;
+    const reviveFraction = monsterBehaviorProfile(definition.signature).reviveFraction;
     if (reviveFraction === undefined) return false;
     monster.reviveCount += 1;
     monster.hp = Math.max(1, Math.round(monster.maxHp * reviveFraction));
@@ -2469,10 +2548,7 @@ export class TowerSimulation {
       this.rewindPersistentState(definition.mechanic.rewindTicks, monster.id);
       return;
     }
-    const hostileOnly = this.isEndgameTierActive(2);
-    const outcomes = hostileOnly
-      ? (['global-haste', 'player-slow'] as const)
-      : (['global-slow', 'global-haste', 'player-slow', 'player-haste'] as const);
+    const outcomes = ['global-slow', 'global-haste', 'player-slow', 'player-haste'] as const;
     const outcome = outcomes[random.integer(0, outcomes.length - 1)] ?? 'player-slow';
     const target = this.findNearestLivingPlayer(monster.position, Infinity) ?? this.players[0];
     if (outcome === 'global-slow') {
@@ -2655,13 +2731,17 @@ export class TowerSimulation {
     const activeLimit = this.activeMonsterLimit();
 
     const biome = this.currentBiome();
+    let livingMonsterCount = 0;
+    for (const monster of this.monsters) {
+      if (monster.hp > 0) livingMonsterCount += 1;
+    }
     // Le boss est volontairement hors budget. La liste scénarisée évite de jeter le
     // Gardien Ancien sur les joueurs dès le premier jalon.
     const boss = WAVE_BOSS_SCHEDULE.find((entry) => entry.wave === this.wave);
     if (
       this.timelandsArrival.status === 'pending' &&
       boss !== undefined &&
-      this.monsters.filter((monster) => monster.hp > 0).length < activeLimit
+      livingMonsterCount < activeLimit
     ) {
       this.spawnMonsterWithPower(
         boss.kind,
@@ -2670,6 +2750,7 @@ export class TowerSimulation {
         'boss',
         biome.affinity,
       );
+      livingMonsterCount += 1;
     }
 
     const spawnedThreatCounts = new Map<TowerWaveThreatBand, number>();
@@ -2691,7 +2772,7 @@ export class TowerSimulation {
       ? this.eligibleProgressionWaveKinds()
       : this.eligibleTimelandsWaveKinds();
 
-    while (budget >= 1 && this.monsters.filter((monster) => monster.hp > 0).length < activeLimit) {
+    while (budget >= 1 && livingMonsterCount < activeLimit) {
       const affordable = pool.filter((kind) => {
         const cost = WAVE_MONSTER_COST[kind];
         if (cost > budget) return false;
@@ -2725,6 +2806,7 @@ export class TowerSimulation {
         this.pickWaveRarity(),
         this.pickWaveAffinity(biome.affinity),
       );
+      livingMonsterCount += 1;
       const limit = waveThreatLimit(WAVE_MONSTER_COST[kind], this.players.length);
       if (limit !== undefined) {
         spawnedThreatCounts.set(limit.band, (spawnedThreatCounts.get(limit.band) ?? 0) + 1);
@@ -2848,7 +2930,7 @@ export class TowerSimulation {
   private minimumEndgameRarity(
     rarity: Exclude<TowerMonsterRarity, 'boss'>,
   ): Exclude<TowerMonsterRarity, 'boss'> {
-    if (!this.isEndgameTierActive(3) || rarity !== 'common') {
+    if (!this.isEndgameTierActive(2) || rarity !== 'common') {
       return rarity;
     }
     return 'rare';
@@ -3276,12 +3358,61 @@ export class TowerSimulation {
     return nearest;
   }
 
+  /**
+   * Le Pilleur choisit la structure vivante au plus faible pourcentage de PV, jamais celle qui
+   * est seulement la plus proche. L'ordre des tourelles puis du Cœur fixe les égalités à graine
+   * et état identiques.
+   */
+  private findMostWoundedLivingStructure():
+    | Readonly<{
+        position: Vector2;
+        hp: number;
+        maxHp: number;
+      }>
+    | undefined {
+    let target: Readonly<{ position: Vector2; hp: number; maxHp: number }> | undefined;
+    let lowestHealthRatio = Infinity;
+    for (const turret of this.turrets) {
+      if (!turret.alive) continue;
+      const healthRatio = turret.hp / Math.max(1, turret.maxHp);
+      if (healthRatio < lowestHealthRatio) {
+        target = turret;
+        lowestHealthRatio = healthRatio;
+      }
+    }
+    if (this.heart.hp > 0) {
+      const healthRatio = this.heart.hp / Math.max(1, this.heart.maxHp);
+      if (healthRatio < lowestHealthRatio) {
+        target = this.heart;
+      }
+    }
+    return target;
+  }
+
   private findNearestSupportAnchor(monster: MutableTowerMonster): MutableTowerMonster | undefined {
     let nearest: MutableTowerMonster | undefined;
     let nearestDistance = Infinity;
     for (const candidate of this.monsters) {
       if (candidate === monster || candidate.hp <= 0) continue;
       if (this.monsterCatalog(candidate.kind)?.targeting === 'support') continue;
+      const gap = distance(monster.position, candidate.position);
+      if (gap < nearestDistance) {
+        nearest = candidate;
+        nearestDistance = gap;
+      }
+    }
+    return nearest;
+  }
+
+  /** Une capacité de soin ne s'arme que lorsqu'une cible vivante a réellement perdu des PV. */
+  private findNearestWoundedLivingMonster(
+    monster: MutableTowerMonster,
+    maxRange: number,
+  ): MutableTowerMonster | undefined {
+    let nearest: MutableTowerMonster | undefined;
+    let nearestDistance = maxRange;
+    for (const candidate of this.monsters) {
+      if (candidate.hp <= 0 || candidate.hp >= candidate.maxHp) continue;
       const gap = distance(monster.position, candidate.position);
       if (gap < nearestDistance) {
         nearest = candidate;
@@ -3401,6 +3532,7 @@ export class TowerSimulation {
       supportBuffRemainingMs: 0,
       targetPlayerId: undefined,
       targetLockRemainingMs: 0,
+      retreatRemainingMs: 0,
     });
     return id;
   }
@@ -3475,13 +3607,21 @@ export class TowerSimulation {
       return position;
     }
     const deltaSeconds = TICK_MS / 1_000;
+    let hostileSlowRemainingMs = player.hostileSlowRemainingMs;
     for (let frame = 0; frame < inputs.length; frame += 1) {
       const input = inputs[frame];
       if (input === undefined) {
         break;
       }
       const fraction = frame === inputs.length - 1 ? clamp(lastFraction, 0, 1) : 1;
-      position = movedPlayerPosition(position, input, player.speed, deltaSeconds * fraction);
+      const temporalScale = this.temporalScaleForPlayer(player.id, this.tick + frame + 1);
+      hostileSlowRemainingMs = Math.max(0, hostileSlowRemainingMs - TICK_MS * fraction);
+      position = movedPlayerPosition(
+        position,
+        input,
+        player.speed,
+        deltaSeconds * fraction * playerMovementScale(temporalScale, hostileSlowRemainingMs),
+      );
     }
     return position;
   }
@@ -3608,6 +3748,7 @@ export class TowerSimulation {
       pendingUpgrades: player.pendingUpgrades,
       upgradeChoices: player.upgradeChoices.map((card) => ({ ...card })),
       downedRemainingMs: player.downedRemainingMs,
+      hostileSlowRemainingMs: player.hostileSlowRemainingMs,
       ...(nearTurret === undefined ? {} : { nearTurret }),
       ...(turretWorkshopProtected ? { turretWorkshopProtected: true } : {}),
     };
@@ -3654,9 +3795,7 @@ export class TowerSimulation {
   private projectMonster(monster: MutableTowerMonster): TowerMonsterState {
     const definition = this.monsterCatalog(monster.kind);
     const ability =
-      definition === undefined
-        ? undefined
-        : monsterBehaviorProfile(definition.signature as TowerMonsterSignature).ability;
+      definition === undefined ? undefined : monsterBehaviorProfile(definition.signature).ability;
     return {
       id: monster.id,
       kind: monster.kind,

@@ -3,7 +3,7 @@
   "version": "v2",
   "phase": 4,
   "phase_nom": "developpement",
-  "iteration": 4,
+  "iteration": 5,
   "profil": {
     "code": "non",
     "discipline_process": "moyenne",
@@ -92,15 +92,25 @@
       "impact": "Une partie lancée puis quittée en dix secondes compte comme les autres",
       "confiance": "faible",
       "validation_attendue": "Écart visible entre parties comptées et parties réellement jouées"
+    },
+    {
+      "id": "HYP-008",
+      "decision": "Le client tolère un serveur d'une version antérieure au lieu de refuser la partie",
+      "raison": "Une recette sur plusieurs postes expose au cache navigateur et à un conteneur non reconstruit ; refuser la partie coûterait plus que dégrader le rendu",
+      "impact": "Une partie peut se jouer sur un contenu ancien sans que le joueur en soit averti ; seule la relecture du conteneur l'établit",
+      "confiance": "moyenne",
+      "validation_attendue": "Un écart de version constaté pendant une recette réelle, et le coût de son diagnostic"
     }
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "de59060de505932b76c65ca06c25cb1c1908a1ae",
-  "maj": "2026-08-04",
-  "portee_iteration_suivante": "validation_coop_deux_postes_lan_et_trace_distribuee",
+  "dernier_commit": "HEAD",
+  "dernier_commit_resolution": "Référence symbolique volontaire : cet état est versionné dans le commit final du chantier ; résoudre HEAD dans ce dépôt donne son SHA exact.",
+  "maj": "2026-08-06",
+  "portee_iteration_suivante": "validation_coop_deux_postes_lan_trace_distribuee_et_verification_visuelle_des_effets_torri",
   "decisions_a_rouvrir": [
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
-    "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026."
+    "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026.",
+    "Équilibrage Torri : les rapports PV de boss calculés sont volontairement conservés en attente d'un arbitrage produit documenté."
   ]
 }

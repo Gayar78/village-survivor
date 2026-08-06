@@ -52,7 +52,7 @@ export type TurretShopAction =
  * migration des sauvegardes/tests, mais le spawner de production ne doit plus les
  * générer une fois le nouveau bestiaire branché.
  */
-export type TowerLegacyMonsterKind = 'chaser' | 'runner' | 'brute' | 'time-deer';
+export type TowerLegacyMonsterKind = 'chaser' | 'runner' | 'brute';
 
 /** Monstres actifs issus du catalogue Torri validé (exclusions non comprises). */
 export type TowerMonsterKind =
@@ -139,8 +139,23 @@ export type TowerBiomeId = 'grove' | 'badlands' | 'tundra' | 'tempest' | 'timela
 /** Affinité élémentaire visible d'un monstre et couleur dominante de son biome. */
 export type TowerMonsterAffinity = 'nature' | 'fire' | 'frost' | 'storm' | 'time';
 
-/** Rareté de combat ; `boss` est réservée au monstre périodique unique d'une vague. */
-export type TowerMonsterRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'boss';
+/**
+ * Rareté de combat ; `boss` est réservée au monstre périodique unique d'une vague.
+ *
+ * La liste est exposée à l'exécution parce qu'elle traverse le réseau : un client ne peut pas
+ * supposer que le serveur parle exactement la même version du contrat. Les valeurs `uncommon` et
+ * `elite` ont par exemple disparu du contrat, et un serveur antérieur les émet encore.
+ */
+export const TOWER_MONSTER_RARITIES = ['common', 'rare', 'epic', 'legendary', 'boss'] as const;
+
+export type TowerMonsterRarity = (typeof TOWER_MONSTER_RARITIES)[number];
+
+/** Ramène une rareté venue du réseau dans le contrat courant ; `common` est le repli neutre. */
+export function normalizeTowerMonsterRarity(value: unknown): TowerMonsterRarity {
+  return TOWER_MONSTER_RARITIES.includes(value as TowerMonsterRarity)
+    ? (value as TowerMonsterRarity)
+    : 'common';
+}
 
 /** Trait synthétique exposé au rendu. Les traits ordinaires découlent de l'affinité. */
 export type TowerMonsterTrait =
@@ -149,8 +164,8 @@ export type TowerMonsterTrait =
 /** Altérations persistantes que le Warden peut appliquer à un monstre libéré. */
 export type TowerTemporalAlteration = 'none' | 'slow' | 'haste' | 'blink';
 
-/** Identifiants ordonnés des cinq paliers cumulatifs de fin de partie. */
-export type TowerEndgameTierId = 1 | 2 | 3 | 4 | 5;
+/** Identifiants ordonnés des quatre paliers cumulatifs effectifs de fin de partie. */
+export type TowerEndgameTierId = 1 | 2 | 3 | 4;
 
 /** Arsenal personnel disponible dès le début d'une partie Tower. */
 export type TowerWeaponId = 'rifle' | 'shotgun' | 'marksman';
@@ -267,6 +282,8 @@ export type TowerPlayerState = Readonly<{
   upgradeChoices: readonly TowerUpgradeCard[];
   /** > 0 ⇒ à terre (K.O.), en attente de réapparition (ms restantes). */
   downedRemainingMs: number;
+  /** Ralentissement hostile restant, synchronisé afin que la prédiction locale reste exacte. */
+  hostileSlowRemainingMs: number;
   /** Le joueur est-il à portée d'une tourelle (ouverture possible de la boutique) ? */
   nearTurret?: TurretDir;
   /** true lorsque l'intention atelier est validée par la simulation pour ce tick. */
@@ -449,7 +466,7 @@ export type TowerMonsterTemporalState =
       alteration: TowerTemporalAlteration;
     }>;
 
-/** TÃ©lÃ©graphe public d'une capacitÃ© ennemie, calculÃ© uniquement par la simulation. */
+/** Télégraphe public d'une capacité ennemie, calculé uniquement par la simulation. */
 export type TowerMonsterAbilityState = Readonly<{
   kind: 'ranged' | 'heal' | 'bolster' | 'summon' | 'control' | 'slam' | 'disable';
   phase: 'telegraph';
@@ -473,13 +490,13 @@ export type TowerMonsterState = Readonly<{
   camouflaged?: boolean;
   empowered?: boolean;
   temporal?: TowerMonsterTemporalState;
-  /** Absent entre deux capacitÃ©s afin de garder les snapshots rÃ©seau compacts. */
+  /** Absent entre deux capacités afin de garder les snapshots réseau compacts. */
   ability?: TowerMonsterAbilityState;
 }>;
 
 export type TowerMonsterZoneKind = 'poison' | 'web' | 'sand' | 'ice' | 'fire' | 'time' | 'ray';
 
-/** Zone hostile bornÃ©e et persistante. Aucun timestamp mural ne transite sur le fil. */
+/** Zone hostile bornée et persistante. Aucun timestamp mural ne transite sur le fil. */
 export type TowerMonsterZoneState = Readonly<{
   id: string;
   kind: TowerMonsterZoneKind;

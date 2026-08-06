@@ -14,7 +14,9 @@ describe('Schema Colyseus Tower', () => {
     const json = schema.toJSON() as Record<string, unknown>;
     expect(json.phase).toBe('running');
     expect(json.tick).toBe(1);
-    expect(json.players).toMatchObject({ 'local-user': { id: 'local-user' } });
+    expect(json.players).toMatchObject({
+      'local-user': { id: 'local-user', hostileSlowRemainingMs: 0 },
+    });
     expect(json).not.toHaveProperty('seed');
     expect(json).not.toHaveProperty('player');
     expect(json).not.toHaveProperty('events');
