@@ -1,4 +1,4 @@
-import { TOWER_ACTIVE_MONSTERS, type TowerMonsterSignature } from '@village-survivor/content';
+import { TOWER_NATURAL_MONSTERS, type TowerMonsterSignature } from '@village-survivor/content';
 import type { TowerInput, TowerMonsterKind } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -16,6 +16,7 @@ const input = (sequence: number): TowerInput => ({
 });
 
 type SimulationInternals = {
+  heart: { hp: number; maxHp: number };
   monsters: MutableTowerMonster[];
   players: MutableTowerPlayer[];
   turrets: MutableTurret[];
@@ -25,6 +26,21 @@ type SimulationInternals = {
     killer: MutableTowerPlayer | undefined,
   ): boolean;
 };
+
+function isInertMonsterProfile(profile: ReturnType<typeof monsterBehaviorProfile>): boolean {
+  return (
+    profile.movement === 'direct' &&
+    profile.contact === 'none' &&
+    profile.ability === undefined &&
+    profile.regenerationPerSecond === undefined &&
+    profile.growthPerSecond === undefined &&
+    profile.incomingDamageMultiplier === undefined &&
+    profile.mergeWithOwnKind === undefined &&
+    profile.volatileLifetimeMs === undefined &&
+    profile.reviveFraction === undefined &&
+    profile.death === undefined
+  );
+}
 
 function internals(simulation: TowerSimulation): SimulationInternals {
   return simulation as unknown as SimulationInternals;
@@ -37,13 +53,15 @@ function spawned(simulation: TowerSimulation, kind: TowerMonsterKind): MutableTo
 }
 
 describe('Tower Torri monster behavior primitives', () => {
-  it('associe un profil exÃ©cutable aux 75 monstres actifs du catalogue', () => {
-    expect(TOWER_ACTIVE_MONSTERS).toHaveLength(75);
-    for (const monster of TOWER_ACTIVE_MONSTERS) {
+  it("n'associe aucun profil inerte aux monstres naturels du catalogue", () => {
+    for (const monster of TOWER_NATURAL_MONSTERS) {
       const profile = monsterBehaviorProfile(monster.signature as TowerMonsterSignature);
-      expect(profile.movement).toBeTruthy();
-      expect(profile.contact).toBeTruthy();
+      expect(isInertMonsterProfile(profile), `${monster.id} (${monster.signature})`).toBe(false);
     }
+  });
+
+  it('donne au petit squelette invoqué une cadence de bond distincte', () => {
+    expect(monsterBehaviorProfile('bone-strike').movement).toBe('pounce');
   });
 
   it('ne confond pas les signatures contenant « merge » avec les fusions voulues', () => {
@@ -232,36 +250,35 @@ describe('Tower Torri monster behavior primitives', () => {
     }
   });
 
-  it('borne une partie Ã  dix joueurs sous forte densitÃ©', () => {
+  it('borne des vagues naturelles à dix joueurs et mesure le tick au plafond', () => {
     const playerIds = Array.from({ length: 10 }, (_, index) => `player-${index + 1}`);
     const simulation = new TowerSimulation('torri-ten-player-density', { playerIds });
     simulation.start();
-    const roster: readonly TowerMonsterKind[] = [
-      'bat',
-      'goblin',
-      'wolf',
-      'spider',
-      'sniper',
-      'healer',
-      'summoner',
-      'grenadier',
-      'blizzard-spirit',
-      'explosive-robot',
-    ];
-    for (let index = 0; index < 160; index += 1) {
-      const angle = (index / 160) * Math.PI * 2;
-      const radius = 650 + (index % 8) * 26;
-      simulation.spawnMonster(roster[index % roster.length] ?? 'goblin', {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-      });
+    const state = internals(simulation);
+    // Le harnais ne crée aucun monstre : il garde seulement les cibles vivantes pour que
+    // les vagues naturelles atteignent puis dépassent réellement le plafond coopératif.
+    state.heart.hp = state.heart.maxHp = 1_000_000_000;
+    for (const player of state.players) player.hp = player.maxHp = 1_000_000_000;
+    const inputs = (sequence: number) =>
+      Object.fromEntries(playerIds.map((id) => [id, input(sequence)]));
+
+    const WARMUP_TICKS = 6_000;
+    const MEASURED_TICKS = 600;
+    for (let tick = 1; tick <= WARMUP_TICKS; tick += 1) {
+      simulation.step(inputs(tick));
     }
-    for (let tick = 1; tick <= 120; tick += 1) {
-      const inputs = Object.fromEntries(playerIds.map((id) => [id, input(tick)]));
-      simulation.step(inputs);
+    const saturated = simulation.createSnapshot();
+    const startedAt = Date.now();
+    for (let tick = WARMUP_TICKS + 1; tick <= WARMUP_TICKS + MEASURED_TICKS; tick += 1) {
+      simulation.step(inputs(tick));
     }
+    const microsecondsPerTick = ((Date.now() - startedAt) * 1_000) / MEASURED_TICKS;
     const snapshot = simulation.createSnapshot();
+
     expect(snapshot.players).toHaveLength(10);
+    expect(saturated.wave).toBeGreaterThanOrEqual(30);
+    expect(saturated.monsters.filter((monster) => monster.hp > 0)).toHaveLength(160);
+    expect(snapshot.wave).toBeGreaterThanOrEqual(33);
     expect(snapshot.monsters.filter((monster) => monster.hp > 0).length).toBeLessThanOrEqual(160);
     expect(snapshot.monsterZones.length).toBeLessThanOrEqual(48);
     expect(
@@ -269,5 +286,8 @@ describe('Tower Torri monster behavior primitives', () => {
         (monster) => Number.isFinite(monster.position.x) && Number.isFinite(monster.position.y),
       ),
     ).toBe(true);
-  });
+    // Sonde locale : 558 µs/tick après saturation. 1 500 µs conserve une marge de
+    // charge tout en détectant une dégradation nette du plafond réel.
+    expect(microsecondsPerTick).toBeLessThan(1_500);
+  }, 15_000);
 });

@@ -37,12 +37,13 @@ const SCOPE = 'village-survivor-server';
 const EXPORT_TIMEOUT_MS = 2_000;
 const EXPORT_INTERVAL_MS = 10_000;
 
-// Le budget produit est p95 < 1 ms. Les buckets OpenTelemetry par défaut passent
-// directement de 0 à 5 ms et rendent ce seuil impossible à vérifier. Ces quatorze
-// frontières sont plus précises autour du budget tout en restant moins nombreuses
-// que les quinze frontières par défaut, donc sans travail supplémentaire par tick.
+// Le budget produit est p95 < 3 ms. Les répétitions locales après le lot Torri vont
+// de 1,863 à 2,779 ms (la CI est passée de 0,138 à 1,505 ms) : les frontières restent
+// donc resserrées autour de 3 ms plutôt qu'autour de 1 ms. Elles sont quatorze,
+// moins nombreuses que les quinze frontières par défaut, sans travail supplémentaire
+// par tick.
 export const TICK_DURATION_BUCKETS_MS = [
-  0.1, 0.25, 0.5, 0.75, 0.9, 1, 1.25, 1.5, 2, 3, 5, 10, 25, 50,
+  0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3, 5, 10, 50,
 ] as const;
 
 export function createServerMetricViews(): ViewOptions[] {

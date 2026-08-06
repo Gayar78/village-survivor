@@ -26,17 +26,42 @@ describe('scénario de performance reproductible', () => {
   const MONSTER_COUNT = 200;
   const SIMULATED_MS = 30_000;
   const TICK_COUNT = SIMULATED_MS / TICK_MS;
+  // Roster de 16 espèces qui traverse réellement les chemins Torri coûteux : fusion,
+  // soutien, soins, invocations, zones, contrôles, sabotage et explosions. Le `chaser`
+  // historique ne figure plus dans le catalogue actif et contournait tous ces chemins.
+  const ROSTER = [
+    'slime',
+    'wolf',
+    'harpy',
+    'protector',
+    'scorpion',
+    'life-thief',
+    'summoner',
+    'healer',
+    'super-looter',
+    'kamikaze',
+    'explosive-robot',
+    'grenadier',
+    'blizzard-spirit',
+    'time-watch',
+    'ancient-guardian',
+    'mummy',
+  ] as const;
 
   const NEUTRAL_INPUT = { sequence: 0, moveX: 0, moveY: 0, aimX: 1, aimY: 0 } as const;
+
+  function populateRepresentativeRoster(simulation: TowerSimulation, count: number): void {
+    for (let index = 0; index < count; index += 1) {
+      simulation.spawnMonster(ROSTER[index % ROSTER.length] ?? 'slime');
+    }
+  }
 
   it(`mesure le coût d'un tick sous une charge de plus de ${String(MONSTER_COUNT)} entités`, () => {
     const simulation = new TowerSimulation(SEED, {
       metaBuildsByPlayerId: { 'player-1': { heartMaxHealthMultiplier: 2 } },
     });
     simulation.start();
-    for (let index = 0; index < MONSTER_COUNT; index += 1) {
-      simulation.spawnMonster('chaser');
-    }
+    populateRepresentativeRoster(simulation, MONSTER_COUNT);
     const populationAtStart = simulation.createSnapshot().monsters.length;
 
     // La simulation s'arrête d'elle-même à la défaite : au-delà, `step()` ne fait plus
@@ -67,16 +92,16 @@ describe('scénario de performance reproductible', () => {
     expect(populationAtStart).toBeGreaterThan(MONSTER_COUNT - 1);
     // Plancher de validité : en dessous, la mesure porterait sur trop peu de ticks.
     expect(simulatedTicks).toBeGreaterThan(200);
-    // Budget large et volontairement stable : un tick nominal coûte environ 0,25 ms.
-    expect(microsecondsPerTick).toBeLessThan(2_000);
+    // Référence CI : 1 399 µs/tick ; répétitions locales : 1 450 à 1 539 µs. La
+    // borne de 1 600 µs garde 4 % au-dessus du maximum observé et détecte toujours
+    // un retour aux chemins fantômes du `chaser`.
+    expect(microsecondsPerTick).toBeLessThan(1_600);
   });
 
   it('projette un état public sans coût prohibitif', () => {
     const simulation = new TowerSimulation(SEED);
     simulation.start();
-    for (let index = 0; index < MONSTER_COUNT; index += 1) {
-      simulation.spawnMonster('chaser');
-    }
+    populateRepresentativeRoster(simulation, MONSTER_COUNT);
 
     const startedAt = Date.now();
     for (let index = 0; index < 1_000; index += 1) {
@@ -92,9 +117,7 @@ describe('scénario de performance reproductible', () => {
     const run = (): string => {
       const simulation = new TowerSimulation(SEED);
       simulation.start();
-      for (let index = 0; index < 50; index += 1) {
-        simulation.spawnMonster('chaser');
-      }
+      populateRepresentativeRoster(simulation, 50);
       for (let tick = 0; tick < 200; tick += 1) {
         simulation.step({ 'player-1': { ...NEUTRAL_INPUT, sequence: tick, fire: true } });
       }

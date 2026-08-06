@@ -71,7 +71,11 @@ const MOVEMENT_BY_SIGNATURE: Partial<Record<TowerMonsterSignature, MonsterMoveme
   'burrow-turret': 'burrow',
   'landing-rush': 'dash',
   'tiny-hop': 'pounce',
+  'bone-strike': 'pounce',
   'portal-summon': 'orbit-ally',
+  'turret-explosion': 'dash',
+  'player-explosion': 'dash',
+  'time-effect-death': 'zigzag',
 };
 
 const RANGED = new Set<TowerMonsterSignature>([
