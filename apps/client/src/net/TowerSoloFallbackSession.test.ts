@@ -119,6 +119,24 @@ describe('sélection solo serveur ou locale', () => {
     expect(received).toHaveBeenCalledWith(STATE);
   });
 
+  it('préserve deux abonnements du même callback et leurs désabonnements indépendants', async () => {
+    const { fallback, server } = fallbackWith('healthy');
+    const received = vi.fn();
+    const unsubscribeFirst = fallback.subscribe(received);
+    const unsubscribeSecond = fallback.subscribe(received);
+
+    await fallback.start();
+    expect(received).toHaveBeenCalledTimes(2);
+
+    unsubscribeFirst();
+    server.emitState();
+    expect(received).toHaveBeenCalledTimes(3);
+
+    unsubscribeSecond();
+    server.emitState();
+    expect(received).toHaveBeenCalledTimes(3);
+  });
+
   it('rebranche aussi les notifications de connexion après la sélection', async () => {
     const { fallback, local } = fallbackWith('unhealthy');
     const received = vi.fn();

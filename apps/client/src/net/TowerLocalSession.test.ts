@@ -86,6 +86,23 @@ describe('session Tower locale', () => {
     await session.stop();
   });
 
+  it('ne rattrape jamais plus de cinq ticks après une frame locale plafonnée à 250 ms', async () => {
+    let nextFrame: ((timestamp: number) => void) | undefined;
+    vi.stubGlobal('performance', { now: () => 0 });
+    vi.stubGlobal('requestAnimationFrame', (callback: (timestamp: number) => void) => {
+      nextFrame = callback;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+
+    const session = new TowerLocalSession({ seed: 'local-five-ticks-maximum' });
+    await session.start();
+    nextFrame?.(250);
+
+    expect((simulationOf(session) as unknown as { tick: number }).tick).toBe(5);
+    await session.stop();
+  });
+
   it('ferme les clés de méta-build local et borne chaque multiplicateur', () => {
     expect(sanitizeSoloMetaBuild({ damageMultiplier: 9, moveSpeedMultiplier: 0.1 })).toEqual({
       damageMultiplier: 2,

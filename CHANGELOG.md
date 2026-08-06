@@ -33,6 +33,11 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 - la fusion des slimes est bornée et déterministe, les retraites et la capacité unique du
   Super Looter sont appliquées, et les multiplicateurs de rareté ne sont appliqués qu'à
   l'apparition ;
+- les profils de comportement sont mémorisés, le compteur vivant de vague évite un filtrage
+  répété, les capacités exigent une cible utile et les doublons d'abonnement du secours solo ne
+  s'écrasent plus ;
+- le Cerf du Temps ne subsiste plus que comme exclusion documentaire : il quitte le protocole, le
+  roster Timelands et la simulation ;
 - la documentation de release ne prétend plus qu'une panne serveur n'a aucun secours local.
 
 Les rapports PV calculés des boss, les capacités partiellement rendues et les écarts de contenu

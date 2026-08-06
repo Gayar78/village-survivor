@@ -1,4 +1,4 @@
-import { TOWER_NATURAL_MONSTERS, type TowerMonsterSignature } from '@village-survivor/content';
+import { TOWER_NATURAL_MONSTERS } from '@village-survivor/content';
 import type { TowerInput, TowerMonsterKind, Vector2 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
@@ -15,6 +15,8 @@ const input = (sequence: number): TowerInput => ({
   aimY: 0,
 });
 
+type MonsterAbility = NonNullable<ReturnType<typeof monsterBehaviorProfile>['ability']>;
+
 type SimulationInternals = {
   heart: { hp: number; maxHp: number };
   monsters: MutableTowerMonster[];
@@ -26,6 +28,7 @@ type SimulationInternals = {
     killer: MutableTowerPlayer | undefined,
   ): boolean;
   findMonsterTarget(monster: MutableTowerMonster): Vector2;
+  monsterAbilityTarget(monster: MutableTowerMonster, ability: MonsterAbility): Vector2 | undefined;
   resolveMonsterMerges(): void;
 };
 
@@ -57,9 +60,68 @@ function spawned(simulation: TowerSimulation, kind: TowerMonsterKind): MutableTo
 describe('Tower Torri monster behavior primitives', () => {
   it("n'associe aucun profil inerte aux monstres naturels du catalogue", () => {
     for (const monster of TOWER_NATURAL_MONSTERS) {
-      const profile = monsterBehaviorProfile(monster.signature as TowerMonsterSignature);
+      const profile = monsterBehaviorProfile(monster.signature);
       expect(isInertMonsterProfile(profile), `${monster.id} (${monster.signature})`).toBe(false);
     }
+  });
+
+  it('mémorise un seul profil immuable par signature', () => {
+    expect(monsterBehaviorProfile('portal-summon')).toBe(monsterBehaviorProfile('portal-summon'));
+  });
+
+  it('n’arme ni soin, buff, invocation ni slam lorsqu’aucune cible utile n’existe', () => {
+    const simulation = new TowerSimulation('torri-ability-targets');
+    simulation.start();
+    const state = internals(simulation);
+    simulation.spawnMonster('healer', { x: 1_000, y: 0 });
+    simulation.spawnMonster('banner', { x: 1_200, y: 0 });
+    simulation.spawnMonster('summoner', { x: 1_400, y: 0 });
+    simulation.spawnMonster('ancient-guardian', { x: 1_600, y: 0 });
+    const healAbility = monsterBehaviorProfile('area-heal').ability;
+    const bolsterAbility = monsterBehaviorProfile('ally-buff').ability;
+    const summonAbility = monsterBehaviorProfile('portal-summon').ability;
+    const slamAbility = monsterBehaviorProfile('guardian-arena-slam').ability;
+    if (
+      healAbility === undefined ||
+      bolsterAbility === undefined ||
+      summonAbility === undefined ||
+      slamAbility === undefined
+    ) {
+      throw new Error('Le harnais requiert les quatre profils de capacité Torri.');
+    }
+
+    expect(state.monsterAbilityTarget(spawned(simulation, 'healer'), healAbility)).toBeUndefined();
+    expect(
+      state.monsterAbilityTarget(spawned(simulation, 'banner'), bolsterAbility),
+    ).toBeUndefined();
+    expect(
+      state.monsterAbilityTarget(spawned(simulation, 'summoner'), summonAbility),
+    ).toBeUndefined();
+    expect(
+      state.monsterAbilityTarget(spawned(simulation, 'ancient-guardian'), slamAbility),
+    ).toBeUndefined();
+
+    const woundedId = simulation.spawnMonster('slime', { x: 1_030, y: 0 });
+    const wounded = state.monsters.find((monster) => monster.id === woundedId);
+    const player = state.players[0];
+    if (wounded === undefined || player === undefined) {
+      throw new Error('Le harnais requiert un Slime et un joueur.');
+    }
+    wounded.hp /= 2;
+    player.position = { x: 1_450, y: 0 };
+
+    expect(state.monsterAbilityTarget(spawned(simulation, 'healer'), healAbility)).toEqual(
+      wounded.position,
+    );
+    expect(state.monsterAbilityTarget(spawned(simulation, 'banner'), bolsterAbility)).toEqual(
+      wounded.position,
+    );
+    expect(state.monsterAbilityTarget(spawned(simulation, 'summoner'), summonAbility)).toEqual(
+      player.position,
+    );
+    expect(
+      state.monsterAbilityTarget(spawned(simulation, 'ancient-guardian'), slamAbility),
+    ).toEqual(player.position);
   });
 
   it('donne au petit squelette invoqué une cadence de bond distincte', () => {
@@ -239,6 +301,9 @@ describe('Tower Torri monster behavior primitives', () => {
   it('invoque des unités avec un plafond et divise les monstres à leur mort', () => {
     const summoning = new TowerSimulation('torri-summon');
     summoning.start();
+    const summoningPlayer = internals(summoning).players[0];
+    if (summoningPlayer === undefined) throw new Error('Joueur de test absent.');
+    summoningPlayer.position = { x: 700, y: 500 };
     summoning.spawnMonster('summoner', { x: 500, y: 500 });
     for (let tick = 1; tick <= 70; tick += 1) {
       summoning.step({ 'player-1': input(tick) });
@@ -327,6 +392,65 @@ describe('Tower Torri monster behavior primitives', () => {
       second.step(inputs);
       expect(second.createSnapshot()).toEqual(first.createSnapshot());
     }
+  });
+
+  it('reste strictement déterministe sur 1 000 ticks avec zones, invocation, fusion et résurrection', () => {
+    const first = new TowerSimulation('torri-thousand-tick-determinism', {
+      playerIds: ['alpha', 'bravo'],
+    });
+    const second = new TowerSimulation('torri-thousand-tick-determinism', {
+      playerIds: ['alpha', 'bravo'],
+    });
+    const setup = (simulation: TowerSimulation): readonly [string, string] => {
+      simulation.start();
+      const state = internals(simulation);
+      state.heart.hp = state.heart.maxHp = 1_000_000_000;
+      for (const [index, player] of state.players.entries()) {
+        player.hp = player.maxHp = 1_000_000_000;
+        player.position = { x: 210 + index * 30, y: 0 };
+      }
+      simulation.spawnMonster('scorpion', { x: 0, y: 0 });
+      simulation.spawnMonster('summoner', { x: 80, y: 0 });
+      const firstSlime = simulation.spawnMonster('slime', { x: 900, y: 0 });
+      const secondSlime = simulation.spawnMonster('slime', { x: 900, y: 0 });
+      for (const id of [firstSlime, secondSlime]) {
+        const slime = state.monsters.find((monster) => monster.id === id);
+        if (slime === undefined) throw new Error('Le harnais requiert deux Slimes.');
+        slime.behaviorElapsedMs = 900;
+      }
+      simulation.spawnMonster('mummy', { x: 1_200, y: 0 });
+      const mummy = spawned(simulation, 'mummy');
+      state.damageMonster(mummy, mummy.maxHp * 10, undefined);
+      expect(mummy.reviveCount).toBe(1);
+      return [firstSlime, secondSlime];
+    };
+
+    const firstSlimeIds = setup(first);
+    const secondSlimeIds = setup(second);
+    expect(secondSlimeIds).toEqual(firstSlimeIds);
+    let sawPoisonZone = false;
+    let sawSummonedChild = false;
+    let sawMergedSlimes = false;
+
+    for (let tick = 1; tick <= 1_000; tick += 1) {
+      const horizontal = tick % 20 < 10 ? 1 : -1;
+      const inputs = {
+        alpha: { ...input(tick), moveX: horizontal, aimX: 1 },
+        bravo: { ...input(tick), moveX: -horizontal, aimX: -1 },
+      };
+      first.step(inputs);
+      second.step(inputs);
+      const firstState = first.createSnapshot();
+      sawPoisonZone ||= firstState.monsterZones.some((zone) => zone.kind === 'poison');
+      sawSummonedChild ||= firstState.monsters.some((monster) => monster.kind === 'skeleton-small');
+      sawMergedSlimes ||=
+        firstState.monsters.filter((monster) => firstSlimeIds.includes(monster.id)).length === 1;
+      expect(second.createSnapshot()).toEqual(firstState);
+    }
+
+    expect(sawPoisonZone).toBe(true);
+    expect(sawSummonedChild).toBe(true);
+    expect(sawMergedSlimes).toBe(true);
   });
 
   it('borne des vagues naturelles à dix joueurs et mesure le tick au plafond', () => {

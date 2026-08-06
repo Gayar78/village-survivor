@@ -52,7 +52,7 @@ export type TurretShopAction =
  * migration des sauvegardes/tests, mais le spawner de production ne doit plus les
  * générer une fois le nouveau bestiaire branché.
  */
-export type TowerLegacyMonsterKind = 'chaser' | 'runner' | 'brute' | 'time-deer';
+export type TowerLegacyMonsterKind = 'chaser' | 'runner' | 'brute';
 
 /** Monstres actifs issus du catalogue Torri validé (exclusions non comprises). */
 export type TowerMonsterKind =

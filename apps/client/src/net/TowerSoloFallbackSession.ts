@@ -73,13 +73,22 @@ type SoloFallbackDependencies = Readonly<{
   serverHealthy?: () => Promise<TowerServerHealth | boolean>;
 }>;
 
+type StateSubscription = {
+  relay: (state: TowerGameState) => void;
+  unsubscribe: () => void;
+};
+
+type IssueSubscription = {
+  relay: (message: string, terminal?: boolean) => void;
+  unsubscribe: () => void;
+};
+
+const NOOP_UNSUBSCRIBE = (): void => undefined;
+
 /** Choisit le serveur quand il existe, sinon la simulation locale, avant le premier état solo. */
 export class TowerSoloFallbackSession implements TowerRenderableSession {
-  private readonly subscriptions = new Map<(state: TowerGameState) => void, () => void>();
-  private readonly issueSubscriptions = new Map<
-    (message: string, terminal?: boolean) => void,
-    () => void
-  >();
+  private readonly subscriptions = new Set<StateSubscription>();
+  private readonly issueSubscriptions = new Set<IssueSubscription>();
   private readonly executionListeners = new Set<(mode: TowerSoloExecutionMode) => void>();
   private readonly serverHealthy: () => Promise<TowerServerHealth | boolean>;
   private active: TowerRenderableSession | undefined;
@@ -99,8 +108,8 @@ export class TowerSoloFallbackSession implements TowerRenderableSession {
 
   public async stop(): Promise<void> {
     this.stopped = true;
-    for (const unsubscribe of this.subscriptions.values()) unsubscribe();
-    for (const unsubscribe of this.issueSubscriptions.values()) unsubscribe();
+    for (const subscription of this.subscriptions) subscription.unsubscribe();
+    for (const subscription of this.issueSubscriptions) subscription.unsubscribe();
     this.subscriptions.clear();
     this.issueSubscriptions.clear();
     this.executionListeners.clear();
@@ -121,13 +130,18 @@ export class TowerSoloFallbackSession implements TowerRenderableSession {
   }
 
   public onConnectionIssue(listener: (message: string, terminal?: boolean) => void): () => void {
-    this.issueSubscriptions.set(
-      listener,
-      this.active?.onConnectionIssue(listener) ?? (() => undefined),
-    );
+    const subscription: IssueSubscription = {
+      // Un relais propre à l'abonnement préserve deux inscriptions du même callback.
+      relay: (message, terminal) => listener(message, terminal),
+      unsubscribe: NOOP_UNSUBSCRIBE,
+    };
+    if (this.active !== undefined) {
+      subscription.unsubscribe = this.active.onConnectionIssue(subscription.relay);
+    }
+    this.issueSubscriptions.add(subscription);
     return () => {
-      this.issueSubscriptions.get(listener)?.();
-      this.issueSubscriptions.delete(listener);
+      subscription.unsubscribe();
+      this.issueSubscriptions.delete(subscription);
     };
   }
 
@@ -142,10 +156,18 @@ export class TowerSoloFallbackSession implements TowerRenderableSession {
   }
 
   public subscribe(listener: (state: TowerGameState) => void): () => void {
-    this.subscriptions.set(listener, this.active?.subscribe(listener) ?? (() => undefined));
+    const subscription: StateSubscription = {
+      // Un relais propre à l'abonnement préserve deux inscriptions du même callback.
+      relay: (state) => listener(state),
+      unsubscribe: NOOP_UNSUBSCRIBE,
+    };
+    if (this.active !== undefined) {
+      subscription.unsubscribe = this.active.subscribe(subscription.relay);
+    }
+    this.subscriptions.add(subscription);
     return () => {
-      this.subscriptions.get(listener)?.();
-      this.subscriptions.delete(listener);
+      subscription.unsubscribe();
+      this.subscriptions.delete(subscription);
     };
   }
 
@@ -164,11 +186,13 @@ export class TowerSoloFallbackSession implements TowerRenderableSession {
     this.active = active;
     this.executionMode = executionMode;
     for (const listener of this.executionListeners) listener(executionMode);
-    for (const listener of this.subscriptions.keys()) {
-      this.subscriptions.set(listener, active.subscribe(listener));
+    for (const subscription of this.subscriptions) {
+      subscription.unsubscribe();
+      subscription.unsubscribe = active.subscribe(subscription.relay);
     }
-    for (const listener of this.issueSubscriptions.keys()) {
-      this.issueSubscriptions.set(listener, active.onConnectionIssue(listener));
+    for (const subscription of this.issueSubscriptions) {
+      subscription.unsubscribe();
+      subscription.unsubscribe = active.onConnectionIssue(subscription.relay);
     }
     if (this.latestInput !== undefined) active.sendInput(this.latestInput);
     await active.start();

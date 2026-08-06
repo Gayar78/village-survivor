@@ -96,9 +96,10 @@
   ],
   "verrouille": ["objectif", "spec-nf", "spec-fonctionnelle"],
   "derogations": [],
-  "dernier_commit": "fa84207",
+  "dernier_commit": "HEAD",
+  "dernier_commit_resolution": "Référence symbolique volontaire : cet état est versionné dans le commit final du chantier ; résoudre HEAD dans ce dépôt donne son SHA exact.",
   "maj": "2026-08-06",
-  "portee_iteration_suivante": "cloture_correctifs_torri_puis_validation_coop_deux_postes_lan_et_trace_distribuee",
+  "portee_iteration_suivante": "validation_coop_deux_postes_lan_trace_distribuee_et_verification_visuelle_des_effets_torri",
   "decisions_a_rouvrir": [
     "Jeu visé : le brouillon gameplay.md remplace-t-il le jeu livré ? Aucune décision datée à ce jour.",
     "Condition de victoire : absente du jeu livré, exigée par les piliers produit du 20 juillet 2026.",

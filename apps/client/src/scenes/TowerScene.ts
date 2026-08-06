@@ -6,6 +6,7 @@ import {
   type TowerMonsterCatalogEntry,
   type TowerMonsterFaction,
   type TowerMonsterRoleShape,
+  type TowerMonsterSignature,
 } from '@village-survivor/content';
 
 import {
@@ -79,7 +80,6 @@ const LEGACY_MONSTER_COLORS: Readonly<Partial<Record<TowerMonsterKind, number>>>
   chaser: 0x8f6254,
   runner: 0xd0a749,
   brute: 0x765a82,
-  'time-deer': 0x9b59b6,
 };
 
 const MONSTER_FACTION_COLORS: Readonly<Record<TowerMonsterFaction, number>> = {
@@ -551,7 +551,7 @@ export class TowerScene extends Phaser.Scene {
         graphics.lineStyle(3, COLORS.root, 0.7);
         graphics.strokeCircle(x, y, monster.radius * 0.65);
       }
-      this.drawMonsterSignatureMark(x, y, monster.radius, catalog?.signature ?? '');
+      this.drawMonsterSignatureMark(x, y, monster.radius, catalog?.signature);
       if (monster.shieldRatio !== undefined) {
         graphics.lineStyle(2.5, 0x66d9ff, 0.35 + monster.shieldRatio * 0.6);
         graphics.strokeCircle(x, y, monster.radius + 4);
@@ -616,10 +616,19 @@ export class TowerScene extends Phaser.Scene {
   }
 
   /** Marque intérieure : elle porte le pouvoir, sans dépasser la zone de collision. */
-  private drawMonsterSignatureMark(x: number, y: number, radius: number, signature: string): void {
+  private drawMonsterSignatureMark(
+    x: number,
+    y: number,
+    radius: number,
+    signature: TowerMonsterSignature | undefined,
+  ): void {
     const graphics = this.graphics;
     const extent = radius * 0.42;
     graphics.lineStyle(Math.max(1.5, radius * 0.1), 0x08101d, 0.82);
+    if (signature === undefined) {
+      graphics.strokeCircle(x, y, Math.max(2, extent * 0.48));
+      return;
+    }
     if (
       signature.includes('heal') ||
       signature.includes('repair') ||
@@ -743,19 +752,21 @@ export class TowerScene extends Phaser.Scene {
   }
 
   /**
-   * Les formes de rareté s'ajoutent à la silhouette native, sans la remplacer :
-   * le type reste lisible même si les couleurs de préférence sont proches.
+   * Les couleurs suivent les préférences visuelles ; les formes conservent la lecture de rareté
+   * même lorsque les deux accents choisis sont proches.
    */
   private rarityMarkerColor(rarity: TowerMonsterRarity): number {
+    const accent = hexToPhaserColor(this.visualPreferences.accentColor, 0x3498db);
+    const secondary = hexToPhaserColor(this.visualPreferences.accentSecondaryColor, 0x9b59b6);
     switch (rarity) {
       case 'rare':
-        return 0x3498db;
+        return accent;
       case 'epic':
-        return 0x9b59b6;
+        return secondary;
       case 'legendary':
-        return 0xf1c40f;
+        return accent;
       case 'boss':
-        return 0xd252e1;
+        return secondary;
       case 'common':
         return 0;
     }

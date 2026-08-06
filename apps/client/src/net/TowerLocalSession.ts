@@ -10,7 +10,8 @@ import type {
 import type { TowerRenderableSession } from './TowerRenderableSession.js';
 
 const TOWER_TICK_MS = 50;
-const MAX_STEPS_PER_FRAME = 240;
+// La frame est déjà bornée à 250 ms : au plus cinq ticks de 50 ms peuvent être rattrapés.
+const MAX_STEPS_PER_FRAME = 5;
 const MAX_PENDING_ACTIONS = 16;
 const MAX_REMEMBERED_ACTION_IDS = 256;
 

@@ -1106,7 +1106,7 @@ réutilisable que le moteur applique aujourd’hui.
 | Lance-troupe | partiel | `lob-squad` invoque deux Recrues ; trois arcs, points distincts et réancrage restent cibles. |
 | Recrue | partiel | `landing-rush` donne un dash ; atterrissage, remise debout et attaque rapide ne sont pas spécifiques. |
 | Manieur du Temps | partiel | Gel/Warden/altérations sont déterministes ; sélection, télégraphes et arène restent cibles. |
-| Cerf du Temps | partiel | Exclu du pool Timelands, mais une entrée historique reste accessible au moteur pour l’instant ; son retrait complet est suivi au lot technique. |
+| Cerf du Temps | tenu (exclusion) | Entrée `excluded` documentaire seulement ; absent du protocole, du roster Timelands et de la simulation. |
 | Contrôleur | partiel | Gel et disparition existent sans vol d’amélioration ; retour du joueur et symbole de retour restent cibles. |
 | La Montre | partiel | Effet de mort déterministe ; aiguilles annonciatrices et rendu détaillé restent cibles. |
 | Gardien Ancien | partiel | `guardian-arena-slam` fournit une frappe générique et l’enragement de PV ; arène, repli/régénération et alternance complète restent cibles. |
@@ -1119,7 +1119,7 @@ réutilisable que le moteur applique aujourd’hui.
 | Statue | exclue | structure stationnaire |
 | Canon | exclu | invocation stationnaire ; Cannonier rendu autonome |
 | Mortier | exclu | artillerie stationnaire |
-| Cerf du Temps | exclu du spawner | passif ; une entrée historique manuelle reste à retirer du moteur |
+| Cerf du Temps | exclu du spawner et du moteur | passif ; l'entrée `excluded` du catalogue documente l'exclusion sans pouvoir le réactiver en partie |
 | Bandelettes | forme transitoire seulement | état de résurrection de la Momie |
 | Pilleur | conservé, mécanique remplacée | aucun vol de ferraille |
 | Super Pilleur | conservé, mécanique remplacée | aucun vol de ferraille/amélioration |

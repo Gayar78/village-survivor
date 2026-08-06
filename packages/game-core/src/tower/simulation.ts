@@ -23,7 +23,6 @@ import {
   TOWER_WEAPONS,
   type TowerWeaponDefinition,
   type TowerMonsterCatalogEntry,
-  type TowerMonsterSignature,
 } from '@village-survivor/content';
 import { TOWER_MAX_ACTIVE_PLAYERS } from '@village-survivor/protocol';
 import type {
@@ -136,7 +135,7 @@ const ORDINARY_MONSTER_KINDS: readonly TowerMonsterKind[] = TOWER_NATURAL_MONSTE
   (monster) => monster.faction !== 'timelands',
 ).map((monster) => monster.id as TowerMonsterKind);
 const TIMELANDS_MONSTER_KINDS = TOWER_TIMELANDS_MONSTERS.filter(
-  (monster) => monster.spawnWeight > 0 && monster.id !== 'time-deer',
+  (monster) => monster.spawnWeight > 0,
 ).map((monster) => monster.id);
 
 const MAX_ACTIVE_MONSTERS_SOLO = 70;
@@ -858,24 +857,6 @@ export class TowerSimulation {
     );
   }
 
-  private updateTimelandsMonsterBehavior(monster: MutableTowerMonster): void {
-    const definition = timelandsMonsterDefinition(monster.kind);
-    if (definition?.mechanic.kind !== 'deer-escape') {
-      return;
-    }
-    const ordinal = Number(monster.id.split('-').at(-1)) || 0;
-    if ((this.tick + ordinal) % definition.mechanic.teleportCooldownTicks !== 0) {
-      return;
-    }
-    const danger = this.findNearestLivingPlayer(
-      monster.position,
-      definition.mechanic.minimumTeleportDistance,
-    );
-    if (danger !== undefined) {
-      monster.position = this.deterministicEscapePosition(monster.id, this.tick);
-    }
-  }
-
   private deterministicEscapePosition(monsterId: string, tick: number): Vector2 {
     const random = new SeededRandom(`${this.seed}:temporal-position:${monsterId}:${tick}`);
     const angle = random.between(0, Math.PI * 2);
@@ -1537,7 +1518,6 @@ export class TowerSimulation {
       this.updateMonsterRegeneration(monster, scaledSeconds);
       if (monster.hp <= 0) continue;
       this.updateMonsterAbility(monster, scaledMs);
-      this.updateTimelandsMonsterBehavior(monster);
       this.moveMonster(monster, scaledSeconds);
       this.resolveMonsterContacts(monster);
     }
@@ -1584,7 +1564,7 @@ export class TowerSimulation {
   private updateMonsterRegeneration(monster: MutableTowerMonster, deltaSeconds: number): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const profile = monsterBehaviorProfile(definition.signature as TowerMonsterSignature);
+    const profile = monsterBehaviorProfile(definition.signature);
     if (profile.growthPerSecond !== undefined) {
       const baseRadius = MONSTERS[monster.kind].radius;
       monster.radius = Math.min(
@@ -1618,8 +1598,7 @@ export class TowerSimulation {
       const definition = this.monsterCatalog(left.kind);
       if (
         definition === undefined ||
-        monsterBehaviorProfile(definition.signature as TowerMonsterSignature).mergeWithOwnKind !==
-          true
+        monsterBehaviorProfile(definition.signature).mergeWithOwnKind !== true
       ) {
         continue;
       }
@@ -1658,7 +1637,7 @@ export class TowerSimulation {
   private updateMonsterAbility(monster: MutableTowerMonster, deltaMs: number): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const signature = definition.signature as TowerMonsterSignature;
+    const signature = definition.signature;
     const ability = monsterBehaviorProfile(signature).ability;
     if (ability === undefined) return;
 
@@ -1688,18 +1667,12 @@ export class TowerSimulation {
     ) {
       return;
     }
-    const target = this.monsterAbilityTarget(monster, ability.kind);
+    const target = this.monsterAbilityTarget(monster, ability);
     if (target === undefined) {
       monster.abilityCooldownRemainingMs = 500;
       return;
     }
-    if (
-      ability.kind !== 'heal' &&
-      (ability.kind !== 'bolster' || signature === 'copy-buff') &&
-      ability.kind !== 'summon' &&
-      ability.kind !== 'slam' &&
-      distance(monster.position, target) > ability.range
-    ) {
+    if (distance(monster.position, target) > ability.range) {
       monster.abilityCooldownRemainingMs = 250;
       return;
     }
@@ -1710,15 +1683,27 @@ export class TowerSimulation {
 
   private monsterAbilityTarget(
     monster: MutableTowerMonster,
-    kind: NonNullable<ReturnType<typeof monsterBehaviorProfile>['ability']>['kind'],
+    ability: NonNullable<ReturnType<typeof monsterBehaviorProfile>['ability']>,
   ): Vector2 | undefined {
-    if (kind === 'bolster' && this.monsterCatalog(monster.kind)?.signature === 'copy-buff') {
-      return this.findNearestLivingPlayer(monster.position, Infinity, true)?.position;
+    if (
+      ability.kind === 'bolster' &&
+      this.monsterCatalog(monster.kind)?.signature === 'copy-buff'
+    ) {
+      return this.findNearestLivingPlayer(monster.position, ability.range, true)?.position;
     }
-    if (kind === 'heal' || kind === 'bolster' || kind === 'summon' || kind === 'slam') {
-      return monster.position;
+    if (ability.kind === 'heal') {
+      return this.findNearestWoundedLivingMonster(monster, ability.range)?.position;
     }
-    if (kind === 'disable') {
+    if (ability.kind === 'bolster') {
+      const ally = this.findNearestSupportAnchor(monster);
+      return ally !== undefined && distance(monster.position, ally.position) <= ability.range
+        ? ally.position
+        : undefined;
+    }
+    if (ability.kind === 'summon' || ability.kind === 'slam') {
+      return this.findNearestLivingPlayer(monster.position, ability.range, true)?.position;
+    }
+    if (ability.kind === 'disable') {
       return this.findNearestLivingTurret(monster.position)?.position;
     }
     return this.findNearestLivingPlayer(monster.position, Infinity, true)?.position;
@@ -1997,9 +1982,7 @@ export class TowerSimulation {
 
   private moveMonster(monster: MutableTowerMonster, deltaSeconds: number): void {
     const definition = this.monsterCatalog(monster.kind);
-    const profile = monsterBehaviorProfile(
-      (definition?.signature ?? 'bone-strike') as TowerMonsterSignature,
-    );
+    const profile = monsterBehaviorProfile(definition?.signature ?? 'bone-strike');
     const target = this.movementTarget(
       monster,
       monster.retreatRemainingMs > 0
@@ -2219,13 +2202,6 @@ export class TowerSimulation {
   }
 
   private resolveMonsterContacts(monster: MutableTowerMonster): void {
-    /* Remote legacy-kamikaze branch retained below for history; Torri signatures supersede it.
-    if (monster.kind === 'kamikaze') {
-      if (this.kamikazeTouchesTarget(monster)) {
-        // La détonation appartient désormais à `killMonster` : le kamikaze explose de la même
-        // façon qu'il meure au contact ou sous les tirs.
-        this.killMonster(monster, this.findNearestLivingPlayer(monster.position, Infinity));
-*/
     const definition = this.monsterCatalog(monster.kind);
     if (
       definition?.signature === 'turret-explosion' ||
@@ -2275,7 +2251,7 @@ export class TowerSimulation {
   ): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const effect = monsterBehaviorProfile(definition.signature as TowerMonsterSignature).contact;
+    const effect = monsterBehaviorProfile(definition.signature).contact;
     if (effect === 'poison') {
       this.damagePlayer(player, monster.contactDamage * 0.28);
     } else if (effect === 'drain') {
@@ -2415,8 +2391,7 @@ export class TowerSimulation {
     const receivedMultiplier =
       definition === undefined
         ? 1
-        : (monsterBehaviorProfile(definition.signature as TowerMonsterSignature)
-            .incomingDamageMultiplier ?? 1);
+        : (monsterBehaviorProfile(definition.signature).incomingDamageMultiplier ?? 1);
     let receivedAmount = amount * receivedMultiplier;
     if (monster.shieldHp > 0) {
       const absorbed = Math.min(monster.shieldHp, receivedAmount);
@@ -2474,7 +2449,7 @@ export class TowerSimulation {
     }
     const definition = this.monsterCatalog(monster.kind);
     if (definition !== undefined) {
-      const profile = monsterBehaviorProfile(definition.signature as TowerMonsterSignature);
+      const profile = monsterBehaviorProfile(definition.signature);
       const death = profile.death;
       if (death !== undefined) {
         this.spawnMonsterChildren(monster, death.childKind, death.count, 0.48);
@@ -2493,11 +2468,6 @@ export class TowerSimulation {
     if (beneficiary !== undefined) {
       beneficiary.gold += GOLD_PER_KILL_FACTOR * reward;
       this.addExperience(beneficiary, XP_PER_KILL_FACTOR * reward);
-      const deer = timelandsMonsterDefinition(monster.kind);
-      if (deer?.mechanic.kind === 'deer-escape' && deer.mechanic.guaranteedUpgradeDrop) {
-        beneficiary.pendingUpgrades += 1;
-        this.refreshUpgradeOffer(beneficiary);
-      }
     }
     this.addEvent('monster-killed', { position: monster.position, amount: reward });
     this.advanceSharedQuest(monster.rarity, monster.position);
@@ -2506,9 +2476,7 @@ export class TowerSimulation {
   private tryMonsterNativeRevive(monster: MutableTowerMonster): boolean {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined || monster.reviveCount > 0) return false;
-    const reviveFraction = monsterBehaviorProfile(
-      definition.signature as TowerMonsterSignature,
-    ).reviveFraction;
+    const reviveFraction = monsterBehaviorProfile(definition.signature).reviveFraction;
     if (reviveFraction === undefined) return false;
     monster.reviveCount += 1;
     monster.hp = Math.max(1, Math.round(monster.maxHp * reviveFraction));
@@ -2763,13 +2731,17 @@ export class TowerSimulation {
     const activeLimit = this.activeMonsterLimit();
 
     const biome = this.currentBiome();
+    let livingMonsterCount = 0;
+    for (const monster of this.monsters) {
+      if (monster.hp > 0) livingMonsterCount += 1;
+    }
     // Le boss est volontairement hors budget. La liste scénarisée évite de jeter le
     // Gardien Ancien sur les joueurs dès le premier jalon.
     const boss = WAVE_BOSS_SCHEDULE.find((entry) => entry.wave === this.wave);
     if (
       this.timelandsArrival.status === 'pending' &&
       boss !== undefined &&
-      this.monsters.filter((monster) => monster.hp > 0).length < activeLimit
+      livingMonsterCount < activeLimit
     ) {
       this.spawnMonsterWithPower(
         boss.kind,
@@ -2778,6 +2750,7 @@ export class TowerSimulation {
         'boss',
         biome.affinity,
       );
+      livingMonsterCount += 1;
     }
 
     const spawnedThreatCounts = new Map<TowerWaveThreatBand, number>();
@@ -2799,7 +2772,7 @@ export class TowerSimulation {
       ? this.eligibleProgressionWaveKinds()
       : this.eligibleTimelandsWaveKinds();
 
-    while (budget >= 1 && this.monsters.filter((monster) => monster.hp > 0).length < activeLimit) {
+    while (budget >= 1 && livingMonsterCount < activeLimit) {
       const affordable = pool.filter((kind) => {
         const cost = WAVE_MONSTER_COST[kind];
         if (cost > budget) return false;
@@ -2833,6 +2806,7 @@ export class TowerSimulation {
         this.pickWaveRarity(),
         this.pickWaveAffinity(biome.affinity),
       );
+      livingMonsterCount += 1;
       const limit = waveThreatLimit(WAVE_MONSTER_COST[kind], this.players.length);
       if (limit !== undefined) {
         spawnedThreatCounts.set(limit.band, (spawnedThreatCounts.get(limit.band) ?? 0) + 1);
@@ -3430,6 +3404,24 @@ export class TowerSimulation {
     return nearest;
   }
 
+  /** Une capacité de soin ne s'arme que lorsqu'une cible vivante a réellement perdu des PV. */
+  private findNearestWoundedLivingMonster(
+    monster: MutableTowerMonster,
+    maxRange: number,
+  ): MutableTowerMonster | undefined {
+    let nearest: MutableTowerMonster | undefined;
+    let nearestDistance = maxRange;
+    for (const candidate of this.monsters) {
+      if (candidate.hp <= 0 || candidate.hp >= candidate.maxHp) continue;
+      const gap = distance(monster.position, candidate.position);
+      if (gap < nearestDistance) {
+        nearest = candidate;
+        nearestDistance = gap;
+      }
+    }
+    return nearest;
+  }
+
   private findMostIsolatedLivingPlayer(): MutableTowerPlayer | undefined {
     let isolated: MutableTowerPlayer | undefined;
     let greatestHeartDistance = -1;
@@ -3803,9 +3795,7 @@ export class TowerSimulation {
   private projectMonster(monster: MutableTowerMonster): TowerMonsterState {
     const definition = this.monsterCatalog(monster.kind);
     const ability =
-      definition === undefined
-        ? undefined
-        : monsterBehaviorProfile(definition.signature as TowerMonsterSignature).ability;
+      definition === undefined ? undefined : monsterBehaviorProfile(definition.signature).ability;
     return {
       id: monster.id,
       kind: monster.kind,

@@ -3,7 +3,28 @@
 > Statut : en cours — validation LAN finale de la v2
 > Version du projet : v2
 > Propriétaire : Gayar
-> Dernière revue : 4 août 2026
+> Dernière revue : 6 août 2026
+
+## Clôture automatique du chantier Torri (6 août 2026)
+
+Cette clôture vérifie les correctifs Torri sans déclarer que toutes les mécaniques de la cible
+produit sont terminées. La matrice espèce par espèce conserve les écarts `partiel` et `non tenu`
+dans [`../gameplay/torri-monster-integration-spec.md`](../gameplay/torri-monster-integration-spec.md).
+
+| Contrôle | Résultat | Preuve observée |
+|---|:---:|---|
+| `pnpm check` | **PASS** | format, lint, types, **43 fichiers / 235 tests** et tous les builds |
+| Déterminisme Torri | **PASS** | deux simulations identiques pendant 1 000 ticks, avec zone poison, invocation, fusion de Slimes et résurrection de Momie |
+| Charge autoritaire | **PASS** | 24 000 ticks ; p95 **1,967 ms**, p99 **2,699 ms**, patch p95 **53 Kio**, ferraille max **11** |
+| `pnpm test:smoke` | **PASS** | **8 scénarios** Chromium de production ; commande→état p95 **79,0 ms** |
+| Scan statique du moteur Tower | **PASS** | AST sans `Math.random`, trigonométrie/hypoténuse approximée ni opérateur `**` dans le chemin de simulation |
+
+Le scénario de secours local couvre désormais la seule condition admise : une réponse HTTP 404
+déclenche le mode local non persistant et son alerte durable. Un abort de transport demeure un
+échec vers le lobby, sans démarrage local.
+
+Les ratios PV des boss ne sont pas retouchés pendant ce chantier : ils restent une décision produit
+ouverte, explicitement signalée dans l'état de projet et dans la spécification Torri.
 
 ## Validation v2 — premier essai LAN solo (4 août 2026)
 

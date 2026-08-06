@@ -47,11 +47,9 @@ describe('Tower deterministic living world', () => {
 
     expect(monsters.length).toBeGreaterThan(0);
     expect(new Set(monsters.map((monster) => monster.kind)).size).toBeGreaterThanOrEqual(2);
-    expect(
-      monsters.every(
-        (monster) => !['chaser', 'runner', 'brute', 'time-deer'].includes(monster.kind),
-      ),
-    ).toBe(true);
+    expect(monsters.every((monster) => !['chaser', 'runner', 'brute'].includes(monster.kind))).toBe(
+      true,
+    );
     expect(monsters.every((monster) => WAVE_MONSTER_COST[monster.kind] <= 3)).toBe(true);
   });
 

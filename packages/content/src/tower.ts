@@ -6,8 +6,7 @@
 // moteur (game-core, Lot A).
 
 /** Identifiants canoniques du roster du biome final. */
-export type TowerTimelandsMonsterId =
-  'time-deer' | 'time-controller' | 'time-watch' | 'time-warden';
+export type TowerTimelandsMonsterId = 'time-controller' | 'time-watch' | 'time-warden';
 
 export type TowerTimelandsMechanic =
   | Readonly<{
@@ -18,12 +17,6 @@ export type TowerTimelandsMechanic =
       resurrectionHpFraction: number;
       alterations: readonly ['slow', 'haste', 'blink'];
       lowHpRelocationThreshold: number;
-    }>
-  | Readonly<{
-      kind: 'deer-escape';
-      teleportCooldownTicks: number;
-      minimumTeleportDistance: number;
-      guaranteedUpgradeDrop: true;
     }>
   | Readonly<{
       kind: 'controller-strike';
@@ -70,30 +63,11 @@ export const TOWER_TIMELANDS_BIOME = Object.freeze({
   arrivalAnnouncementTicks: 80,
   historySampleIntervalTicks: 5,
   historyDepthTicks: 120,
-  rosterIds: Object.freeze(['time-deer', 'time-controller', 'time-watch', 'time-warden'] as const),
+  rosterIds: Object.freeze(['time-controller', 'time-watch', 'time-warden'] as const),
 });
 
 /** Roster minimal Timelands. Le Warden est exclu du tirage (`spawnWeight: 0`). */
 export const TOWER_TIMELANDS_MONSTERS: readonly TowerTimelandsMonsterDefinition[] = Object.freeze([
-  Object.freeze({
-    id: 'time-deer',
-    label: 'Cerf du Temps',
-    unique: false,
-    hp: 4_600,
-    speed: 80,
-    radius: 32,
-    contactDamage: 0,
-    reward: 45,
-    spawnWeight: 50,
-    minimumWaveInBiome: 2,
-    maxAlive: 3,
-    mechanic: Object.freeze({
-      kind: 'deer-escape',
-      teleportCooldownTicks: 30,
-      minimumTeleportDistance: 500,
-      guaranteedUpgradeDrop: true,
-    }),
-  }),
   Object.freeze({
     id: 'time-controller',
     label: 'Contrôleur',
@@ -185,7 +159,6 @@ export type TowerEndgameTierDefinition = Readonly<{
       }>;
 }>;
 
-export const TOWER_ENDGAME_TIER_INTERVAL_TICKS = 3_000;
 export const TOWER_ENDGAME_ANNOUNCEMENT_TICKS = 80;
 
 /** Quatre paliers cumulatifs effectifs, triés par id et déclenchés sans horloge murale. */

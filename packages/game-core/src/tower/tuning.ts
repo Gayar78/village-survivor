@@ -16,7 +16,6 @@ import {
   TOWER_ACTIVE_MONSTERS,
   TOWER_TIMELANDS_MONSTERS,
   type TowerMonsterCatalogEntry,
-  type TowerMonsterFaction,
 } from '@village-survivor/content';
 
 /** Durée d'un tick de simulation (ms). 20 Hz. */
@@ -163,35 +162,21 @@ function catalogStats(monster: TowerMonsterCatalogEntry): MonsterDefinition {
   };
 }
 
-function timelandsStats(
-  id: 'time-deer' | 'time-controller' | 'time-watch' | 'time-warden',
-): MonsterDefinition {
-  const monster = TOWER_TIMELANDS_MONSTERS.find((candidate) => candidate.id === id);
-  if (monster === undefined) {
-    throw new Error(`Monstre Timelands absent du catalogue: ${id}`);
-  }
-  return {
-    hp: monster.hp,
-    speed: monster.speed,
-    radius: monster.radius,
-    contactDamage: monster.contactDamage,
-    reward: monster.reward,
-  };
-}
-
 const LEGACY_MONSTERS: Readonly<Record<TowerLegacyMonsterKind, MonsterDefinition>> = {
   chaser: { hp: 40, speed: 90, radius: 12, contactDamage: 12, reward: 1 },
   runner: { hp: 20, speed: 170, radius: 9, contactDamage: 8, reward: 1 },
   brute: { hp: 160, speed: 55, radius: 18, contactDamage: 25, reward: 3 },
-  'time-deer': timelandsStats('time-deer'),
 };
 
-export const MONSTERS: Readonly<Record<TowerMonsterKind, MonsterDefinition>> = Object.freeze({
-  ...LEGACY_MONSTERS,
-  ...Object.fromEntries(
-    TOWER_ACTIVE_MONSTERS.map((monster) => [monster.id, catalogStats(monster)]),
-  ),
-}) as Readonly<Record<TowerMonsterKind, MonsterDefinition>>;
+/** Construction typée : les données du catalogue complètent explicitement les trois vestiges MVP. */
+const MONSTER_DEFINITIONS: Record<TowerMonsterKind, MonsterDefinition> = Object.create(null);
+Object.assign(MONSTER_DEFINITIONS, LEGACY_MONSTERS);
+for (const monster of TOWER_ACTIVE_MONSTERS) {
+  MONSTER_DEFINITIONS[monster.id as TowerMonsterKind] = catalogStats(monster);
+}
+
+export const MONSTERS: Readonly<Record<TowerMonsterKind, MonsterDefinition>> =
+  Object.freeze(MONSTER_DEFINITIONS);
 
 /** Rotation des décors. Une entrée décrit aussi l'affinité dominante de ses vagues. */
 export const TOWER_BIOMES: readonly Readonly<{
@@ -202,15 +187,6 @@ export const TOWER_BIOMES: readonly Readonly<{
   { id: 'badlands', affinity: 'fire' },
   { id: 'tundra', affinity: 'frost' },
   { id: 'tempest', affinity: 'storm' },
-];
-
-/** Incursions thématiques validées : une ou deux factions dominent trois vagues. */
-export const TOWER_MONSTER_INCURSIONS: readonly (readonly TowerMonsterFaction[])[] = [
-  ['forest', 'cave'],
-  ['desert', 'graveyard'],
-  ['mercenary', 'mountain'],
-  ['tribe', 'hell'],
-  ['machines'],
 ];
 
 /** Nombre de vagues consécutives passées dans le même biome. */
@@ -534,15 +510,14 @@ export function monsterThreatBudgetScale(playerCount: number): number {
 }
 
 /** Coût (budget) de chaque type de monstre dans une vague. */
-export const WAVE_MONSTER_COST: Readonly<Record<TowerMonsterKind, number>> = Object.freeze({
-  chaser: 1,
-  runner: 1,
-  brute: 4,
-  'time-deer': 12,
-  ...Object.fromEntries(
-    TOWER_ACTIVE_MONSTERS.map((monster) => [monster.id, Math.max(1, monster.threatCost)]),
-  ),
-}) as Readonly<Record<TowerMonsterKind, number>>;
+const WAVE_MONSTER_COSTS: Record<TowerMonsterKind, number> = Object.create(null);
+Object.assign(WAVE_MONSTER_COSTS, { chaser: 1, runner: 1, brute: 4 });
+for (const monster of TOWER_ACTIVE_MONSTERS) {
+  WAVE_MONSTER_COSTS[monster.id as TowerMonsterKind] = Math.max(1, monster.threatCost);
+}
+
+export const WAVE_MONSTER_COST: Readonly<Record<TowerMonsterKind, number>> =
+  Object.freeze(WAVE_MONSTER_COSTS);
 
 /** Le biome final n'interrompt la courbe ordinaire qu'après ses cent vagues. */
 export const TIMELANDS_START_WAVE = 101;
