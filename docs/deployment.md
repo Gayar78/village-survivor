@@ -71,8 +71,13 @@ Le processus `apps/server` lit `JWT_SECRET`, `SERVICE_ROLE_KEY`, `POSTGREST_URL`
 Ces noms ne portent jamais `VITE_` : Vite ne les expose pas au bundle. La clé `service_role`
 contourne les RLS et reste strictement côté serveur.
 
-Sans session Supabase ou sans serveur, `play.html` affiche une erreur lisible et ne démarre
-aucune simulation locale. Il n'existe plus de mode solo hors ligne.
+Le lobby reste protégé par une session Supabase. Une fois `play.html` atteint en solo, le client
+préfère toujours le serveur : il interroge deux fois `/health` avec un délai de trois secondes.
+Une réponse HTTP non saine confirme l'absence de la voie de jeu et autorise alors le mode local ;
+un timeout, un abort ou une panne réseau affichent une erreur au lieu de basculer silencieusement.
+Le mode local est visible en permanence (« Mode local — progression non enregistrée »), ne permet
+ni coopération, ni récompense, ni statistique, ni trace serveur distribuée. Voir
+[ADR-0012](decisions/ADR-0012-mode-solo-local-degrade.md).
 
 ## 4. Base de données
 
@@ -125,7 +130,7 @@ Le déploiement suppose, en plus de la mise en ligne des fichiers :
 
 | Environnement | Client | Supabase | État |
 |---|---|---|---|
-| Local | Vite 5173 + jeu 2567 | projet personnel du développeur | solo et coop autoritaires fonctionnels |
+| Local | Vite 5173 + jeu 2567 | projet personnel du développeur | solo et coop autoritaires ; secours local non persistant seulement après réponse HTTP non saine |
 | **LAN auto-hébergé** | nginx conteneurisé sur `<IP>:8080`, `/game/` | stack Docker locale | stack complète saine, validation deux postes à faire |
 | Preview / staging | non configuré | non configuré | inexistant |
 | Production | non configuré | non configuré | inexistant |

@@ -7,7 +7,12 @@ import {
 } from '@opentelemetry/sdk-trace-web';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { endGameSessionSpan, startGameChildSpan, startGameSessionSpan } from './gameTelemetry.js';
+import {
+  endGameSessionSpan,
+  setGameSessionExecutionMode,
+  startGameChildSpan,
+  startGameSessionSpan,
+} from './gameTelemetry.js';
 import { activeTraceIds } from './telemetry.js';
 
 /**
@@ -64,6 +69,16 @@ describe('contrat de trace d’une partie', () => {
 
     expect(span.attributes['service.version']).toBeDefined();
     expect(span.attributes['deployment.environment.name']).toBeDefined();
+  });
+
+  it('porte la voie d’exécution fermée après la sélection solo', () => {
+    const span = startGameSessionSpan({ mode: 'solo', playersCount: 1 });
+    setGameSessionExecutionMode(span, 'local-fallback');
+    endGameSessionSpan(span, 'left');
+
+    expect(exporter.getFinishedSpans().at(-1)?.attributes['vs.execution.mode']).toBe(
+      'local-fallback',
+    );
   });
 
   it('n’émet aucune donnée interdite', () => {

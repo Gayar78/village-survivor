@@ -60,7 +60,7 @@ spans aux seules frontières significatives.
 | Feedback | [`feedback.md`](feedback.md) | à jour — premier essai solo v2 validé |
 | Journal de développement | [`journal-dev.md`](journal-dev.md) | à jour |
 | Architecture | [`architecture.md`](architecture.md) | approuvé |
-| Décisions | [`decisions/`](decisions/README.md) — 11 ADR | approuvé |
+| Décisions | [`decisions/`](decisions/README.md) — 12 ADR | approuvé |
 | Observabilité | [`observabilite.md`](observabilite.md) | approuvée |
 | Stratégie de tests | [`qualite/strategie-tests.md`](qualite/strategie-tests.md) | approuvée |
 | Rapport de tests | [`qualite/rapport-tests.md`](qualite/rapport-tests.md) | à jour |

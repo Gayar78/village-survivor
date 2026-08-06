@@ -29,6 +29,11 @@ Le client injecte un `traceparent` W3C dans `POST /rooms`. Le serveur n'accepte 
 fermée et utilise ce contexte comme parent de `game.room`; la valeur n'est jamais un attribut.
 Les traces ne contiennent ni JWT, ni identité, ni `runId`, ni `roomId`, ni seed.
 
+Après la sélection effective d'une partie solo, le span navigateur reçoit
+`vs.execution.mode` : `authoritative-server` ou `local-fallback`. Ces deux valeurs fermées
+distinguent les chemins sans augmenter la cardinalité. Le repli local ne possède pas de room ni de
+trace distribuée côté serveur ; son absence de persistance reste signalée dans l'interface.
+
 **Interdiction absolue :** aucun span par tick, commande, image, projectile ou entité. Un tick
 est une mesure agrégée, pas une unité de trace.
 

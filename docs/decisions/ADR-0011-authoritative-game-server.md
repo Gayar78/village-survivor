@@ -4,6 +4,7 @@
 > Date : 3 août 2026
 > Décideur : Gayar
 > Remplace : ADR-0008
+> Amendé le 6 août 2026 par [ADR-0012](ADR-0012-mode-solo-local-degrade.md) pour le secours solo local dégradé.
 
 ## Contexte
 
@@ -34,10 +35,11 @@ Colyseus serveur est fixé à `0.17.10`, son SDK client à `0.17.43` et Schema �
 la migration. Supabase reste l'autorité des comptes et du lobby. Le serveur vérifie les JWT,
 charge les bonus avec `service_role` et persiste les récompenses par une RPC idempotente.
 
-Les rooms vivent en mémoire. Un redémarrage serveur interrompt les sessions. Il n'existe aucun
-mode hors ligne. En coopération, le roster exact est réservé avant création et doit rejoindre
-dans les 15 secondes. La reconnexion conserve le même avatar 30 secondes, puis l'expulse sans
-retour possible.
+Les rooms vivent en mémoire. Un redémarrage serveur interrompt les sessions autoritaires. Le
+secours solo local, introduit et limité par l'ADR-0012, n'est sélectionné qu'après l'échec confirmé
+du healthcheck HTTP ; il ne persiste aucune récompense et ne remplace jamais la coopération. En
+coopération, le roster exact est réservé avant création et doit rejoindre dans les 15 secondes. La
+reconnexion conserve le même avatar 30 secondes, puis l'expulse sans retour possible.
 
 ## Conséquences positives
 
@@ -49,7 +51,8 @@ retour possible.
 
 ## Coûts et limites
 
-- une panne du serveur interrompt le solo comme la coopération ;
+- une panne du serveur interrompt la coopération et le solo autoritaire ; le secours local ne
+  conserve ni récompense ni trace serveur distribuée ;
 - le déploiement gagne un conteneur limité initialement à 512 Mio ;
 - les contrats réseau, l'adaptateur client, la persistance idempotente et les tests multi-clients
   augmentent la surface à maintenir ;
@@ -71,7 +74,8 @@ complexité pour une indisponibilité explicitement sans conséquence. Cette opt
 
 ## Critères de validation
 
-- solo et coopération utilisent `TowerServerSession` en production ;
+- le solo utilise `TowerServerSession` quand le serveur est sain et la coopération utilise toujours
+  `TowerServerSession` en production ;
 - deux clients voient le même tick et le même état partagé ;
 - une reconnexion à 10 secondes restaure l'avatar et une reconnexion à 31 secondes est refusée ;
 - deux finalisations concurrentes ne doublent jamais l'or ;
