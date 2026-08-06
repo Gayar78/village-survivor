@@ -6,6 +6,15 @@ sémantique n'est encore appliquée, car aucune version jouable n'a été publi�
 
 ## [Non publié]
 
+### Rupture de protocole — raretés Torri
+
+- `TowerMonsterRarity` n’accepte plus `uncommon` ni `elite`. Les consommateurs de snapshots et
+  de contenu doivent accepter `common`, `rare`, `epic`, `legendary` ou `boss` ;
+- `rare` ne conserve pas son ancienne signification : son multiplicateur de PV est désormais
+  ×1,20 (au lieu de ×1,80). Les paliers suivants sont `epic` ×1,45 et `legendary` ×1,80 ;
+- cette rupture accompagne le bestiaire Torri. Les multiplicateurs sont appliqués une fois à
+  l’apparition, et les boss restent hors du tirage de rareté ordinaire.
+
 Le dépôt contient deux jeux successifs. Le MVP « M1 » (exploration diurne, défense nocturne) a
 été livré du 20 au 26 juillet 2026, puis **remplacé** par le jeu « Tower » du 28 au 30 juillet.
 Les deux sont consignés ci-dessous, dans cet ordre.

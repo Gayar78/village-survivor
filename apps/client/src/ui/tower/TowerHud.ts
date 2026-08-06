@@ -1,5 +1,6 @@
 import type { TowerGameState } from '@village-survivor/protocol';
 import {
+  TOWER_ENDGAME_TIERS,
   TOWER_GLOBAL_DEFENSE_OFFERS,
   TOWER_SHARED_QUESTS,
   TOWER_WEAPONS,
@@ -44,6 +45,32 @@ function sharedQuestDefinition(id: TowerGameState['sharedQuest']['id']) {
   return TOWER_SHARED_QUESTS.find((quest) => quest.id === id);
 }
 
+function timelandsArrivalLabel(arrival: TowerGameState['timelands']['arrival']): string {
+  switch (arrival.status) {
+    case 'pending':
+      return 'Terres du Temps : arrivée à la vague 101';
+    case 'announcing':
+      return 'Terres du Temps : arrivée en cours';
+    case 'active':
+      return 'Terres du Temps : actives';
+  }
+}
+
+function wardenLabel(warden: TowerGameState['timelands']['warden']): string {
+  switch (warden.status) {
+    case 'not-spawned':
+      return 'Manieur du Temps : en attente';
+    case 'active':
+      return 'Manieur du Temps : actif';
+    case 'defeated':
+      return 'Manieur du Temps : vaincu';
+  }
+}
+
+function endgameTierLabel(id: TowerGameState['endgame']['activeTiers'][number]['id']): string {
+  return TOWER_ENDGAME_TIERS.find((tier) => tier.id === id)?.label ?? `Palier ${id}`;
+}
+
 /**
  * HUD du nouveau jeu (Tower) : PV joueur, niveau + XP, Ferraille COMMUNE (fonds de
  * défense partagé), Or PERSONNEL et n° de vague. Lecture seule (aucun callback) :
@@ -66,6 +93,18 @@ export class TowerHud {
     const questProgress = Math.max(0, Math.min(sharedQuest.target, sharedQuest.progress));
     const defenseOffers = state.globalDefenseShop.offerIds.map(defenseOfferLabel).join(' · ');
     const activeBoss = state.monsters.find((monster) => monster.rarity === 'boss');
+    const frozenMonsterCount = state.monsters.filter(
+      (monster) => monster.temporal?.status === 'frozen',
+    ).length;
+    const timelandsLabel = timelandsArrivalLabel(state.timelands.arrival);
+    const activeTierLabels = state.endgame.activeTiers.map((tier) => endgameTierLabel(tier.id));
+    const announcedTier = state.endgame.announcement;
+    const endgameLabel =
+      announcedTier === null
+        ? activeTierLabels.length === 0
+          ? 'Paliers de fin : en attente'
+          : `Paliers actifs : ${activeTierLabels.join(' · ')}`
+        : `Palier ${announcedTier.tierId} activé : ${endgameTierLabel(announcedTier.tierId)}`;
     const waveObjective =
       activeBoss === undefined
         ? `Défendre la vague ${state.wave}`
@@ -84,6 +123,12 @@ export class TowerHud {
       state.biome.cycle,
       state.biome.startsAtWave,
       state.biome.durationWaves,
+      state.timelands.arrival.status,
+      state.timelands.warden.status,
+      state.timelands.activeEffects.length,
+      frozenMonsterCount,
+      activeTierLabels.join(','),
+      announcedTier?.tierId ?? '',
       activeBoss?.id ?? '',
       activeBoss?.affinity ?? '',
       activeBoss?.trait ?? '',
@@ -154,6 +199,13 @@ export class TowerHud {
             </div>
             <small>Cycle ${state.biome.cycle + 1} · vagues ${state.biome.startsAtWave}–${state.biome.startsAtWave + state.biome.durationWaves - 1}</small>
           </div>
+          <section class="tower-hud-temporal" data-testid="tower-hud-temporal" data-arrival="${state.timelands.arrival.status}">
+            <span>État temporel</span>
+            <strong>${timelandsLabel}</strong>
+            <small>${wardenLabel(state.timelands.warden)} · ${state.timelands.activeEffects.length} effet${state.timelands.activeEffects.length === 1 ? '' : 's'} actif${state.timelands.activeEffects.length === 1 ? '' : 's'}</small>
+            <small>${frozenMonsterCount === 0 ? 'Aucun monstre figé' : `${frozenMonsterCount} monstre${frozenMonsterCount === 1 ? '' : 's'} figé${frozenMonsterCount === 1 ? '' : 's'} par le Manieur du Temps`}</small>
+            <strong class="tower-hud-temporal__tier">${endgameLabel}</strong>
+          </section>
           <div class="tower-hud-objective${activeBoss === undefined ? '' : ' tower-hud-objective--boss'}" data-testid="tower-hud-objective">
             <span>Objectif</span><strong>${waveObjective}</strong>
           </div>

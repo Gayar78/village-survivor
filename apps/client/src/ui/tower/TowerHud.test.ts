@@ -109,6 +109,61 @@ describe('TowerHud living-world projection', () => {
     expect(root.innerHTML).toContain('Colosse Feu');
   });
 
+  it('explique les Timelands, un monstre figé et le palier de fin activé', () => {
+    const root = { innerHTML: '' } as HTMLElement;
+    const hud = new TowerHud(root);
+    const frozen: TowerMonsterState = {
+      id: 'frozen-1',
+      kind: 'slime',
+      rarity: 'common',
+      affinity: 'time',
+      trait: 'temporal',
+      position: { x: 120, y: 0 },
+      hp: 40,
+      maxHp: 40,
+      radius: 12,
+      temporal: { status: 'frozen' },
+    };
+    const state: TowerGameState = {
+      ...createState([frozen]),
+      biome: { id: 'timelands', affinity: 'time', cycle: 34, startsAtWave: 101, durationWaves: 1 },
+      timelands: {
+        arrival: { status: 'active', arrivedAtTick: 2_020 },
+        activeEffects: [
+          {
+            id: 1,
+            kind: 'slow',
+            scope: 'global',
+            scale: 0.6,
+            activatedAtTick: 2_020,
+            expiresAtTick: 2_100,
+            sourceMonsterId: 'warden-1',
+          },
+        ],
+        warden: {
+          status: 'active',
+          monsterId: 'warden-1',
+          nextReleaseAtTick: 2_080,
+          releasedMonsterIds: ['frozen-1'],
+          lowHpRelocationUsed: false,
+        },
+      },
+      endgame: {
+        phaseStartedAtTick: 2_020,
+        activeTiers: [{ id: 1, activatedAtTick: 2_020 }],
+        nextTier: { id: 2, triggersAtTick: 8_020 },
+        announcement: { tierId: 1, endsAtTick: 2_100 },
+      },
+    };
+
+    hud.render(state);
+
+    expect(root.innerHTML).toContain('Terres du Temps : actives');
+    expect(root.innerHTML).toContain('Manieur du Temps : actif');
+    expect(root.innerHTML).toContain('1 monstre figé par le Manieur du Temps');
+    expect(root.innerHTML).toContain('Palier 1 activé : Pression accrue');
+  });
+
   it('projects the current shared quest, including bounded progress and the server reward', () => {
     const root = { innerHTML: '' } as HTMLElement;
     const hud = new TowerHud(root);

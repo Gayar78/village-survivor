@@ -149,8 +149,8 @@ export type TowerMonsterTrait =
 /** Altérations persistantes que le Warden peut appliquer à un monstre libéré. */
 export type TowerTemporalAlteration = 'none' | 'slow' | 'haste' | 'blink';
 
-/** Identifiants ordonnés des cinq paliers cumulatifs de fin de partie. */
-export type TowerEndgameTierId = 1 | 2 | 3 | 4 | 5;
+/** Identifiants ordonnés des quatre paliers cumulatifs effectifs de fin de partie. */
+export type TowerEndgameTierId = 1 | 2 | 3 | 4;
 
 /** Arsenal personnel disponible dès le début d'une partie Tower. */
 export type TowerWeaponId = 'rifle' | 'shotgun' | 'marksman';

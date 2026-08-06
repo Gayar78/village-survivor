@@ -143,6 +143,9 @@ const MAX_ACTIVE_MONSTERS_SOLO = 70;
 const MAX_ACTIVE_MONSTERS_PER_EXTRA_PLAYER = 10;
 export const HOSTILE_SLOW_DURATION_MS = 2_000;
 const HOSTILE_SLOW_SPEED_SCALE = 0.55;
+/** Les trois statistiques d'une fusion suivent la même limite relative. */
+const MERGE_STAT_CAP_MULTIPLIER = 1.6;
+const COPIED_PLAYER_BUFF_DURATION_MS = 3_200;
 
 type TemporalHistoryFrame = Readonly<{
   tick: number;
@@ -1215,8 +1218,8 @@ export class TowerSimulation {
   }
 
   private currentTurretEnergyDrainPerSecond(): number {
-    const active = this.endgameActiveTiers.find((tier) => tier.id === 4);
-    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 4);
+    const active = this.endgameActiveTiers.find((tier) => tier.id === 3);
+    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 3);
     if (active === undefined || definition?.effect.kind !== 'turret-energy-drain') {
       return 0;
     }
@@ -1231,8 +1234,8 @@ export class TowerSimulation {
     damage: number;
     speed: number;
   }> {
-    const active = this.endgameActiveTiers.find((tier) => tier.id === 5);
-    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 5);
+    const active = this.endgameActiveTiers.find((tier) => tier.id === 4);
+    const definition = TOWER_ENDGAME_TIERS.find((tier) => tier.id === 4);
     if (active === undefined || definition?.effect.kind !== 'monster-adaptation') {
       return { hp: 1, damage: 1, speed: 1 };
     }
@@ -1631,10 +1634,20 @@ export class TowerSimulation {
         ) {
           continue;
         }
-        left.maxHp += Math.round(right.maxHp * 0.42);
+        const baseStats = MONSTERS[left.kind];
+        left.maxHp = Math.min(
+          Math.round(baseStats.hp * MERGE_STAT_CAP_MULTIPLIER),
+          left.maxHp + Math.round(right.maxHp * 0.42),
+        );
         left.hp = Math.min(left.maxHp, left.hp + right.hp * 0.55);
-        left.radius = Math.min(MONSTERS[left.kind].radius * 1.6, left.radius + right.radius * 0.16);
-        left.contactDamage = Math.round(left.contactDamage * 1.12);
+        left.radius = Math.min(
+          baseStats.radius * MERGE_STAT_CAP_MULTIPLIER,
+          left.radius + right.radius * 0.16,
+        );
+        left.contactDamage = Math.min(
+          Math.round(baseStats.contactDamage * MERGE_STAT_CAP_MULTIPLIER),
+          Math.round(left.contactDamage * 1.12),
+        );
         left.reward += right.reward;
         right.hp = 0;
         break;
@@ -1645,7 +1658,8 @@ export class TowerSimulation {
   private updateMonsterAbility(monster: MutableTowerMonster, deltaMs: number): void {
     const definition = this.monsterCatalog(monster.kind);
     if (definition === undefined) return;
-    const ability = monsterBehaviorProfile(definition.signature as TowerMonsterSignature).ability;
+    const signature = definition.signature as TowerMonsterSignature;
+    const ability = monsterBehaviorProfile(signature).ability;
     if (ability === undefined) return;
 
     if (monster.abilityTelegraphRemainingMs > 0) {
@@ -1681,7 +1695,7 @@ export class TowerSimulation {
     }
     if (
       ability.kind !== 'heal' &&
-      ability.kind !== 'bolster' &&
+      (ability.kind !== 'bolster' || signature === 'copy-buff') &&
       ability.kind !== 'summon' &&
       ability.kind !== 'slam' &&
       distance(monster.position, target) > ability.range
@@ -1698,6 +1712,9 @@ export class TowerSimulation {
     monster: MutableTowerMonster,
     kind: NonNullable<ReturnType<typeof monsterBehaviorProfile>['ability']>['kind'],
   ): Vector2 | undefined {
+    if (kind === 'bolster' && this.monsterCatalog(monster.kind)?.signature === 'copy-buff') {
+      return this.findNearestLivingPlayer(monster.position, Infinity, true)?.position;
+    }
     if (kind === 'heal' || kind === 'bolster' || kind === 'summon' || kind === 'slam') {
       return monster.position;
     }
@@ -1732,6 +1749,19 @@ export class TowerSimulation {
           damagePerPulse: monster.contactDamage * 0.2,
           control: 'none',
         });
+      }
+      return;
+    }
+    if (signature === 'copy-buff') {
+      const player = this.findNearestLivingPlayer(targetPosition, ability.range, true);
+      if (player !== undefined && this.playerHasPositiveEffect(player)) {
+        // Le Truand observe le joueur ciblé : il n'examine jamais les bonus d'un allié monstre.
+        // Le moteur n'expose pas encore de jetons de buff temporaires côté joueur ; sa copie
+        // temporaire se traduit donc par le même état d'empowerment visible que les soutiens.
+        monster.supportBuffRemainingMs = Math.max(
+          monster.supportBuffRemainingMs,
+          COPIED_PLAYER_BUFF_DURATION_MS,
+        );
       }
       return;
     }
@@ -1773,27 +1803,6 @@ export class TowerSimulation {
               };
             }
           }
-        }
-      }
-      if (signature === 'copy-buff') {
-        const copied = this.monsters.find(
-          (ally) =>
-            ally !== monster &&
-            ally.hp > 0 &&
-            (ally.shieldHp > 0 ||
-              ally.camouflageRemainingMs > 0 ||
-              ally.supportBuffRemainingMs > 0),
-        );
-        if (copied !== undefined) {
-          monster.shieldHp = Math.max(monster.shieldHp, copied.shieldHp);
-          monster.camouflageRemainingMs = Math.max(
-            monster.camouflageRemainingMs,
-            copied.camouflageRemainingMs,
-          );
-          monster.supportBuffRemainingMs = Math.max(
-            monster.supportBuffRemainingMs,
-            copied.supportBuffRemainingMs,
-          );
         }
       }
       if (signature === 'revive-burning-aura') {
@@ -1866,6 +1875,44 @@ export class TowerSimulation {
         this.damageHeartInternal(monster.contactDamage * ability.power);
       }
     }
+  }
+
+  /**
+   * Les améliorations de joueur sont des effets positifs permanents du build courant. Le protocole
+   * ne porte pas encore de jeton de buff temporaire : le Truand ne peut donc copier qu'un effet
+   * réellement constaté dans ces statistiques, jamais l'état d'un allié monstre.
+   */
+  private playerHasPositiveEffect(player: MutableTowerPlayer): boolean {
+    return (
+      player.maxHp > PLAYER.maxHp ||
+      player.speed > PLAYER.speed ||
+      player.pickupRadius > PLAYER.pickupRadius ||
+      player.fireRate < PLAYER.fireRate ||
+      player.bulletDamage > PLAYER.bulletDamage ||
+      player.bulletSpeed > PLAYER.bulletSpeed ||
+      player.bulletRange > PLAYER.bulletRange ||
+      player.bulletRadius > PLAYER.bulletRadius ||
+      player.critChance > PLAYER.critChance ||
+      player.critMult > PLAYER.critMult ||
+      player.pierce > 0 ||
+      player.bounce > 0 ||
+      player.multishotChance > 0 ||
+      player.burnStacks > 0 ||
+      player.auraDps > 0 ||
+      player.lifestealPct > 0 ||
+      player.bulletSpeedBonusApplied ||
+      player.explodeOnKill ||
+      player.growingBullet > 0 ||
+      player.critSlowStacks > 0 ||
+      player.weapons.some(
+        (weapon) =>
+          weapon.level > 1 ||
+          weapon.damageMultiplier > 1 ||
+          weapon.fireRateMultiplier < 1 ||
+          weapon.spreadMultiplier < 1 ||
+          weapon.pierceBonus > 0,
+      )
+    );
   }
 
   private spawnMonsterZone(
@@ -2125,6 +2172,9 @@ export class TowerSimulation {
 
   private findMonsterTarget(monster: MutableTowerMonster): Vector2 {
     const definition = this.monsterCatalog(monster.kind);
+    if (definition?.signature === 'wounded-structure-raid') {
+      return this.findMostWoundedLivingStructure()?.position ?? this.heart.position;
+    }
     if (definition?.targeting === 'heart') {
       return this.heart.position;
     }
@@ -2530,10 +2580,7 @@ export class TowerSimulation {
       this.rewindPersistentState(definition.mechanic.rewindTicks, monster.id);
       return;
     }
-    const hostileOnly = this.isEndgameTierActive(2);
-    const outcomes = hostileOnly
-      ? (['global-haste', 'player-slow'] as const)
-      : (['global-slow', 'global-haste', 'player-slow', 'player-haste'] as const);
+    const outcomes = ['global-slow', 'global-haste', 'player-slow', 'player-haste'] as const;
     const outcome = outcomes[random.integer(0, outcomes.length - 1)] ?? 'player-slow';
     const target = this.findNearestLivingPlayer(monster.position, Infinity) ?? this.players[0];
     if (outcome === 'global-slow') {
@@ -2909,7 +2956,7 @@ export class TowerSimulation {
   private minimumEndgameRarity(
     rarity: Exclude<TowerMonsterRarity, 'boss'>,
   ): Exclude<TowerMonsterRarity, 'boss'> {
-    if (!this.isEndgameTierActive(3) || rarity !== 'common') {
+    if (!this.isEndgameTierActive(2) || rarity !== 'common') {
       return rarity;
     }
     return 'rare';
@@ -3335,6 +3382,37 @@ export class TowerSimulation {
       }
     }
     return nearest;
+  }
+
+  /**
+   * Le Pilleur choisit la structure vivante au plus faible pourcentage de PV, jamais celle qui
+   * est seulement la plus proche. L'ordre des tourelles puis du Cœur fixe les égalités à graine
+   * et état identiques.
+   */
+  private findMostWoundedLivingStructure():
+    | Readonly<{
+        position: Vector2;
+        hp: number;
+        maxHp: number;
+      }>
+    | undefined {
+    let target: Readonly<{ position: Vector2; hp: number; maxHp: number }> | undefined;
+    let lowestHealthRatio = Infinity;
+    for (const turret of this.turrets) {
+      if (!turret.alive) continue;
+      const healthRatio = turret.hp / Math.max(1, turret.maxHp);
+      if (healthRatio < lowestHealthRatio) {
+        target = turret;
+        lowestHealthRatio = healthRatio;
+      }
+    }
+    if (this.heart.hp > 0) {
+      const healthRatio = this.heart.hp / Math.max(1, this.heart.maxHp);
+      if (healthRatio < lowestHealthRatio) {
+        target = this.heart;
+      }
+    }
+    return target;
   }
 
   private findNearestSupportAnchor(monster: MutableTowerMonster): MutableTowerMonster | undefined {

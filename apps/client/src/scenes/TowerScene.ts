@@ -543,6 +543,7 @@ export class TowerScene extends Phaser.Scene {
       const color = monsterColor(monster.kind);
       const catalog = monsterCatalogEntry(monster.kind);
       this.drawMonsterAbilityTelegraph(monster);
+      this.drawMonsterTemporalState(x, y, monster);
       this.drawMonsterRarityAura(x, y, monster);
       graphics.fillStyle(color, monster.camouflaged === true ? 0.34 : 1);
       this.drawMonsterSilhouette(x, y, monster.radius, catalog?.roleShape ?? 'circle');
@@ -602,6 +603,16 @@ export class TowerScene extends Phaser.Scene {
       this.graphics.lineStyle(1.5, color, 0.28 + progress * 0.5);
       this.graphics.lineBetween(origin.x, origin.y, center.x, center.y);
     }
+  }
+
+  /** Les monstres figés ne doivent pas ressembler à un défaut de rendu ou de réseau. */
+  private drawMonsterTemporalState(x: number, y: number, monster: TowerMonsterState): void {
+    if (monster.temporal?.status !== 'frozen') return;
+    const radius = monster.radius + 6;
+    this.graphics.lineStyle(2, 0x9be7ff, 0.9);
+    this.graphics.strokeCircle(x, y, radius);
+    this.graphics.lineBetween(x - radius * 0.62, y, x + radius * 0.62, y);
+    this.graphics.lineBetween(x, y - radius * 0.62, x, y + radius * 0.62);
   }
 
   /** Marque intÃ©rieure : elle porte le pouvoir, sans dÃ©passer la zone de collision. */

@@ -1,11 +1,11 @@
 import { TOWER_NATURAL_MONSTERS, type TowerMonsterSignature } from '@village-survivor/content';
-import type { TowerInput, TowerMonsterKind } from '@village-survivor/protocol';
+import type { TowerInput, TowerMonsterKind, Vector2 } from '@village-survivor/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { HOSTILE_SLOW_DURATION_MS, TowerSimulation } from '../src/tower/index.js';
 import { monsterBehaviorProfile } from '../src/tower/monster-behaviors.js';
 import type { MutableTowerMonster, MutableTowerPlayer, MutableTurret } from '../src/tower/state.js';
-import { TURRET } from '../src/tower/tuning.js';
+import { MONSTERS, TURRET } from '../src/tower/tuning.js';
 
 const input = (sequence: number): TowerInput => ({
   sequence,
@@ -25,6 +25,8 @@ type SimulationInternals = {
     amount: number,
     killer: MutableTowerPlayer | undefined,
   ): boolean;
+  findMonsterTarget(monster: MutableTowerMonster): Vector2;
+  resolveMonsterMerges(): void;
 };
 
 function isInertMonsterProfile(profile: ReturnType<typeof monsterBehaviorProfile>): boolean {
@@ -133,6 +135,83 @@ describe('Tower Torri monster behavior primitives', () => {
     expect(superLooter.abilityUses).toBe(1);
     expect(maximumRetreatMs).toBe(3_000);
     expect(unavailableTicks / 1_200).toBeLessThan(0.3);
+  });
+
+  it('fait copier au Truand un effet positif du joueur, sans lire les buffs d’un allié monstre', () => {
+    const simulation = new TowerSimulation('torri-thug-player-copy');
+    simulation.start();
+    const state = internals(simulation);
+    const player = state.players[0];
+    if (player === undefined) throw new Error('Joueur de test absent.');
+    player.position = { x: 1_100, y: 0 };
+    const thugId = simulation.spawnMonster('thug', { x: 1_000, y: 0 });
+    const allyId = simulation.spawnMonster('protector', { x: 1_020, y: 0 });
+    const thug = state.monsters.find((monster) => monster.id === thugId);
+    const ally = state.monsters.find((monster) => monster.id === allyId);
+    if (thug === undefined || ally === undefined) throw new Error('Monstres de test absents.');
+    thug.abilityCooldownRemainingMs = 0;
+    ally.shieldHp = ally.maxHp;
+
+    for (let tick = 1; tick <= 12; tick += 1) {
+      simulation.step({ 'player-1': input(tick) });
+    }
+    expect(thug.shieldHp).toBe(0);
+    expect(thug.supportBuffRemainingMs).toBe(0);
+
+    const playerDamage = player.bulletDamage + 1;
+    player.bulletDamage = playerDamage;
+    thug.abilityCooldownRemainingMs = 0;
+    thug.abilityTelegraphRemainingMs = 0;
+    for (let tick = 13; tick <= 24; tick += 1) {
+      simulation.step({ 'player-1': input(tick) });
+    }
+
+    expect(player.bulletDamage).toBe(playerDamage);
+    expect(thug.supportBuffRemainingMs).toBeGreaterThan(0);
+  });
+
+  it('fait viser au Pilleur la structure vivante au plus faible pourcentage de PV', () => {
+    const simulation = new TowerSimulation('torri-looter-wounded-structure');
+    simulation.start();
+    const state = internals(simulation);
+    const looterId = simulation.spawnMonster('looter', { x: 0, y: 0 });
+    const looter = state.monsters.find((monster) => monster.id === looterId);
+    const north = state.turrets.find((turret) => turret.dir === 'N');
+    const east = state.turrets.find((turret) => turret.dir === 'E');
+    if (looter === undefined || north === undefined || east === undefined) {
+      throw new Error('Cibles de structure absentes.');
+    }
+    north.hp = north.maxHp;
+    east.hp = east.maxHp * 0.2;
+
+    expect(state.findMonsterTarget(looter)).toEqual(east.position);
+
+    state.heart.hp = state.heart.maxHp * 0.1;
+    expect(state.findMonsterTarget(looter)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('plafonne les PV et dégâts d’une fusion de quarante Slimes comme son rayon', () => {
+    const simulation = new TowerSimulation('torri-forty-slimes-merge-cap');
+    simulation.start();
+    const state = internals(simulation);
+    for (let index = 0; index < 40; index += 1) {
+      const id = simulation.spawnMonster('slime', { x: 900, y: 900 });
+      const slime = state.monsters.find((monster) => monster.id === id);
+      if (slime === undefined) throw new Error('Slime de test absent.');
+      slime.behaviorElapsedMs = 900;
+    }
+
+    while (state.monsters.filter((monster) => monster.hp > 0).length > 1) {
+      state.resolveMonsterMerges();
+    }
+
+    const survivor = state.monsters.find((monster) => monster.hp > 0);
+    if (survivor === undefined) throw new Error('Aucun Slime fusionné survivant.');
+    expect(survivor.maxHp).toBeLessThanOrEqual(Math.round(MONSTERS.slime.hp * 1.6));
+    expect(survivor.contactDamage).toBeLessThanOrEqual(
+      Math.round(MONSTERS.slime.contactDamage * 1.6),
+    );
+    expect(survivor.radius).toBeLessThanOrEqual(MONSTERS.slime.radius * 1.6);
   });
 
   it('tÃ©lÃ©graphie une attaque Ã  distance avant de toucher le joueur', () => {

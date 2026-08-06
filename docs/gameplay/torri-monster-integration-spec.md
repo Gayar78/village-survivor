@@ -2,9 +2,24 @@
 
 > Document de référence autonome — résultat du Grill Me validé avec le porteur du projet.
 >
-> Statut : **spécification de production**. Une IA ou une personne qui implémente le bestiaire doit pouvoir travailler à partir de ce document sans relire la conversation.
+> Statut : **cible de production, partiellement non tenue**. Une IA ou une personne qui implémente
+> le bestiaire doit pouvoir travailler à partir de ce document sans relire la conversation, mais ce
+> texte ne doit pas être lu comme une description du jeu livré.
 >
 > Sources auditées : `TorriTime/Tentative-remi` (catalogue `MONSTER_TYPES`, comportements, effets, spawner, raretés et mini-boss) et l’implémentation Tower actuelle de Village Survivor.
+
+## 0. Convention de fidélité et audit du 6 août 2026
+
+Les qualificatifs emploient l’échelle de [`../index.md`](../index.md) : **implémenté** requiert un
+chemin de code et une vérification ; **partiel** signifie qu’une primitive générique existe mais
+pas la mécanique décrite ; **non tenu** signale une contradiction vérifiée. Sauf mention explicite
+« implémenté » dans l’état de la fiche, les détails d’adaptation, de visuel et d’animation qui
+suivent restent des **cibles**, pas des règles en vigueur.
+
+L’inventaire exhaustif de la section 7.12 relie chaque fiche à la primitive effectivement
+exécutée. Les écarts globaux sont annotés au plus près de leur exigence. Cette annotation remplace
+la présentation erronée d’un bestiaire complet comme déjà livré ; elle ne réduit pas son périmètre
+produit.
 
 ## 1. Objectif produit
 
@@ -43,6 +58,11 @@ Les valeurs numériques brutes de Torri ne sont pas contractuelles. La vie, les 
 
 ### 2.3 Adaptations obligatoires par rapport à Torri
 
+> **État vérifié : partiel.** Les interdictions économiques (vol de ferraille, d’amélioration,
+> d’or de compte et de vie maximale) sont codées. Les signatures existent dans le catalogue, mais
+> plusieurs comportements ci-dessous ne sont encore que des primitives génériques ; le
+> Défourailleur notamment ne possède aucune charge de combat (voir §7.12).
+
 - Le **Pilleur** ne collecte plus la ferraille : il devient un opportuniste qui attaque la structure la plus endommagée, frappe rapidement, puis recule.
 - Le **Super Pilleur** ne vole plus de ferraille : il désactive brièvement une tourelle après une attaque fortement télégraphiée.
 - Le **Contrôleur** ne vole plus la dernière amélioration du joueur : sa seconde signature devient une altération temporelle de position ou de rythme, limitée à la partie.
@@ -54,6 +74,10 @@ Les valeurs numériques brutes de Torri ne sont pas contractuelles. La vie, les 
 
 ### 2.4 Traçabilité du catalogue audité
 
+> **État vérifié : implémenté pour les entrées et exclusions de données, partiel pour leurs
+> mécaniques.** Le catalogue porte les identifiants, faction, silhouette, cible, coût et signature ;
+> cela ne démontre pas la fidélité de chaque comportement annoncé par les fiches.
+
 Le catalogue source contient **80 entrées ordinaires/émergentes**, auxquelles s’ajoute le Gardien Ancien dans un registre séparé. Chacune de ces 81 entrées possède une section explicite dans le présent document, y compris les exclusions. Après retrait des cinq entrées exclues et traitement des Bandelettes comme simple état de la Momie, la cible comprend **74 espèces ou sous-unités actives**, plus le Gardien Ancien.
 
 Anomalie source corrigée : la fiche `giantSpider` possède une faction vide dans la version auditée de Torri ; l’Araignée géante est explicitement rattachée aux **Grottes** dans Village Survivor.
@@ -61,6 +85,11 @@ Anomalie source corrigée : la fiche `giantSpider` possède une faction vide dan
 ## 3. Contrat global de gameplay
 
 ### 3.1 Ciblage
+
+> **État vérifié : partiel.** Les profils `heart`, `turret`, `player`, `isolated-player`,
+> `hybrid` et `support` existent, avec verrou déterministe de joueur. Les préférences détaillées
+> par rôle restent simplifiées : « isolé » signifie actuellement le joueur vivant le plus éloigné
+> du Cœur, et les cibles de soutien ne suivent pas les priorités décrites.
 
 Chaque espèce déclare un profil de ciblage :
 
@@ -74,6 +103,10 @@ En multijoueur, un monstre ordinaire choisit le joueur actif le plus proche dans
 
 ### 3.2 Attaques contre les structures
 
+> **État vérifié : non tenu.** `resolveMonsterContacts` applique toujours des dégâts de contact au
+> chevauchement, avec un cooldown de 600 ms. Les télégraphes n’existent que pour certaines
+> capacités ; aucune préparation/impact/récupération universelle ne précède une attaque de mêlée.
+
 - Aucun dégât n’est causé simplement par un chevauchement continu.
 - Une attaque possède une préparation, une cadence, un impact et une récupération.
 - Un attaquant de mêlée s’arrête brièvement pour frapper.
@@ -83,6 +116,11 @@ En multijoueur, un monstre ordinaire choisit le joueur actif le plus proche dans
 
 ### 3.3 Déplacements et collisions
 
+> **État vérifié : partiel.** Les profils de déplacement déterministes (zigzag, bond, essaim,
+> fuite, enfouissement, blink et dash) et une séparation souple existent. Ils ne réalisent pas les
+> règles complètes de collision, d’intouchabilité, d’ombres, de délais post-téléportation ou de
+> trajectoires détaillées énoncées ici.
+
 - Les monstres utilisent une **séparation souple** : légère répulsion, chevauchement partiel autorisé, aucune simulation physique lourde.
 - Les grands monstres repoussent davantage les petits.
 - Les rapides peuvent se faufiler momentanément dans la foule.
@@ -91,6 +129,10 @@ En multijoueur, un monstre ordinaire choisit le joueur actif le plus proche dans
 - Les téléporteurs affichent une trace au départ et un symbole à l’arrivée. Ils ne frappent pas pendant la téléportation et respectent un délai après l’arrivée.
 
 ### 3.4 Contrôles et équité
+
+> **État vérifié : non tenu.** Le ralentissement hostile est maintenant projeté dans le protocole
+> et utilisé par la prédiction client, mais aucune résistance temporaire, décroissance des contrôles
+> successifs, prise brisable, chaîne destructible ou durée de contrôle affichée au joueur n’existe.
 
 - Les contrôles importants sont télégraphiés.
 - Un joueur récemment contrôlé obtient une courte résistance temporaire.
@@ -103,6 +145,9 @@ En multijoueur, un monstre ordinaire choisit le joueur actif le plus proche dans
 
 ### 3.5 Fenêtres de réaction
 
+> **État vérifié : non tenu.** Les télégraphes de capacité sont partiels ; les contrôles génériques
+> utilisent actuellement 750 ms. Les fourchettes de préavis par danger ne sont pas appliquées.
+
 | Danger | Préavis cible |
 |---|---:|
 | Attaque rapide et peu dangereuse | 0,3 à 0,5 s |
@@ -114,6 +159,11 @@ La difficulté peut réduire légèrement les délais, jamais les supprimer.
 
 ### 3.6 Soutiens et invocations
 
+> **État vérifié : partiel.** Les invocations disposent de plafonds par capacité et du plafond
+> actif global, mais les soins/buffs parcourent tous les alliés dans leur rayon sans plafond de
+> cibles ni atténuation du second effet identique. Les règles de durée après mort et de disparition
+> sans cible ne sont pas uniformément implémentées.
+
 - Le meilleur soin, bouclier ou bonus identique s’applique à 100 % ; un second effet identique est atténué. Aucun empilement infini.
 - Chaque soutien limite ses cibles simultanées.
 - Chaque invocateur possède un plafond individuel et le moteur possède un plafond global d’invocations.
@@ -122,6 +172,10 @@ La difficulté peut réduire légèrement les délais, jamais les supprimer.
 - Les invocations sans cible ni fonction disparaissent progressivement.
 
 ### 3.7 Mort
+
+> **État vérifié : partiel.** Les divisions, zones et résurrections prévues par certaines
+> signatures existent de façon déterministe. Les animations de mort, fragments plafonnés et la
+> plupart des signatures visuelles restent des cibles de rendu.
 
 - Aucun cadavre physique persistant.
 - Mort ordinaire en moins d’une seconde : fragmentation, dissolution, effondrement ou implosion selon l’identité.
@@ -132,6 +186,11 @@ La difficulté peut réduire légèrement les délais, jamais les supprimer.
 ## 4. Vagues, difficulté et performances
 
 ### 4.1 Progression cumulative
+
+> **État vérifié : partiel.** Les seuils de coût, les tables de rareté et les boss planifiés sont
+> codés. Le spawner ne conserve pas les renforts dont le budget dépasse la limite active : il sort
+> de sa boucle et le budget restant est perdu. Les garanties pédagogiques et la répartition fine
+> décrites dans cette section restent donc des cibles.
 
 - Tous les monstres faibles débloqués restent disponibles jusqu’à la dernière vague.
 - Vagues 1–10 : coût de menace maximal 3, monstres simples et communs uniquement.
@@ -178,6 +237,10 @@ Ancien à la vague 100.
 
 ### 4.2 Budget de menace
 
+> **État vérifié : partiel.** Le budget dépend du nombre de joueurs et les plafonds de bandes de
+> menace sont appliqués. La composition ne vérifie pas toutes les proportions et garanties de
+> diversité annoncées dans les tableaux.
+
 Chaque définition possède un `threatCost` qui représente son danger réel, pas seulement ses PV. Le budget d’une vague augmente systématiquement. La composition peut reproduire une sensation `1 → 3 → 8 → 20`, sans supposer qu’un Ours polaire équivaut à un Slime.
 
 Multiplicateur validé selon les joueurs actifs :
@@ -199,6 +262,10 @@ Un départ ne supprime pas les ennemis déjà créés. Les prochains groupes et 
 
 ### 4.3 Limite active déterministe
 
+> **État vérifié : partiel.** Les plafonds 70 à 160 sont déterministes et testés. Les monstres
+> au-delà du plafond ne sont pas mis dans une file de renforts : ils ne sont pas créés pour cette
+> vague, contrairement à cette exigence.
+
 - Solo : 70 monstres actifs maximum.
 - Ajouter 10 places par joueur actif supplémentaire.
 - Dix joueurs : 160 maximum.
@@ -209,6 +276,10 @@ Un départ ne supprime pas les ennemis déjà créés. Les prochains groupes et 
 ## 5. Récompenses et raretés
 
 ### 5.1 Récompenses
+
+> **État vérifié : partiel.** Les récompenses de partie et les multiplicateurs de rareté sont
+> appliqués. Les valeurs précises de cette table sont des cibles d’équilibrage et ne sont pas une
+> preuve que chaque unité invoquée ou émergente respecte la réduction annoncée.
 
 Les récompenses de cette production sont principalement l’XP et la ferraille. Elles appartiennent au système de partie ; aucun ennemi ne modifie l’or du compte.
 
@@ -223,6 +294,11 @@ L’arrondi garantit au moins une unité supplémentaire lorsqu’une récompens
 
 ### 5.2 Raretés
 
+> **État vérifié : partiel.** Les raretés actuelles sont `common`, `rare`, `epic` et `legendary`;
+> leurs multiplicateurs ont changé (voir `CHANGELOG.md`). Les auras et marqueurs génériques sont
+> rendus, mais les signatures visuelles détaillées et les capacités renforcées par rareté ne sont
+> pas toutes implémentées.
+
 | Rareté | Renforcement initial | Signature visuelle |
 |---|---|---|
 | Commun | base | aucun effet supplémentaire |
@@ -236,6 +312,9 @@ La vitesse varie très peu avec la rareté afin de conserver les fenêtres d’e
 
 ### 6.1 Forme dominante = rôle
 
+> **État vérifié : partiel.** Le catalogue porte la forme dominante et le rendu dessine cette
+> primitive. Les silhouettes composées propres à chaque fiche restent une cible.
+
 | Forme | Rôle principal |
 |---|---|
 | Cercle | combattant simple ou organique |
@@ -248,6 +327,9 @@ La vitesse varie très peu avec la rareté afin de conserver les fenêtres d’e
 Une silhouette peut combiner 2 à 5 primitives animées, mais une forme reste dominante. Exemple : Chauve-souris = petit noyau circulaire et ailes triangulaires ; Ours polaire = grand corps carré arrondi, tête et pattes circulaires.
 
 ### 6.2 Couleur principale = faction
+
+> **État vérifié : partiel.** Les couleurs de faction existent dans le rendu ; les motifs,
+> contrastes haute lisibilité et garanties d’accessibilité décrits ici ne sont pas tous vérifiés.
 
 | Faction | Palette principale |
 |---|---|
@@ -266,6 +348,9 @@ Les réglages de couleur du joueur ne remplacent pas les couleurs de faction enn
 
 ### 6.3 Taille
 
+> **État vérifié : non tenu.** Les classes de taille et rayons sont des données, mais aucune
+> vérification géométrique n’assure les proportions de silhouette ou les dépassements autorisés.
+
 - Très petit : Chauve-souris, Mini-slime, Petit scarabée, Recrue.
 - Petit : Gobelin, Araignée, Hyène et rapides comparables.
 - Moyen : majorité du roster.
@@ -276,9 +361,16 @@ Au moins 90 % de la silhouette solide doit rester dans la collision. Ailes, corn
 
 ### 6.4 Marque intérieure = pouvoir
 
+> **État vérifié : partiel.** Le rendu choisit une marque générique à partir de la signature ; il
+> ne garantit pas la marque précise ni la lisibilité de chaque pouvoir listé dans ce tableau.
+
 Les marques sont simples et répétables : goutte pour poison, spirale pour téléportation, croix ou pulsation pour soin, petit bouclier pour protection, œil barré pour invisibilité, explosion radiale pour kamikaze, chaîne pour immobilisation, flocon pour glace, sablier pour temps, silhouettes multiples pour invocation.
 
 ### 6.5 Effets de capacité
+
+> **État vérifié : partiel.** Les cercles et lignes de télégraphe sont rendus pour les capacités
+> projetées. Les effets détaillés et la correspondance complète entre toutes les zones dessinées
+> et leur collision restent non vérifiés.
 
 - **Explosion** : cercle d’avertissement, contraction lumineuse, onde et fragments.
 - **Orbite/synergie** : petites formes satellites et trajectoire ou lien discret entre partenaires.
@@ -288,6 +380,9 @@ Les marques sont simples et répétables : goutte pour poison, spirale pour tél
 - **Zone persistante** : contour exact au sol, remplissage semi-transparent et animation de durée restante.
 
 ### 6.6 Animation minimale par espèce
+
+> **État vérifié : non tenu.** Le rendu immédiat n’implémente pas une locomotion, une préparation,
+> une réaction et une mort distinctes pour chaque espèce.
 
 Chaque espèce reçoit : une locomotion propre, une préparation d’attaque, une réaction aux dégâts et une mort cohérente. Le rendu peut réduire les particules et animations secondaires lorsque la foule est dense, mais jamais supprimer un télégraphe de gameplay.
 
@@ -400,6 +495,9 @@ Structure stationnaire d’invocation. Exclue par décision produit.
 
 #### Bouleur (`bowler`)
 
+> **État vérifié : non tenu.** La signature `throw-ally` invoque actuellement une Chauve-souris ;
+> elle ne saisit ni ne projette un allié existant et ne produit pas l’arc/télégraphe décrit.
+
 - **Rôle/cible** : lanceur d’alliés ; soutien offensif mobile ; menace élevée.
 - **Comportement Torri** : saisit un allié léger proche et le projette, en s’infligeant une petite part de dégâts.
 - **Adaptation** : affiche la cible saisie, arme son lancer, puis projette l’allié vers joueur ou structure. Le projectile-monstre reste attaquable et subit un étourdissement bref à l’impact. Aucun allié lourd, boss ou soutien critique ne peut être lancé.
@@ -437,6 +535,10 @@ Structure stationnaire d’invocation. Exclue par décision produit.
 
 #### Momie (`mummy`)
 
+> **État vérifié : non tenu.** `revive-bandages` rétablit instantanément 42 % des PV une fois. Il
+> n’existe pas de paquet de Bandelettes vulnérable, de fenêtre de destruction ni de collision
+> réduite.
+
 - **Rôle/cible** : combattante persistante ; joueurs puis structures ; menace élevée.
 - **Comportement Torri** : accélère à faible vie, tombe en bandelettes pendant environ 5 s, puis revient avec une fraction de sa vie si elle n’est pas achevée par le feu.
 - **Adaptation** : plus sa vie baisse, plus ses pas deviennent rapides. À zéro PV, elle devient un paquet de bandelettes vulnérable pendant une courte fenêtre ; si celui-ci n’est pas détruit, la Momie se relève une fois. Aucune arme élémentaire n’est requise : tous les dégâts peuvent l’achever.
@@ -456,6 +558,10 @@ Structure stationnaire d’invocation. Exclue par décision produit.
 - **Visuel** : petit cercle allongé orange sombre, museau triangulaire et taches en points. Un chevron commun relie brièvement la meute au déclenchement.
 
 #### Ver des sables (`sandWorm`)
+
+> **État vérifié : non tenu.** `burrow-emerge` ne fait qu’osciller la vitesse/direction du monstre
+> via le profil `burrow`; il ne rend pas intouchable, ne télégraphie pas 1,5 s et ne gère aucune
+> émergence ciblée.
 
 - **Rôle/cible** : fouisseur d’embuscade ; joueur ou structure ; menace élevée.
 - **Comportement Torri** : émergence télégraphiée d’environ 1,5 s dans une large zone, dégâts différenciés joueurs/tourelles.
@@ -594,6 +700,11 @@ Structure stationnaire utilisant une pétrification. Exclue par décision produi
 
 #### Truand (`thug`)
 
+> **État vérifié : partiel.** Il cible maintenant un joueur vivant à courte portée et, s’il porte
+> une amélioration positive, reçoit un empowerment temporaire sans modifier ce joueur. Il ne
+> canalise pas encore une icône de buff précise et les effets temporaires de joueur ne sont pas un
+> type de protocole dédié.
+
 - **Rôle/cible** : imitateur de buffs et bagarreur ; joueurs ; menace élevée.
 - **Comportement Torri** : vole un effet positif au joueur à portée.
 - **Adaptation** : copie temporairement un effet positif visible sans le retirer au joueur. Il doit canaliser la copie à courte portée ; la capacité est interrompable. Une icône intérieure montre l’effet copié et disparaît à expiration.
@@ -614,6 +725,10 @@ Structure stationnaire utilisant une pétrification. Exclue par décision produi
 - **Visuel** : grand pentagone rouge brique, trois petits canons rotatifs, marque intérieure en trois points. Le canon passe du sombre au jaune chaud avant de tirer.
 
 #### Pilleur (`looter`) — **comportement remplacé**
+
+> **État vérifié : partiel.** Il sélectionne maintenant la tourelle ou le Cœur vivant au plus faible
+> pourcentage de PV, test à l’appui. La série de frappes, le repli et le chevron de cible restent
+> des cibles.
 
 - **Rôle/cible** : opportuniste anti-structure ; menace modérée.
 - **Comportement final** : sélectionne la tourelle ou structure valide ayant le plus faible pourcentage de vie, s’approche rapidement, exécute une courte série de frappes, puis recule et change d’angle. Il ne collecte ni ne retire aucune ferraille.
@@ -712,6 +827,9 @@ Invocation stationnaire du Cannonier de Torri. Supprimée au profit du tir port�
 
 #### Urgentiste (`paramedic`)
 
+> **État vérifié : non tenu.** `emergency-heal` soigne actuellement tous les alliés dans 150 px à
+> hauteur de 12 % ; il ne sélectionne pas une cible critique et n’impose aucun délai par cible.
+
 - **Rôle/cible** : soin mono-cible puissant ; menace élevée.
 - **Comportement Torri** : rejoint un allié blessé à grande distance et lui rend une forte quantité de vie à courte portée.
 - **Adaptation** : fonce vers la cible critique, canalise un rayon court et fournit un gros soin. Une même cible reçoit un délai avant de pouvoir être soignée de nouveau par un autre Urgentiste.
@@ -749,11 +867,18 @@ Invocation stationnaire du Cannonier de Torri. Supprimée au profit du tir port�
 
 #### Kidnappeur (`kidnapper`)
 
+> **État vérifié : non tenu.** `kidnap-drag` applique une projection ponctuelle de 48 unités. Il
+> n’existe ni saisie persistante, ni rupture par dégâts, ni immunité ultérieure.
+
 - **Rôle/cible** : contrôleur de position ; joueur isolé ; menace élevée.
 - **Comportement final validé** : annonce sa charge, saisit un joueur, puis tente de l’éloigner du village pendant une durée courte. La victime continue de tirer. Dégâts suffisants, contrôle, mort ou fin de durée brisent la prise. La même victime obtient une immunité temporaire.
 - **Visuel** : triangle rouge en forme de pince, deux bras crochus contenus près de la collision et marque de crochet. Le trajet de fuite est indiqué par une flèche au sol.
 
 #### Enchaîneur (`enchainer`)
+
+> **État vérifié : non tenu.** `chain-radius` utilise la capacité de contrôle générique ; il
+> endommage un second joueur proche mais ne limite pas le déplacement dans un rayon et ne crée pas
+> de chaîne destructible.
 
 - **Rôle/cible** : contrôleur à distance ; joueur ; menace élevée.
 - **Comportement Torri** : projectile périodique puis immobilisation.
@@ -791,6 +916,9 @@ Invocation stationnaire du Cannonier de Torri. Supprimée au profit du tir port�
 - **Visuel** : triangle acier, œil cyan, noyau rouge et petites roues circulaires. Sirène uniquement visuelle par alternance cyan/rouge puisque l’audio est hors périmètre.
 
 #### Défourailleur (`scrapReaver`) — **comportement remplacé**
+
+> **État vérifié : non tenu.** `combat-battery` est actuellement classé comme tir à distance. Il
+> n’existe aucune charge par combat, aucun palier visible ni décharge hors combat.
 
 - **Rôle/cible** : combattant qui se renforce avec le temps ; menace croissante.
 - **Comportement Torri** : collecte de la ferraille puis gagne PV et vitesse d’attaque.
@@ -830,7 +958,27 @@ Artillerie stationnaire sans comportement de déplacement dans Torri. Exclue par
 
 ### 7.10 Terres du Temps — violet cosmique et magenta
 
+> **État vérifié : partiel.** Le moteur synchronise l’arrivée, le Warden, les altérations et les
+> paliers de fin. Depuis ce correctif, le HUD affiche l’arrivée/état du Warden, le nombre de
+> monstres figés et le palier activé ; un anneau glacé distingue aussi un monstre figé. Les
+> séquences d’arène, symboles détaillés et la plupart des interactions restent des cibles.
+>
+> **Choix de transport : conservation avec affichage minimal.** La sonde autoritaire exécutée le
+> 6 août 2026 mesure `vs.game.patch.size` p95 à **53 Kio** pour un budget de 64 Kio. L’état n’est
+> donc pas retiré sans mesure de gain ; il est enfin consommé par l’interface. La marge restante
+> de 11 Kio est limitée et reste un risque de surveillance, pas une permission d’ajouter des états
+> décoratifs synchronisés.
+>
+> **Paliers effectifs :** les annonces sans effet « petits monstres exclus » et « événements
+> neutres/négatifs » ont été retirées avec leurs champs morts. Restent la pression de budget, la
+> rareté forcée, la fuite énergétique et l’adaptation ; leurs échéances d’origine sont conservées
+> afin de ne pas avancer la courbe de difficulté.
+
 #### Manieur du Temps (`timeWarden`)
+
+> **État vérifié : partiel.** Le singleton, le gel initial, les libérations et altérations
+> déterministes existent. Le rayon-sablier, la sélection riche d’allié, la marque d’âme et le
+> télégraphe de téléportation défensive ne sont pas implémentés.
 
 - **Rôle/cible** : très grand contrôleur anti-tourelle et meneur temporel ; menace très élevée.
 - **Comportement Torri** : unique à l’écran, contrôle périodiquement un monstre, peut le ressusciter avec forte vie et lui attribuer lenteur, accélération ou téléportation ; se téléporte à faible vie.
@@ -843,12 +991,19 @@ Créature passive qui ignore joueurs et tourelles, garantit un butin et crée de
 
 #### Contrôleur (`timeController`) — **vol d’amélioration supprimé**
 
+> **État vérifié : partiel.** Aucun build ni amélioration n’est retiré. Le contrôle applique un gel
+> bref et peut faire disparaître le monstre ; le retour du joueur à une position historique et son
+> marque visuelle ne sont pas réalisés.
+
 - **Rôle/cible** : frappeur temporel de joueur ; menace élevée.
 - **Comportement Torri** : frappe le joueur, disparaît après le coup, le gèle et peut voler sa dernière amélioration.
 - **Adaptation obligatoire** : la suppression d’amélioration disparaît. Le Contrôleur prépare un coup, applique un gel court soumis aux résistances, puis renvoie la victime vers sa position déterministe d’il y a environ une seconde avant de disparaître. Aucun état de compte ou de build n’est modifié.
 - **Visuel** : étoile magenta asymétrique, cadran cassé et image résiduelle. Le point de retour potentiel est affiché par un cercle fantôme avant le coup.
 
 #### La Montre (`timeWatch`)
+
+> **État vérifié : partiel.** L’effet de mort est déterministe et borné, mais n’est pas annoncé par
+> les aiguilles avant la mort ni représenté par son cadran décrit.
 
 - **Rôle/cible** : combattant chaotique à effet de mort ; menace élevée.
 - **Comportement Torri** : déclenche aléatoirement à sa mort un ralentissement global, une accélération globale, un ralentissement du joueur ou une forte accélération du joueur.
@@ -866,6 +1021,96 @@ Créature passive qui ignore joueurs et tourelles, garantit un butin et crée de
 - **Visuel** : très grande étoile à branches épaisses, noyau circulaire violet royal, plaques carrées et anneau de runes. Son écrasement montre un anneau qui se contracte pendant au moins 1,1 s. L’enragement ajoute des fissures magenta, sans utiliser le jaune réservé à la rareté légendaire.
 - **Rareté** : boss fixe, hors tirage Commun/Rare/Épique/Légendaire.
 
+### 7.12 État d’implémentation audité, fiche par fiche
+
+Cette matrice rend explicite l’écart entre la cible ci-dessus et le comportement exécuté. Une
+signature de catalogue n’est pas une preuve de fidélité : elle indique seulement la primitive
+réutilisable que le moteur applique aujourd’hui.
+
+| Fiche | État | Réalité vérifiée dans le moteur |
+|---|---|---|
+| Slime | partiel | `slime-merge` fusionne la même espèce ; PV, dégâts et rayon sont désormais plafonnés à ×1,6 ; pulsation, séparation et Slime avide restent cibles. |
+| Gobelin | partiel | `zigzag-combo` produit un zigzag ; les deux coups et le pas de côté ne sont pas distingués. |
+| Loup | partiel | `circle-pounce` donne un bond déterministe ; cercle autour de cible et télégraphe au sol ne sont pas complets. |
+| Harpie | partiel | `flying-xp-shot` combine escarmouche et tir générique ; aucune XP n’est retenue ni restituée. |
+| Protecteur | partiel | `ally-shield` pose un bouclier générique de zone sans plafond de cibles ni atténuation. |
+| Berger | partiel | `herd-allies` rapproche les alliés ; placement en retrait, seuil de groupe et exclusions restent cibles. |
+| Grand loup | partiel | `summon-pack` invoque jusqu’à deux Loups par usage ; hurlement interruptible et coordination de meute ne sont pas implémentés. |
+| Slime avide | non tenu | `growing-merge` existe dans le catalogue, mais les fusions ne transforment pas un Slime en Slime avide. |
+| Camp de monstres | implémenté | Entrée `excluded`, absente du pool de vagues. |
+| Chauve-souris | partiel | `flying-swarm` applique un déplacement d’essaim ; les phases d’approche/écart et battements décalés ne sont pas rendus. |
+| Slime sombre | partiel | `resistant-merge` applique ×0,8 aux dégâts entrants ; transmission et coque visuelle détaillées restent cibles. |
+| Araignée | partiel | `poison-sting` applique le poison de contact ; diagonales, pause et piqûre télégraphiée ne sont pas distinctes. |
+| Flipette | partiel | `avoid-player` évite le joueur dans le mouvement ; stratégie de contournement et panique ne sont pas modélisées. |
+| Géant des grottes | partiel | `structure-slam` réalise une frappe de zone générique ; interception au contact et arc lent ne sont pas propres à cette espèce. |
+| Bouleur | non tenu | `throw-ally` crée une Chauve-souris au lieu de projeter un allié existant. |
+| Araignée géante | partiel | `web-network` crée le contrôle générique ; réseau, filles et réaction à leur mort restent cibles. |
+| Araignée tisseuse | partiel | `web-trail` utilise une zone de contrôle générique ; fuite et dépôt de toile individuel ne sont pas réalisés. |
+| Pondeuse | partiel | `spider-brood` invoque des Tisseuses avec un plafond d’usage ; phase de ponte et interruption ne sont pas spécifiques. |
+| Slime sableux | partiel | `sand-puddle` crée le contrôle générique ; déclenchement aux paliers de dégâts et héritage restent cibles. |
+| Momie | non tenu | Résurrection instantanée à 42 %, sans Bandelettes vulnérables. |
+| Bandelettes | non tenu | Entrée transitoire de catalogue, mais aucun état jouable distinct n’est créé. |
+| Hyène | partiel | `pack-flank` donne un zigzag ; encadrement et convergence de meute ne sont pas implémentés. |
+| Ver des sables | non tenu | `burrow-emerge` n’est qu’une oscillation de mouvement, sans enfouissement ni émergence. |
+| Scorpion | partiel | `poison-projectile` tire/pose une zone générique ; distance de 50 px, recul et dard lisible restent cibles. |
+| Scarabée | partiel | `growing-brood` invoque des Petits scarabées ; ancrage interruptible et cadence croissante ne sont pas implémentés. |
+| Petit scarabée | partiel | `latch-bite` emploie le drain de contact ; accroche, chute et reprise ne sont pas modélisées. |
+| Djinn | partiel | `blink-cycle` téléporte par primitive générique ; alternance projectile/mêlée et délai d’impact ne sont pas complets. |
+| Golem de sable | partiel | `sand-slam` produit une frappe/zone générique ; création volontaire télégraphiée reste cible. |
+| Zombie | partiel | `out-of-combat-regen` régénère après absence de dégâts ; marche, agrippe et rendu de réparation restent cibles. |
+| Nécromancien | non tenu | `soul-resurrection` invoque directement des squelettes, sans marques d’âme ni filtrage des morts éligibles. |
+| Virus F | partiel | `ally-camouflage` camoufle les alliés de zone ; attachement à une priorité et rupture à l’attaque sont absents. |
+| Harceleur | partiel | `snipe-teleport` combine tir générique et blink ; vulnérabilité après arrivée et ligne longue portée restent cibles. |
+| Chevalier sombre | partiel | `frontal-guard` réduit tous les dégâts entrants, sans orientation ni dos vulnérable. |
+| Squelette petit | partiel | `bone-strike` a un bond ; coup sec et recul ne sont pas séparés. |
+| Squelette moyen | non tenu | `split-small` crée deux petits squelettes, non quatre. |
+| Squelette grand | non tenu | `split-medium` crée deux moyens, non quatre ; réduction près du plafond non spécifique. |
+| Statue | implémenté | Entrée `excluded`, absente du pool de vagues. |
+| Vampire | partiel | `dash-through` fournit un dash ; couloir, trajectoire verrouillée et exposition finale ne sont pas complets. |
+| Voleur de vie | partiel | `health-drain` draine les PV actuels sans modifier le maximum ; lien cassable et recul ne sont pas modélisés. |
+| Slime décomposé | non tenu | `split-merge` crée trois Mini-slimes, non quatre ; héritage après fusion absent. |
+| Mini-slime | partiel | `tiny-hop` donne un bond ; dispersion d’apparition et récompense réduite ne sont pas garanties. |
+| Tireur | partiel | `partner-shot` combine tir et orbite d’allié génériques ; recherche/remplacement d’un tank reste cible. |
+| Truand | partiel | Copie un empowerment temporaire si le joueur ciblé porte une amélioration positive ; effet précis, canalisation et icône restent cibles. |
+| Sniper | partiel | `telegraphed-snipe` fournit un télégraphe de 1,1 s et un tir ; ligne de vue/interruption dédiées restent cibles. |
+| Mauga | partiel | `minigun-burst` tire à cadence générique ; montée, dispersion, cône et refroidissement ne sont pas implémentés. |
+| Pilleur | partiel | `wounded-structure-raid` cible la structure vivante au plus faible pourcentage de PV ; série, repli et chevron restent cibles. |
+| Super Pilleur | partiel | `turret-disable` désactive une tourelle 650 ms une fois puis fuit 3 s ; câble, ciblage riche et télégraphe long restent partiels. |
+| Chef | partiel | `battle-orders` applique un buff générique ; ordres cycliques et animations ne sont pas implémentés. |
+| Grenadier | partiel | `grenade-barrage` tire une zone de feu générique ; sélection de groupe, salve et arcs restent cibles. |
+| Glacié | partiel | `slow-projectile` a tir/ralentissement de contact ; projectile de glace et anti-enchaînement restent absents. |
+| Nainsatisfait | partiel | `repair-heavy` soigne tous les alliés proches ; préférence machines/lourds et bonus temporaire de PV sont absents. |
+| Cannonier | partiel | `mobile-cannon` utilise un tir générique ; ancrage, boulet lent et vulnérabilité ne sont pas spécifiques. |
+| Canon | implémenté | Entrée `excluded`, absente du pool de vagues. |
+| Yéti | partiel | `slow-resist-aura` donne un buff générique ; résistance effective aux ralentissements et cône restent cibles. |
+| Esprit du blizzard | partiel | `freeze-death-zone` ralentit et crée une zone de mort ; piqué, gel bref et rendu précis restent cibles. |
+| Ours polaire | non tenu | `carry-units` invoque des Petits scarabées ; aucune unité n’est transportée puis déposée. |
+| Invocateur | non tenu | `portal-summon` invoque des petits squelettes, non des Slimes ; partenariat avec Porte-étendard absent. |
+| Soigneur | partiel | `area-heal` soigne tous les alliés dans sa zone sans priorisation ni atténuation. |
+| Porte-étendard | partiel | `ally-buff` applique un buff générique ; étendard porté, rayon et retrait à mort ne sont pas modélisés. |
+| Urgentiste | non tenu | `emergency-heal` soigne une zone de 150 px à 12 %, non une cible critique avec délai. |
+| Chanteur | partiel | `battle-cry` applique un buff générique ; charge, ondes et interruption ne sont pas implémentées. |
+| Kamikaze | partiel | `turret-explosion` charge vers une tourelle et explose ; télégraphe détaillé et plafonnement structurel ne sont pas vérifiés par fiche. |
+| Démon | non tenu | `short-curse` emploie le contrôle générique ; il ne retarde ni n’affaiblit précisément la prochaine action offensive. |
+| Tank infernal | partiel | `structure-ram` emploie une frappe de structure générique ; blocage physique et attraction proche restent cibles. |
+| Kidnappeur | non tenu | `kidnap-drag` est une poussée unique de 48 unités. |
+| Enchaîneur | non tenu | `chain-radius` ne crée ni rayon de mouvement ni chaîne destructible. |
+| Âme brûlante | partiel | `volatile-lifetime` borne une unité existante ; règles de naissance contrôlée et explosion proportionnelle ne sont pas complètes. |
+| Slime explosif | partiel | `explosive-merge` fusionne et déclenche la primitive de mort ; héritage/rayon plafonné et télégraphe détaillé restent cibles. |
+| Ange infernal | partiel | `revive-burning-aura` résurrection une fois et zone de feu ; invincibilité visible et aura décrite restent cibles. |
+| Robot explosif | partiel | `player-explosion` vise par dash ; verrou, corrections limitées et signal visuel restent cibles. |
+| Défourailleur | non tenu | `combat-battery` est un tir générique, sans charge de combat. |
+| Foreuse | partiel | `burrow-turret` emploie le déplacement enfoui générique ; trajectoire, sortie et ralentissement après coup restent cibles. |
+| Mortier | implémenté | Entrée `excluded`, absente du pool de vagues. |
+| Engin de siège | partiel | `cargo-assault` invoque une unité générique ; cargaison visible, panneaux et explosion de coque restent cibles. |
+| Lance-troupe | partiel | `lob-squad` invoque deux Recrues ; trois arcs, points distincts et réancrage restent cibles. |
+| Recrue | partiel | `landing-rush` donne un dash ; atterrissage, remise debout et attaque rapide ne sont pas spécifiques. |
+| Manieur du Temps | partiel | Gel/Warden/altérations sont déterministes ; sélection, télégraphes et arène restent cibles. |
+| Cerf du Temps | partiel | Exclu du pool Timelands, mais une entrée historique reste accessible au moteur pour l’instant ; son retrait complet est suivi au lot technique. |
+| Contrôleur | partiel | Gel et disparition existent sans vol d’amélioration ; retour du joueur et symbole de retour restent cibles. |
+| La Montre | partiel | Effet de mort déterministe ; aiguilles annonciatrices et rendu détaillé restent cibles. |
+| Gardien Ancien | partiel | `guardian-arena-slam` fournit une frappe générique et l’enragement de PV ; arène, repli/régénération et alternance complète restent cibles. |
+
 ## 8. Registre des exclusions et transformations
 
 | Entrée Torri | Décision Village Survivor | Motif |
@@ -874,7 +1119,7 @@ Créature passive qui ignore joueurs et tourelles, garantit un butin et crée de
 | Statue | exclue | structure stationnaire |
 | Canon | exclu | invocation stationnaire ; Cannonier rendu autonome |
 | Mortier | exclu | artillerie stationnaire |
-| Cerf du Temps | exclu | passif, n’attaque ni ne soutient l’assaut |
+| Cerf du Temps | exclu du spawner | passif ; une entrée historique manuelle reste à retirer du moteur |
 | Bandelettes | forme transitoire seulement | état de résurrection de la Momie |
 | Pilleur | conservé, mécanique remplacée | aucun vol de ferraille |
 | Super Pilleur | conservé, mécanique remplacée | aucun vol de ferraille/amélioration |
@@ -886,6 +1131,11 @@ Créature passive qui ignore joueurs et tourelles, garantit un butin et crée de
 | Nécromancien | marques d’âme | aucun cadavre persistant |
 
 ## 9. Modèle de données attendu
+
+> **État vérifié : partiel.** Le catalogue TypeScript porte les données listées en grande partie,
+> mais `signature` est encore typée largement et le moteur conserve plusieurs dispatchs par
+> signature. La complétude et les primitives attendues ci-dessous sont une cible du lot technique,
+> pas un contrat déjà garanti.
 
 L’implémentation doit être pilotée par les données. Une définition doit pouvoir exprimer au minimum :
 
@@ -913,11 +1163,21 @@ Tous les timers, choix de cible, tirages de composition, raretés, invocations e
 
 ## 10. État réseau minimal
 
+> **État vérifié : partiel.** Les snapshots portent zones, capacités télégraphiées, temporalité,
+> arrivée Timelands et paliers. Le HUD consomme désormais le minimum requis pour expliquer le gel
+> et les paliers ; les états fins de cible, partenaire, charge et tous les effets décoratifs ne
+> sont pas projetés/rendus comme prévu dans ce modèle cible.
+
 Le snapshot doit exposer uniquement les données nécessaires au rendu et à la reprise déterministe, par exemple : phase de comportement, cible, progression d’un télégraphe, état de contrôle, partenaire, niveau de charge, nombre d’invocations et altération temporelle. Les effets purement décoratifs sont reconstruits localement à partir du tick, de l’identifiant et de la seed ; ils ne sont jamais envoyés image par image.
 
 Le départ d’un joueur ne détruit pas la partie. Les cibles invalides sont relâchées au même tick sur tous les pairs. Une reconnexion reçoit un snapshot complet et reprend ensuite le flux d’inputs. L’intégration du bestiaire ne doit pas réintroduire l’envoi continu de la position de chaque monstre par chaque client.
 
 ## 11. Critères d’acceptation
+
+> **État vérifié : non tenu globalement.** Les seuls critères démontrés par les tests de ce
+> correctif sont les exclusions de données, les plafonds actifs, les corrections P1/P2 citées et
+> le déterminisme de scénarios ciblés. Cette liste reste une grille de livraison future : elle ne
+> peut pas être lue comme une recette déjà validée pour les 74 espèces.
 
 ### 11.1 Catalogue
 
@@ -964,6 +1224,10 @@ Le départ d’un joueur ne détruit pas la partie. Les cibles invalides sont re
 - Captures visuelles ou scènes de démonstration pour chaque faction, chaque rareté et chaque grande famille d’effet.
 
 ## 12. Ordre de production recommandé
+
+> **État vérifié : cible.** Les lots ont été fusionnés sans suivre entièrement cette séquence ;
+> cette liste ordonne les travaux restants, elle ne retrace pas une production effectivement
+> accomplie.
 
 1. Étendre le protocole et le catalogue piloté par les données ; retirer les types génériques.
 2. Construire les primitives déterministes de mouvement, ciblage, attaques, télégraphes et états.

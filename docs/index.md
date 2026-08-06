@@ -83,6 +83,7 @@ documents cœur, ni des artefacts que la méthode prescrirait.
 | Document | Rôle |
 |---|---|
 | [`gameplay/current-rules.md`](gameplay/current-rules.md) | photographie des règles réellement codées |
+| [`gameplay/torri-monster-integration-spec.md`](gameplay/torri-monster-integration-spec.md) | cible Torri annotée : état vérifié fiche par fiche le 6 août 2026 |
 | [`deployment.md`](deployment.md) | intégration continue, environnements, prérequis |
 | [`SETUP_SUPABASE.md`](SETUP_SUPABASE.md) | procédure de configuration du service externe |
 | [`../deploy/lan/README.md`](../deploy/lan/README.md) | déploiement LAN auto-hébergé |

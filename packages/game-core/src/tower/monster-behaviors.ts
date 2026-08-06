@@ -212,7 +212,9 @@ export function monsterBehaviorProfile(signature: TowerMonsterSignature): Monste
       kind: 'bolster',
       cooldownMs: 6_200,
       telegraphMs: 450,
-      range: 0,
+      // Le Truand est le seul soutien qui cible un joueur : il doit être à courte portée
+      // avant de copier une amélioration active, au lieu de consulter un allié monstre.
+      range: signature === 'copy-buff' ? 240 : 0,
       radius: 210,
       power: 0.08,
     };
